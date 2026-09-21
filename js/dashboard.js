@@ -169,7 +169,7 @@ function renderDashboard(){
   $("#addUnitTop").onclick=()=>openUnitModal();
   $("#dashSearch").oninput=e=>filterDashboard(e.target.value,$("#dashStatus").value);
   $("#dashStatus").onchange=e=>filterDashboard($("#dashSearch").value,e.target.value);
-  $("#viewOutstanding").onclick=()=>{location.hash="#payments";};
+  $("#viewOutstanding").onclick=()=>navigateTo("payments");
   $("#chartMetric").onchange=e=>$("#salesChart").innerHTML=salesChart(e.target.value);
   $("#topPeriod").onchange=e=>renderTopUnits(e.target.value);
   bindDynamicButtons();
@@ -399,15 +399,15 @@ function printCss(){return `body{font-family:Arial,sans-serif;color:#17243a;padd
 function openPrintWindow(html){const w=window.open("","_blank","width=1200,height=800");if(!w){notify("Please allow pop-ups to print.","error");return;}w.document.open();w.document.write(html);w.document.close();w.focus();setTimeout(()=>w.print(),350);}
 
 function showAuthError(message){console.error("[PISO WIFI]",message);const loader=$("#authLoading");if(loader){loader.innerHTML=`<div class="auth-error"><strong>Unable to open the dashboard</strong><span>${esc(message)}</span><button onclick="location.href='index.html'">Return to Login</button></div>`;loader.classList.remove("hidden");}}
-async function bootstrap(user){if(!user){location.replace("index.html");return;}currentUser=user;try{await authorize(user);await loadData();setupMonthSelector();$("#authLoading").classList.add("hidden");$("#app").classList.remove("hidden");$("#userEmail").textContent=user.email||"Owner";route=location.hash.replace("#","").split("?")[0]||"dashboard";render();}catch(e){showAuthError(e?.message||"Firebase authorization or database access failed.");}}
+async function bootstrap(user){if(!user){location.replace("index.html");return;}currentUser=user;try{await authorize(user);await loadData();setupMonthSelector();$("#authLoading").classList.add("hidden");$("#app").classList.remove("hidden");$("#userEmail").textContent=user.email||"Owner";route="dashboard";history.replaceState({route:"dashboard"},"",location.pathname);render();}catch(e){showAuthError(e?.message||"Firebase authorization or database access failed.");}}
 
 function parseRoute(){const raw=location.hash.replace(/^#/,"");return raw.split("?")[0]||"dashboard";}
 function navigateTo(nextRoute, options={}){
   const allowed=new Set(["dashboard","units","reports","payments","statements","notifications","activity","settings"]);
   const target=allowed.has(nextRoute)?nextRoute:"dashboard";
   route=target;
-  if(location.hash !== `#${target}`) location.hash=`#${target}`;
-  else { try { render(); } catch(err) { showRouteError(err); } }
+  if(options.push!==false){ history.pushState({route:target},"",location.pathname); }
+  try { render(); } catch(err) { showRouteError(err); }
   if(options.closeMenu!==false) closeMenu();
 }
 function showRouteError(err){
@@ -421,11 +421,14 @@ document.addEventListener("click",e=>{
   const pdf=e.target.closest("[data-pdf-inline]");if(pdf){const id=$("#statementUnit")?.value;if(id)downloadStatementPdf(id,$("#statementMonth").value);}
   const html=e.target.closest("[data-html-inline]");if(html){const id=$("#statementUnit")?.value;if(id)downloadStatementHtml(id,$("#statementMonth").value);}
 });
-window.addEventListener("hashchange",()=>{route=parseRoute();try{render();}catch(err){showRouteError(err);}});
+window.addEventListener("popstate",e=>{
+  route=e.state?.route || "dashboard";
+  try { render(); } catch(err) { showRouteError(err); }
+});
 $("#menuBtn").onclick=()=>{$("#sidebar").classList.add("open");$("#overlay").classList.add("show")};$("#overlay").onclick=closeMenu;
 $("#logoutBtn").onclick=async()=>{await signOut(auth);location.href="index.html"};
-$("#notificationBtn").onclick=()=>{location.hash="#notifications"};
-$("#globalSearch").oninput=e=>{const q=e.target.value.trim();if(q.length>=2){unitSearch=q;route="units";if(location.hash!=="#units")location.hash="#units";else renderUnits();}else if(!q){unitSearch="";if(route==="units")renderUnits();}};
+$("#notificationBtn").onclick=()=>navigateTo("notifications");
+$("#globalSearch").oninput=e=>{const q=e.target.value.trim();if(q.length>=2){unitSearch=q;navigateTo("units");}else if(!q){unitSearch="";if(route==="units")renderUnits();}};
 
 let authResolved = false;
 let bootstrapStarted = false;
