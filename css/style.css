@@ -86,3 +86,216 @@ body{background:radial-gradient(circle at 80% -10%,#e9f3ff 0,transparent 35%),va
 .statement-sheet{box-shadow:0 18px 45px rgba(15,35,67,.08)}
 @media(max-width:900px){.main{margin-left:0;width:100%}.topbar{height:70px}.content{padding:20px}.sidebar{width:270px}}
 @media(max-width:560px){.content{padding:14px}.page-head h1{font-size:25px}.topbar{padding:0 12px}.month-select{max-width:130px}.panel-head{padding:16px}.kpi{padding:16px}}
+
+
+/* =========================================================
+   PREMIUM BRAND / ICON SYSTEM V4
+   ========================================================= */
+.brand{gap:12px}.premium-logo{position:relative;display:grid!important;place-items:center;overflow:hidden}.premium-logo svg{width:31px;height:31px;display:block}.premium-logo:after{content:"";position:absolute;inset:1px;border-radius:13px;box-shadow:inset 0 1px 0 rgba(255,255,255,.28),0 0 0 1px rgba(255,255,255,.05)}
+.nav a{gap:11px}.nav-icon{width:20px;height:20px;display:grid;place-items:center;flex:0 0 20px}.nav-icon svg,.header-icon svg,.bell-btn svg,.premium-mini-logo svg{width:17px;height:17px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}.nav a.active .nav-icon{filter:drop-shadow(0 3px 6px rgba(255,255,255,.12))}.nav-count{margin-left:auto}.premium-mini-logo{display:grid;place-items:center}.premium-mini-logo svg{width:20px;height:20px;stroke:#48a7ff;stroke-width:1.8}
+.header-icon{display:grid;place-items:center;color:#1477ff}.month-select{gap:7px}.bell-btn{display:grid;place-items:center;position:relative}.bell-btn>svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}.bell-count{position:absolute;right:-3px;top:-5px}
+.logout-btn .nav-icon{color:inherit}.logout-btn{display:flex;align-items:center;gap:9px}
+.kpi.customer-net{background:linear-gradient(145deg,#f0f8ff 0%,#ffffff 72%);border-color:#b8dcff;box-shadow:0 14px 30px rgba(20,119,255,.11),inset 0 1px 0 #fff}.kpi.customer-net .kpi-icon{background:linear-gradient(145deg,#258cff,#0d64e4)!important;color:#fff!important}.kpi.customer-net b{color:#0d70ee}
+.report-card.customer-net{background:linear-gradient(145deg,#eef8ff,#fff);border-color:#b8dcff;box-shadow:0 12px 28px rgba(20,119,255,.1)}.report-card.customer-net strong{color:#0d70ee}
+.report-cards .report-card{min-height:92px}.report-rule{font-size:10px;color:#7a8ba0;background:#f7faff;border:1px solid #e4edf7;padding:7px 10px;border-radius:999px}
+.table-wrap table thead th:nth-child(9){color:#0d70ee;background:#edf7ff}.table-wrap table tbody td:nth-child(9){font-weight:850;color:#0d70ee;background:linear-gradient(90deg,rgba(238,248,255,.42),transparent)}
+.panel-head h3:before{content:"";display:inline-block;width:7px;height:7px;border-radius:50%;background:#1477ff;box-shadow:0 0 0 4px rgba(20,119,255,.08);margin:0 8px 2px 0}
+@media(max-width:560px){.premium-logo svg{width:28px;height:28px}.brand-mark.small{width:42px;height:42px}.report-rule{border-radius:10px}}
+.kpi-icon svg{width:19px;height:19px;fill:none;stroke:currentColor;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}.kpi .kpi-icon{display:grid;place-items:center}
+
+/* =========================================================
+   PREMIUM LOGIN / LANDING PAGE
+   ========================================================= */
+.login-page{
+  min-height:100vh;
+  margin:0;
+  display:grid;
+  place-items:center;
+  padding:32px 20px;
+  position:relative;
+  overflow:hidden;
+  background:
+    radial-gradient(circle at 15% 15%, rgba(37,140,255,.18), transparent 28%),
+    radial-gradient(circle at 88% 85%, rgba(37,140,255,.12), transparent 30%),
+    linear-gradient(135deg,#eef5ff 0%,#f7faff 48%,#edf4fc 100%);
+  color:#14213a;
+}
+.login-page:before,
+.login-page:after{
+  content:"";
+  position:absolute;
+  border-radius:50%;
+  pointer-events:none;
+  filter:blur(2px);
+}
+.login-page:before{
+  width:420px;height:420px;
+  top:-220px;right:-130px;
+  background:rgba(20,119,255,.09);
+}
+.login-page:after{
+  width:360px;height:360px;
+  bottom:-210px;left:-130px;
+  background:rgba(11,99,229,.07);
+}
+.login-card{
+  width:min(440px,100%);
+  position:relative;
+  z-index:1;
+  padding:42px 42px 38px;
+  background:rgba(255,255,255,.94);
+  border:1px solid rgba(218,229,243,.95);
+  border-radius:28px;
+  box-shadow:0 28px 80px rgba(9,31,67,.14),0 6px 24px rgba(20,76,140,.06),inset 0 1px 0 #fff;
+  backdrop-filter:blur(18px);
+}
+.login-brand{
+  display:flex;
+  justify-content:center;
+  margin-bottom:22px;
+}
+.login-brand-mark{
+  width:76px;height:76px;
+  border-radius:23px;
+  display:grid;place-items:center;
+  background:linear-gradient(145deg,#2691ff 0%,#0b63e5 100%);
+  box-shadow:0 18px 34px rgba(20,119,255,.27),inset 0 1px 0 rgba(255,255,255,.35);
+  color:#fff;
+}
+.login-brand-mark svg{width:43px;height:43px;fill:none;stroke:currentColor;stroke-width:1.75;stroke-linecap:round;stroke-linejoin:round}
+.login-card h1{
+  margin:0;
+  text-align:center;
+  color:#102347;
+  font-size:28px;
+  line-height:1.1;
+  letter-spacing:-.7px;
+  font-weight:850;
+}
+.login-card>p{
+  margin:8px 0 30px;
+  text-align:center;
+  color:#718198;
+  font-size:12px;
+  font-weight:600;
+  letter-spacing:.25px;
+}
+.login-form-group{margin-bottom:17px}
+.login-card form>label,
+.login-label{
+  display:block;
+  margin:0 0 8px;
+  color:#34445d;
+  font-size:12px;
+  font-weight:750;
+}
+.login-card input{
+  width:100%;
+  min-height:48px;
+  padding:12px 14px;
+  border:1px solid #d9e4f0;
+  border-radius:12px;
+  outline:none;
+  background:#fafdff;
+  color:#14213a;
+  font-size:14px;
+  transition:border-color .18s,box-shadow .18s,background .18s;
+}
+.login-card input::placeholder{color:#9aa9bb}
+.login-card input:focus{
+  background:#fff;
+  border-color:#1685f5;
+  box-shadow:0 0 0 4px rgba(20,119,255,.10);
+}
+.password-wrap{position:relative;display:flex;align-items:center}
+.password-wrap input{padding-right:76px}
+.password-wrap button{
+  position:absolute;
+  right:7px;
+  height:34px;
+  min-width:54px;
+  border:0;
+  border-radius:8px;
+  background:#edf5ff;
+  color:#1269c8;
+  font-size:11px;
+  font-weight:800;
+}
+.password-wrap button:hover{background:#e1efff}
+.login-card .primary-btn{
+  width:100%;
+  min-height:48px;
+  margin-top:6px;
+  border-radius:12px;
+  font-size:14px;
+  background:linear-gradient(135deg,#1984ff,#0b65e6);
+  box-shadow:0 12px 25px rgba(20,119,255,.23);
+}
+.login-card .primary-btn:hover{transform:translateY(-1px);box-shadow:0 15px 29px rgba(20,119,255,.28)}
+.login-forgot{
+  width:100%;
+  margin-top:12px;
+  text-align:center;
+  font-size:12px;
+}
+.login-message{
+  min-height:20px;
+  margin-top:14px;
+  padding:0 4px;
+  text-align:center;
+  color:#64748b;
+  font-size:12px;
+  line-height:1.5;
+}
+.login-footer{
+  margin-top:25px;
+  padding-top:18px;
+  border-top:1px solid #edf2f7;
+  text-align:center;
+  color:#9aa8b9;
+  font-size:10px;
+}
+.login-footer strong{color:#53657e;font-weight:800}
+.login-page .login-card .link-btn{font-weight:750}
+.login-page .login-card .link-btn:hover{text-decoration:underline}
+@media(max-width:560px){
+  .login-page{padding:18px}
+  .login-card{padding:34px 22px 28px;border-radius:23px}
+  .login-brand-mark{width:68px;height:68px;border-radius:20px}
+  .login-card h1{font-size:25px}
+}
+
+/* V7 auth fix: Firebase auth resolution is invisible; never overlay the dashboard with a spinner. */
+.auth-loading.hidden{display:none!important}
+.auth-loading{display:none!important}
+
+.route-error{margin:40px auto;max-width:560px;text-align:center;padding:42px 28px}.route-error-icon{width:52px;height:52px;margin:0 auto 14px;border-radius:50%;display:grid;place-items:center;background:#fff1f2;color:#e11d48;font-weight:900;font-size:22px}.route-error h2{margin:0 0 8px;color:#0f1f3d}.route-error p{color:#64748b;margin:0 0 20px;line-height:1.6}
+
+/* V9: sidebar navigation buttons behave like app navigation, not URL links. */
+.nav button[data-route]{
+  appearance:none; -webkit-appearance:none; width:100%; border:0; background:transparent;
+  color:inherit; font:inherit; text-align:left; cursor:pointer; display:flex; align-items:center;
+  gap:11px; padding:12px 14px; border-radius:10px; margin:2px 0; transition:background .18s ease,color .18s ease,transform .18s ease;
+}
+.nav button[data-route]:hover{background:rgba(255,255,255,.07);}
+.nav button[data-route].active{background:#1677ff; color:#fff; box-shadow:0 8px 20px rgba(22,119,255,.22);}
+.nav button[data-route]:focus-visible{outline:2px solid #67b3ff; outline-offset:2px;}
+
+/* V10: real sidebar buttons -- no hash links, no browser-default button styling. */
+.nav button[data-route]{
+  appearance:none; -webkit-appearance:none; width:100%; border:1px solid transparent;
+  background:transparent; color:#aebed5; display:flex; align-items:center; gap:11px;
+  padding:12px 13px; border-radius:10px; font:inherit; font-size:13px; font-weight:650;
+  text-align:left; cursor:pointer; user-select:none; -webkit-tap-highlight-color:transparent;
+  transition:background .18s ease,color .18s ease,box-shadow .18s ease,border-color .18s ease;
+}
+.nav button[data-route]:hover{background:rgba(20,119,255,.12);border-color:rgba(20,119,255,.15);color:#fff;}
+.nav button[data-route].active{background:linear-gradient(90deg,#1477ff,#126cf0);border-color:#3d94ff;color:#fff;box-shadow:0 10px 25px rgba(20,119,255,.28);}
+.nav button[data-route] .nav-icon{width:20px;height:20px;display:grid;place-items:center;flex:0 0 20px;}
+.nav button[data-route] .nav-icon svg{width:17px;height:17px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;}
+.nav button[data-route] .nav-count{margin-left:auto;}
+
+/* V11 navigation reliability: keep the sidebar above all page layers and explicitly clickable. */
+.sidebar{z-index:100!important;pointer-events:auto!important}
+.nav{position:relative;z-index:101;pointer-events:auto!important}
+.nav button[data-route]{position:relative;z-index:102;pointer-events:auto!important;touch-action:manipulation}
