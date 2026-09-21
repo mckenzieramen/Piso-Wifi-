@@ -126,31 +126,19 @@ function updateNotificationBadge(){
   $("#bellCount").textContent=n;
   $("#bellCount").classList.toggle("hidden",n===0);
 }
-function nav(){ document.querySelectorAll("#nav [data-route]").forEach(a=>a.classList.toggle("active",a.dataset.route===route)); }
+function nav(){ document.querySelectorAll("#nav a").forEach(a=>a.classList.toggle("active",a.dataset.route===route)); }
 function closeMenu(){ $("#sidebar").classList.remove("open"); $("#overlay").classList.remove("show"); }
 function baseHead(title,sub,button=""){ return `<div class="page-head"><div><h1>${title}</h1><p>${sub}</p></div>${button}</div>`; }
 function statusBadge(s){ return `<span class="badge ${String(s).toLowerCase()}">${esc(s)}</span>`; }
 function pageLoader(){ view.innerHTML=`<div class="loading-panel"><div class="loader"></div><p>Loading data…</p></div>`; }
 
 function render(){
-  route=parseRoute();
   nav();
   const renderers={dashboard:renderDashboard,units:renderUnits,reports:renderReports,payments:renderPayments,statements:renderStatements,notifications:renderNotifications,activity:renderActivity,settings:renderSettings,profile:renderProfile};
-  const renderer=renderers[route]||renderDashboard;
-  // Always leave visible content in the view before invoking a renderer.
-  // This prevents a navigation error from producing a blank page.
-  view.innerHTML=`<div class="loading-panel"><div><div class="loader"></div><p>Opening ${esc(routeLabel(route))}…</p></div></div>`;
-  try {
-    renderer();
-  } catch(err) {
-    showRouteError(err);
-  }
+  (renderers[route]||renderDashboard)();
   closeMenu();
   updateNotificationBadge();
   window.scrollTo({top:0,behavior:"smooth"});
-}
-function routeLabel(r){
-  return ({dashboard:"Dashboard",units:"Units / Clients",reports:"Monthly Reports",payments:"Payments",statements:"Client Statements",notifications:"Notifications",activity:"Activity Log",settings:"Settings",profile:"Client Profile"})[r]||"Dashboard";
 }
 
 function renderDashboard(){
@@ -181,7 +169,7 @@ function renderDashboard(){
   $("#addUnitTop").onclick=()=>openUnitModal();
   $("#dashSearch").oninput=e=>filterDashboard(e.target.value,$("#dashStatus").value);
   $("#dashStatus").onchange=e=>filterDashboard($("#dashSearch").value,e.target.value);
-  $("#viewOutstanding").onclick=()=>navigateTo("payments");
+  $("#viewOutstanding").onclick=()=>{location.hash="#payments";};
   $("#chartMetric").onchange=e=>$("#salesChart").innerHTML=salesChart(e.target.value);
   $("#topPeriod").onchange=e=>renderTopUnits(e.target.value);
   bindDynamicButtons();
@@ -411,76 +399,16 @@ function printCss(){return `body{font-family:Arial,sans-serif;color:#17243a;padd
 function openPrintWindow(html){const w=window.open("","_blank","width=1200,height=800");if(!w){notify("Please allow pop-ups to print.","error");return;}w.document.open();w.document.write(html);w.document.close();w.focus();setTimeout(()=>w.print(),350);}
 
 function showAuthError(message){console.error("[PISO WIFI]",message);const loader=$("#authLoading");if(loader){loader.innerHTML=`<div class="auth-error"><strong>Unable to open the dashboard</strong><span>${esc(message)}</span><button onclick="location.href='index.html'">Return to Login</button></div>`;loader.classList.remove("hidden");}}
-async function bootstrap(user){if(!user){location.replace("index.html");return;}currentUser=user;try{await authorize(user);await loadData();setupMonthSelector();$("#authLoading").classList.add("hidden");$("#app").classList.remove("hidden");$("#userEmail").textContent=user.email||"Owner";route=parseRoute();render();}catch(e){showAuthError(e?.message||"Firebase authorization or database access failed.");}}
+async function bootstrap(user){if(!user){location.replace("index.html");return;}currentUser=user;try{await authorize(user);await loadData();setupMonthSelector();$("#authLoading").classList.add("hidden");$("#app").classList.remove("hidden");$("#userEmail").textContent=user.email||"Owner";route=location.hash.replace("#","").split("?")[0]||"dashboard";render();}catch(e){showAuthError(e?.message||"Firebase authorization or database access failed.");}}
 
-function parseRoute(){const raw=location.hash.replace(/^#/ ,"");return raw.split("?")[0]||"dashboard";}
-function navigateTo(nextRoute, options={}){
-  const allowed=new Set(["dashboard","units","reports","payments","statements","notifications","activity","settings"]);
-  const target=allowed.has(String(nextRoute))?String(nextRoute):"dashboard";
-  const nextHash=`#${target}`;
-  if(location.hash===nextHash){ render(); }
-  else { location.hash=nextHash; }
-  if(options.closeMenu!==false) closeMenu();
-  return false;
-}
-window.pisoNavigate=(target)=>navigateTo(target);
-function showRouteError(err){
-  console.error("[PISO WIFI] Navigation render error:",err);
-  if(view) view.innerHTML=`<div class="route-error panel"><div class="route-error-icon">!</div><h2>Unable to open this section</h2><p>${esc(err?.message||"An unexpected error occurred while opening the page.")}</p><button class="primary-btn" onclick="location.hash='#dashboard'">Return to Dashboard</button></div>`;
-}
-// Navigation uses the browser hash as the single source of truth. The links
-// are real anchors, while this listener only closes the mobile menu. Rendering
-// is performed by the hashchange handler below, avoiding double renders.
-document.addEventListener("click",e=>{
-  const navBtn=e.target.closest("#nav [data-route]");
-  if(navBtn){
-    closeMenu();
-    return;
-  }
-  const a=e.target.closest("[data-route]");
-  if(a){
-    closeMenu();
-    return;
-  }
-  const p=e.target.closest("[data-print-inline]");if(p){const id=$("#statementUnit")?.value;if(id)printStatement(id,$("#statementMonth").value);}
-  const pdf=e.target.closest("[data-pdf-inline]");if(pdf){const id=$("#statementUnit")?.value;if(id)downloadStatementPdf(id,$("#statementMonth").value);}
-  const html=e.target.closest("[data-html-inline]");if(html){const id=$("#statementUnit")?.value;if(id)downloadStatementHtml(id,$("#statementMonth").value);}
-});
-window.addEventListener("popstate",()=>render());
-window.addEventListener("hashchange",()=>render());
+function parseRoute(){const raw=location.hash.replace("#","");return raw.split("?")[0]||"dashboard";}
+document.addEventListener("click",e=>{const a=e.target.closest("[data-route]");if(a){e.preventDefault();location.hash="#"+a.dataset.route;} const p=e.target.closest("[data-print-inline]");if(p){const id=$("#statementUnit")?.value;if(id)printStatement(id,$("#statementMonth").value);} const pdf=e.target.closest("[data-pdf-inline]");if(pdf){const id=$("#statementUnit")?.value;if(id)downloadStatementPdf(id,$("#statementMonth").value);} const html=e.target.closest("[data-html-inline]");if(html){const id=$("#statementUnit")?.value;if(id)downloadStatementHtml(id,$("#statementMonth").value);}});
+window.addEventListener("hashchange",()=>{route=parseRoute();render();});
 $("#menuBtn").onclick=()=>{$("#sidebar").classList.add("open");$("#overlay").classList.add("show")};$("#overlay").onclick=closeMenu;
-$("#logoutBtn").onclick=async()=>{await signOut(auth);location.replace("index.html")};
-$("#notificationBtn").onclick=()=>navigateTo("notifications");
-$("#globalSearch").oninput=e=>{const q=e.target.value.trim();if(q.length>=2){unitSearch=q;navigateTo("units");}else if(!q){unitSearch="";if(route==="units")renderUnits();}};
+$("#logoutBtn").onclick=async()=>{await signOut(auth);location.href="index.html"};
+$("#notificationBtn").onclick=()=>{location.hash="#notifications"};
+$("#globalSearch").oninput=e=>{const q=e.target.value.trim();if(q.length>=2){unitSearch=q;route="units";if(location.hash!=="#units")location.hash="#units";else renderUnits();}else if(!q){unitSearch="";if(route==="units")renderUnits();}};
 
-let authResolved = false;
-let bootstrapStarted = false;
-
-// Resolve Firebase authentication explicitly before loading protected data.
-// No authentication spinner/message is shown to the user. If there is no
-// signed-in session, the user is sent straight back to the premium login page.
-async function startAuth() {
-  if (bootstrapStarted) return;
-  bootstrapStarted = true;
-  try {
-    if (typeof auth.authStateReady === "function") {
-      await auth.authStateReady();
-    }
-    const user = auth.currentUser;
-    authResolved = true;
-    await bootstrap(user);
-  } catch (e) {
-    console.error("[PISO WIFI] Authentication initialization failed:", e);
-    location.replace("index.html");
-  }
-}
-
-// Also listen for the normal Firebase auth lifecycle so sign-in/sign-out
-// changes are handled correctly without exposing an auth-loading screen.
-onAuthStateChanged(auth, user => {
-  if (authResolved || bootstrapStarted) return;
-  authResolved = true;
-  bootstrap(user);
-});
-
-startAuth();
+let authResolved=false;
+const authTimeout=setTimeout(()=>{if(!authResolved){const u=auth.currentUser;if(u)bootstrap(u);else showAuthError("Firebase Authentication did not finish loading. Please refresh the page and try logging in again.");}},8000);
+onAuthStateChanged(auth,user=>{authResolved=true;clearTimeout(authTimeout);bootstrap(user);});
