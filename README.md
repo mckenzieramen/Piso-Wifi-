@@ -28,5 +28,8 @@ Upload/push the project files to the connected GitHub repository used by Cloudfl
 
 Before using Notifications and Activity Log in production, publish the included `firestore.rules` in Firebase Console.
 
+### If the dashboard says "Missing or insufficient permissions"
+The website now loads the core financial data independently from the newer Notifications/Activity collections, so adding those collections cannot blank the dashboard. If the error still appears, the Firebase Console rules for `users`, `units`, `monthlyRecords`, `payments`, or `settings` are not the current admin rules. Publish the included `firestore.rules` and make sure the authenticated admin UID is `u3Vjej0CrFgDSekt3NpXuHERpJM2`.
+
 ## Important
 The Firebase web config is client-side configuration. Keep private service-account credentials out of the repository.

@@ -66,16 +66,39 @@ function calc(r){
 function totals(rows){ return rows.reduce((a,x)=>{a.gross+=x.c.gross;a.internet+=x.c.internet;a.net+=x.c.net;a.owner+=x.c.owner;a.client+=x.c.client;a.elec+=x.c.elec;a.due+=x.c.clientTotal;a.paid+=x.c.paid;a.balance+=x.c.balance;return a},{gross:0,internet:0,net:0,owner:0,client:0,elec:0,due:0,paid:0,balance:0}); }
 
 async function loadData(){
-  const [u,r,p,s,n,a] = await Promise.all([
-    getDocs(collection(db,"units")), getDocs(collection(db,"monthlyRecords")), getDocs(collection(db,"payments")),
-    getDoc(doc(db,"settings","business")), getDocs(collection(db,"notifications")), getDocs(collection(db,"activities"))
+  // Core financial collections are required for the dashboard.
+  // Notifications and Activity Log are optional during rollout so a missing
+  // Firestore rule for those newer collections cannot blank the whole app.
+  const [u,r,p,s] = await Promise.all([
+    getDocs(collection(db,"units")),
+    getDocs(collection(db,"monthlyRecords")),
+    getDocs(collection(db,"payments")),
+    getDoc(doc(db,"settings","business"))
   ]);
+
   units=u.docs.map(d=>({id:d.id,...d.data()}));
   records=r.docs.map(d=>({id:d.id,...d.data()}));
   payments=p.docs.map(d=>({id:d.id,...d.data()}));
   if(s.exists()) settings={...settings,...s.data()};
-  notifications=n.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>timeValue(b.createdAt)-timeValue(a.createdAt));
-  activities=a.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>timeValue(b.createdAt)-timeValue(a.createdAt));
+
+  try {
+    const n=await getDocs(collection(db,"notifications"));
+    notifications=n.docs.map(d=>({id:d.id,...d.data()}))
+      .sort((a,b)=>timeValue(b.createdAt)-timeValue(a.createdAt));
+  } catch(e) {
+    console.warn("Notifications collection is not readable yet. Publish the latest Firestore rules.",e);
+    notifications=[];
+  }
+
+  try {
+    const a=await getDocs(collection(db,"activities"));
+    activities=a.docs.map(d=>({id:d.id,...d.data()}))
+      .sort((a,b)=>timeValue(b.createdAt)-timeValue(a.createdAt));
+  } catch(e) {
+    console.warn("Activities collection is not readable yet. Publish the latest Firestore rules.",e);
+    activities=[];
+  }
+
   updateNotificationBadge();
 }
 function timeValue(v){ if(!v)return 0; if(v.toMillis)return v.toMillis(); const n=new Date(v).getTime(); return Number.isNaN(n)?0:n; }
