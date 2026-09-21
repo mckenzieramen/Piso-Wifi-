@@ -52,4 +52,42 @@ document.addEventListener('click',e=>{const b=e.target.closest('[data-route]');i
 window.addEventListener('hashchange',()=>{route=(location.hash.replace('#','')||'dashboard');render()});
 $('#menuBtn').onclick=()=>{$('#sidebar').classList.add('open');$('#overlay').classList.add('show')};$('#overlay').onclick=closeMenu;$('#logoutBtn').onclick=async()=>{await signOut(auth);location.href='index.html'};
 
-onAuthStateChanged(auth,async user=>{try{if(!user){location.href='index.html';return}currentUser=user;await authorize(user);await loadData();$('#authLoading').classList.add('hidden');$('#app').classList.remove('hidden');$('#userEmail').textContent=user.email||'Admin';$('#currentMonthChip').textContent=monthLabel(monthKey());route=location.hash.replace('#','')||'dashboard';render()}catch(e){console.error(e);alert(e.message||'Authorization failed.');await signOut(auth);location.href='index.html'}});
+function showAuthError(message){
+  console.error('[PISO WIFI]', message);
+  const loader=$('#authLoading');
+  if(loader){loader.innerHTML=`<div style="max-width:560px;text-align:center;padding:28px;background:#fff;border:1px solid #e5e7eb;border-radius:18px;box-shadow:0 12px 40px rgba(15,23,42,.10)"><strong style="display:block;font-size:20px;color:#17243A;margin-bottom:10px">Unable to open the dashboard</strong><span style="display:block;color:#64748B;line-height:1.6">${esc(message)}</span><button onclick="location.href='index.html'" style="margin-top:18px;padding:11px 18px;border:0;border-radius:10px;background:#1685F5;color:#fff;font-weight:700;cursor:pointer">Return to Login</button></div>`;
+    loader.classList.remove('hidden');
+  }
+}
+
+async function bootstrap(user){
+  if(!user){ location.replace('index.html'); return; }
+  currentUser=user;
+  try{
+    await authorize(user);
+    await loadData();
+    $('#authLoading').classList.add('hidden');
+    $('#app').classList.remove('hidden');
+    $('#userEmail').textContent=user.email||'Admin';
+    $('#currentMonthChip').textContent=monthLabel(monthKey());
+    route=location.hash.replace('#','')||'dashboard';
+    render();
+  }catch(e){
+    showAuthError(e?.message || 'Firebase authorization or database access failed.');
+  }
+}
+
+let authResolved=false;
+const authTimeout=setTimeout(()=>{
+  if(!authResolved){
+    const u=auth.currentUser;
+    if(u) bootstrap(u);
+    else showAuthError('Firebase Authentication did not finish loading. Please refresh the page and try logging in again.');
+  }
+},8000);
+
+onAuthStateChanged(auth,user=>{
+  authResolved=true;
+  clearTimeout(authTimeout);
+  bootstrap(user);
+});
