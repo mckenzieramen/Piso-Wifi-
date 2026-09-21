@@ -264,3 +264,7 @@ body{background:radial-gradient(circle at 80% -10%,#e9f3ff 0,transparent 35%),va
   .login-brand-mark{width:68px;height:68px;border-radius:20px}
   .login-card h1{font-size:25px}
 }
+
+/* V7 auth fix: Firebase auth resolution is invisible; never overlay the dashboard with a spinner. */
+.auth-loading.hidden{display:none!important}
+.auth-loading{display:none!important}

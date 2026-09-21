@@ -409,11 +409,34 @@ $("#logoutBtn").onclick=async()=>{await signOut(auth);location.href="index.html"
 $("#notificationBtn").onclick=()=>{location.hash="#notifications"};
 $("#globalSearch").oninput=e=>{const q=e.target.value.trim();if(q.length>=2){unitSearch=q;route="units";if(location.hash!=="#units")location.hash="#units";else renderUnits();}else if(!q){unitSearch="";if(route==="units")renderUnits();}};
 
-let authResolved=false;
-// Keep authentication checks invisible to the user. The app either opens
-// after Firebase resolves the session or redirects to the login page.
-onAuthStateChanged(auth,user=>{
-  if(authResolved) return;
-  authResolved=true;
+let authResolved = false;
+let bootstrapStarted = false;
+
+// Resolve Firebase authentication explicitly before loading protected data.
+// No authentication spinner/message is shown to the user. If there is no
+// signed-in session, the user is sent straight back to the premium login page.
+async function startAuth() {
+  if (bootstrapStarted) return;
+  bootstrapStarted = true;
+  try {
+    if (typeof auth.authStateReady === "function") {
+      await auth.authStateReady();
+    }
+    const user = auth.currentUser;
+    authResolved = true;
+    await bootstrap(user);
+  } catch (e) {
+    console.error("[PISO WIFI] Authentication initialization failed:", e);
+    location.replace("index.html");
+  }
+}
+
+// Also listen for the normal Firebase auth lifecycle so sign-in/sign-out
+// changes are handled correctly without exposing an auth-loading screen.
+onAuthStateChanged(auth, user => {
+  if (authResolved || bootstrapStarted) return;
+  authResolved = true;
   bootstrap(user);
 });
+
+startAuth();
