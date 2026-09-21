@@ -294,3 +294,8 @@ body{background:radial-gradient(circle at 80% -10%,#e9f3ff 0,transparent 35%),va
 .nav button[data-route] .nav-icon{width:20px;height:20px;display:grid;place-items:center;flex:0 0 20px;}
 .nav button[data-route] .nav-icon svg{width:17px;height:17px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;}
 .nav button[data-route] .nav-count{margin-left:auto;}
+
+/* V11 navigation reliability: keep the sidebar above all page layers and explicitly clickable. */
+.sidebar{z-index:100!important;pointer-events:auto!important}
+.nav{position:relative;z-index:101;pointer-events:auto!important}
+.nav button[data-route]{position:relative;z-index:102;pointer-events:auto!important;touch-action:manipulation}

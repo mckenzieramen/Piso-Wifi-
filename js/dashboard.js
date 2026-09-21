@@ -404,28 +404,34 @@ async function bootstrap(user){if(!user){location.replace("index.html");return;}
 function parseRoute(){const raw=location.hash.replace(/^#/,"");return raw.split("?")[0]||"dashboard";}
 function navigateTo(nextRoute, options={}){
   const allowed=new Set(["dashboard","units","reports","payments","statements","notifications","activity","settings"]);
-  const target=allowed.has(nextRoute)?nextRoute:"dashboard";
+  const target=allowed.has(String(nextRoute))?String(nextRoute):"dashboard";
   route=target;
-  if(options.push!==false){ history.pushState({route:target},"",location.pathname); }
-  try { render(); } catch(err) { showRouteError(err); }
+  try {
+    if(options.push!==false){ history.pushState({route:target},"",location.pathname); }
+    render();
+  } catch(err) {
+    showRouteError(err);
+  }
   if(options.closeMenu!==false) closeMenu();
+  return false;
 }
+// Expose navigation globally so the sidebar remains clickable even if another
+// component attaches its own click handler or the app is re-rendered.
+window.pisoNavigate = (target) => navigateTo(target);
 function showRouteError(err){
   console.error("[PISO WIFI] Navigation render error:",err);
   if(view) view.innerHTML=`<div class="route-error panel"><div class="route-error-icon">!</div><h2>Unable to open this section</h2><p>${esc(err?.message||"An unexpected error occurred while opening the page.")}</p><button class="primary-btn" onclick="location.hash='#dashboard'">Return to Dashboard</button></div>`;
 }
 // Sidebar navigation is bound directly to the actual buttons. This avoids
 // relying on anchor/hash behavior and guarantees a real section render.
-document.querySelectorAll("#nav [data-route]").forEach(btn=>{
-  btn.addEventListener("click", e=>{
+document.addEventListener("click",e=>{
+  const navBtn=e.target.closest("#nav [data-route]");
+  if(navBtn){
     e.preventDefault();
     e.stopPropagation();
-    const target=btn.dataset.route;
-    if(target) navigateTo(target);
-  });
-});
-
-document.addEventListener("click",e=>{
+    navigateTo(navBtn.dataset.route);
+    return;
+  }
   const a=e.target.closest("[data-route]");
   if(a && !a.closest("#nav")){e.preventDefault();navigateTo(a.dataset.route);return;}
   const p=e.target.closest("[data-print-inline]");if(p){const id=$("#statementUnit")?.value;if(id)printStatement(id,$("#statementMonth").value);}
