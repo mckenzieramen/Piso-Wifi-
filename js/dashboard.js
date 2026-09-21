@@ -401,9 +401,27 @@ function openPrintWindow(html){const w=window.open("","_blank","width=1200,heigh
 function showAuthError(message){console.error("[PISO WIFI]",message);const loader=$("#authLoading");if(loader){loader.innerHTML=`<div class="auth-error"><strong>Unable to open the dashboard</strong><span>${esc(message)}</span><button onclick="location.href='index.html'">Return to Login</button></div>`;loader.classList.remove("hidden");}}
 async function bootstrap(user){if(!user){location.replace("index.html");return;}currentUser=user;try{await authorize(user);await loadData();setupMonthSelector();$("#authLoading").classList.add("hidden");$("#app").classList.remove("hidden");$("#userEmail").textContent=user.email||"Owner";route=location.hash.replace("#","").split("?")[0]||"dashboard";render();}catch(e){showAuthError(e?.message||"Firebase authorization or database access failed.");}}
 
-function parseRoute(){const raw=location.hash.replace("#","");return raw.split("?")[0]||"dashboard";}
-document.addEventListener("click",e=>{const a=e.target.closest("[data-route]");if(a){e.preventDefault();location.hash="#"+a.dataset.route;} const p=e.target.closest("[data-print-inline]");if(p){const id=$("#statementUnit")?.value;if(id)printStatement(id,$("#statementMonth").value);} const pdf=e.target.closest("[data-pdf-inline]");if(pdf){const id=$("#statementUnit")?.value;if(id)downloadStatementPdf(id,$("#statementMonth").value);} const html=e.target.closest("[data-html-inline]");if(html){const id=$("#statementUnit")?.value;if(id)downloadStatementHtml(id,$("#statementMonth").value);}});
-window.addEventListener("hashchange",()=>{route=parseRoute();render();});
+function parseRoute(){const raw=location.hash.replace(/^#/,"");return raw.split("?")[0]||"dashboard";}
+function navigateTo(nextRoute, options={}){
+  const allowed=new Set(["dashboard","units","reports","payments","statements","notifications","activity","settings"]);
+  const target=allowed.has(nextRoute)?nextRoute:"dashboard";
+  route=target;
+  if(location.hash !== `#${target}`) location.hash=`#${target}`;
+  else { try { render(); } catch(err) { showRouteError(err); } }
+  if(options.closeMenu!==false) closeMenu();
+}
+function showRouteError(err){
+  console.error("[PISO WIFI] Navigation render error:",err);
+  if(view) view.innerHTML=`<div class="route-error panel"><div class="route-error-icon">!</div><h2>Unable to open this section</h2><p>${esc(err?.message||"An unexpected error occurred while opening the page.")}</p><button class="primary-btn" onclick="location.hash='#dashboard'">Return to Dashboard</button></div>`;
+}
+document.addEventListener("click",e=>{
+  const a=e.target.closest("[data-route]");
+  if(a){e.preventDefault();navigateTo(a.dataset.route);return;}
+  const p=e.target.closest("[data-print-inline]");if(p){const id=$("#statementUnit")?.value;if(id)printStatement(id,$("#statementMonth").value);}
+  const pdf=e.target.closest("[data-pdf-inline]");if(pdf){const id=$("#statementUnit")?.value;if(id)downloadStatementPdf(id,$("#statementMonth").value);}
+  const html=e.target.closest("[data-html-inline]");if(html){const id=$("#statementUnit")?.value;if(id)downloadStatementHtml(id,$("#statementMonth").value);}
+});
+window.addEventListener("hashchange",()=>{route=parseRoute();try{render();}catch(err){showRouteError(err);}});
 $("#menuBtn").onclick=()=>{$("#sidebar").classList.add("open");$("#overlay").classList.add("show")};$("#overlay").onclick=closeMenu;
 $("#logoutBtn").onclick=async()=>{await signOut(auth);location.href="index.html"};
 $("#notificationBtn").onclick=()=>{location.hash="#notifications"};

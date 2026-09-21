@@ -268,3 +268,5 @@ body{background:radial-gradient(circle at 80% -10%,#e9f3ff 0,transparent 35%),va
 /* V7 auth fix: Firebase auth resolution is invisible; never overlay the dashboard with a spinner. */
 .auth-loading.hidden{display:none!important}
 .auth-loading{display:none!important}
+
+.route-error{margin:40px auto;max-width:560px;text-align:center;padding:42px 28px}.route-error-icon{width:52px;height:52px;margin:0 auto 14px;border-radius:50%;display:grid;place-items:center;background:#fff1f2;color:#e11d48;font-weight:900;font-size:22px}.route-error h2{margin:0 0 8px;color:#0f1f3d}.route-error p{color:#64748b;margin:0 0 20px;line-height:1.6}
