@@ -1,501 +1,336 @@
-// PISO WIFI Management System - robust dashboard bootstrap + navigation
-let auth = null;
-let db = null;
-let fb = {};
+import { auth, db } from "./firebase.js";
+import { onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-auth.js";
+import {
+  collection, doc, getDoc, getDocs, setDoc, addDoc, updateDoc, deleteDoc,
+  serverTimestamp, Timestamp
+} from "https://www.gstatic.com/firebasejs/12.2.1/firebase-firestore.js";
 
 const $ = (s) => document.querySelector(s);
-const view = $('#view');
-const toastEl = $('#toast');
-
-const money = (n) => `₱${Number(n || 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-const monthKey = () => new Date().toISOString().slice(0, 7);
-const monthLabel = (key) => {
-  const [y, m] = String(key).split('-');
-  if (!y || !m) return String(key || '');
-  return new Date(Number(y), Number(m) - 1, 1).toLocaleString('en-US', { month: 'long', year: 'numeric' });
-};
-const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (m) => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#039;' }[m]));
+const view = $("#view");
+const toastEl = $("#toast");
+const money = (n) => `₱${Number(n || 0).toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+const todayKey = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`; };
+const monthLabel = (k) => { const [y,m] = String(k).split("-"); return new Date(Number(y), Number(m)-1, 1).toLocaleString("en-US", { month:"long", year:"numeric" }); };
+const dateLabel = (v) => { if (!v) return "—"; const d = v?.toDate ? v.toDate() : new Date(v); return Number.isNaN(d.getTime()) ? String(v) : d.toLocaleDateString("en-US", {month:"long",day:"numeric",year:"numeric"}); };
+const dateTimeLabel = (v) => { if (!v) return "—"; const d = v?.toDate ? v.toDate() : new Date(v); return Number.isNaN(d.getTime()) ? String(v) : d.toLocaleString("en-US", {month:"short",day:"numeric",year:"numeric",hour:"numeric",minute:"2-digit"}); };
+const esc = (v) => String(v ?? "").replace(/[&<>"']/g, m => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#039;"}[m]));
+const uid = () => `${Date.now()}-${Math.random().toString(36).slice(2,8)}`;
 
 let currentUser = null;
-let units = [];
-let records = [];
-let payments = [];
-let settings = {
-  internetCost: 1000,
-  ownerPercent: 70,
-  clientPercent: 30,
-  electricity: 100,
-  electricityRule: 'ADD_TO_CLIENT'
-};
-let route = 'dashboard';
-let search = '';
-let authStarted = false;
-let authFinished = false;
+let units = [], records = [], payments = [], notifications = [], activities = [];
+let settings = { internetCost:1000, ownerPercent:70, clientPercent:30, electricity:100, electricityRule:"ADD_TO_CLIENT" };
+let route = "dashboard";
+let selectedMonth = localStorage.getItem("pisoSelectedMonth") || todayKey();
+let unitSearch = "", unitStatus = "", unitPaymentStatus = "";
 
-function notify(message) {
-  toastEl.textContent = message;
-  toastEl.classList.add('show');
-  setTimeout(() => toastEl.classList.remove('show'), 2600);
+function notify(msg, type="success") {
+  toastEl.textContent = msg;
+  toastEl.className = `toast show ${type}`;
+  clearTimeout(window.__toastTimer);
+  window.__toastTimer = setTimeout(() => toastEl.classList.remove("show"), 2800);
 }
-
-function showStartupError(title, message) {
-  const loader = $('#authLoading');
-  if (!loader) return;
-  console.error('[PISO WIFI]', title, message);
-  loader.innerHTML = `
-    <div style="max-width:650px;text-align:center;padding:30px;background:#fff;border:1px solid #e5e7eb;border-radius:18px;box-shadow:0 12px 40px rgba(15,23,42,.12)">
-      <strong style="display:block;font-size:21px;color:#17243A;margin-bottom:10px">${esc(title)}</strong>
-      <span style="display:block;color:#64748B;line-height:1.6;word-break:break-word">${esc(message)}</span>
-      <button id="startupReturn" style="margin-top:18px;padding:11px 18px;border:0;border-radius:10px;background:#1685F5;color:#fff;font-weight:700;cursor:pointer">Return to Login</button>
-    </div>`;
-  loader.classList.remove('hidden');
-  $('#startupReturn')?.addEventListener('click', () => { window.location.href = 'index.html'; });
+function setMonth(k) { selectedMonth = k || todayKey(); localStorage.setItem("pisoSelectedMonth", selectedMonth); $("#globalMonth").value = selectedMonth; render(); }
+function monthsList() {
+  const out=[]; const now=new Date();
+  for(let i=0;i<24;i++){ const d=new Date(now.getFullYear(), now.getMonth()-i,1); out.push(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`); }
+  return out;
 }
-
-function calc(record) {
-  const gross = Number(record?.grossSales || 0);
-  const internet = Number(settings.internetCost || 0);
-  const owner = gross * Number(settings.ownerPercent || 0) / 100;
-  const client = gross * Number(settings.clientPercent || 0) / 100;
-  const electricity = Number(settings.electricity || 0);
-  let clientTotal = client;
-  if (settings.electricityRule === 'SUBTRACT_FROM_CLIENT') clientTotal = client - electricity;
-  else clientTotal = client + electricity;
-  clientTotal = Math.max(0, clientTotal);
-
-  const paid = payments
-    .filter((p) => p.unitId === record?.unitId && p.month === record?.month)
-    .reduce((sum, p) => sum + Number(p.amount || 0), 0);
-
-  const balance = Math.max(0, clientTotal - paid);
-  const status = clientTotal > 0 && paid >= clientTotal ? 'Paid' : paid > 0 ? 'Partial' : 'Unpaid';
-  return { gross, internet, owner, client, electricity, clientTotal, paid, balance, status };
+function setupMonthSelector(){
+  $("#globalMonth").innerHTML=monthsList().map(m=>`<option value="${m}">${monthLabel(m)}</option>`).join("");
+  $("#globalMonth").value=selectedMonth;
+  $("#globalMonth").onchange=e=>setMonth(e.target.value);
 }
+function normalizeRows(month=selectedMonth){
+  return units.map(u=>{
+    const r=records.find(x=>x.unitId===u.id && x.month===month) || {unitId:u.id,month,grossSales:0};
+    return {u,r,c:calc(r)};
+  });
+}
+function calc(r){
+  const gross=Math.max(0,Number(r.grossSales||0));
+  const internet=Math.max(0,Number(settings.internetCost||0));
+  const net=Math.max(0,gross-internet);
+  const owner=net*Number(settings.ownerPercent||0)/100;
+  const client=net*Number(settings.clientPercent||0)/100;
+  const elec=Math.max(0,Number(settings.electricity||0));
+  let clientTotal=client;
+  if(settings.electricityRule==="ADD_TO_CLIENT") clientTotal=client+elec;
+  if(settings.electricityRule==="SUBTRACT_FROM_CLIENT") clientTotal=Math.max(0,client-elec);
+  if(settings.electricityRule==="SEPARATE_CHARGE") clientTotal=client;
+  const paid=payments.filter(p=>p.unitId===r.unitId && p.month===r.month).reduce((a,p)=>a+Math.max(0,Number(p.amount||0)),0);
+  const due=Math.max(0,clientTotal);
+  const balance=Math.max(0,due-paid);
+  const status=due===0 ? (paid>0?"Paid":"Unpaid") : paid>=due ? "Paid" : paid>0 ? "Partial" : "Unpaid";
+  return {gross,internet,net,owner,client,elec,clientTotal:due,paid,balance,status};
+}
+function totals(rows){ return rows.reduce((a,x)=>{a.gross+=x.c.gross;a.internet+=x.c.internet;a.net+=x.c.net;a.owner+=x.c.owner;a.client+=x.c.client;a.elec+=x.c.elec;a.due+=x.c.clientTotal;a.paid+=x.c.paid;a.balance+=x.c.balance;return a},{gross:0,internet:0,net:0,owner:0,client:0,elec:0,due:0,paid:0,balance:0}); }
 
-async function loadData() {
-  const [uSnap, rSnap, pSnap, sSnap] = await Promise.all([
-    fb.getDocs(fb.collection(db, 'units')),
-    fb.getDocs(fb.collection(db, 'monthlyRecords')),
-    fb.getDocs(fb.collection(db, 'payments')),
-    fb.getDoc(fb.doc(db, 'settings', 'business'))
+async function loadData(){
+  const [u,r,p,s,n,a] = await Promise.all([
+    getDocs(collection(db,"units")), getDocs(collection(db,"monthlyRecords")), getDocs(collection(db,"payments")),
+    getDoc(doc(db,"settings","business")), getDocs(collection(db,"notifications")), getDocs(collection(db,"activities"))
   ]);
-
-  units = uSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
-  records = rSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
-  payments = pSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
-  if (sSnap.exists()) settings = { ...settings, ...sSnap.data() };
+  units=u.docs.map(d=>({id:d.id,...d.data()}));
+  records=r.docs.map(d=>({id:d.id,...d.data()}));
+  payments=p.docs.map(d=>({id:d.id,...d.data()}));
+  if(s.exists()) settings={...settings,...s.data()};
+  notifications=n.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>timeValue(b.createdAt)-timeValue(a.createdAt));
+  activities=a.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>timeValue(b.createdAt)-timeValue(a.createdAt));
+  updateNotificationBadge();
 }
-
-async function authorize(user) {
-  const snap = await fb.getDoc(fb.doc(db, 'users', user.uid));
-  if (!snap.exists()) throw new Error('Your Firebase account is not authorized as an admin.');
-  const data = snap.data();
-  if (data.active !== true || data.role !== 'admin') throw new Error('Your account is not an active admin.');
+function timeValue(v){ if(!v)return 0; if(v.toMillis)return v.toMillis(); const n=new Date(v).getTime(); return Number.isNaN(n)?0:n; }
+async function authorize(user){
+  const snap=await getDoc(doc(db,"users",user.uid));
+  if(!snap.exists()) throw new Error("Your Firebase account is not authorized as an admin.");
+  const d=snap.data();
+  if(d.active!==true || d.role!=="admin") throw new Error("Your account is not an active admin.");
 }
-
-function closeMenu() {
-  $('#sidebar')?.classList.remove('open');
-  $('#overlay')?.classList.remove('show');
+async function logActivity(type,description,relatedId=""){
+  try { await addDoc(collection(db,"activities"),{userId:currentUser?.uid||"",activityType:type,description,relatedId,createdAt:serverTimestamp()}); } catch(e){ console.warn("Activity log failed",e); }
 }
-
-function setRoute(next) {
-  const allowed = ['dashboard', 'units', 'reports', 'payments', 'statements', 'settings'];
-  route = allowed.includes(next) ? next : 'dashboard';
-  if (window.location.hash !== `#${route}`) window.location.hash = route;
-  else render();
+async function addNotification(type,title,message,relatedId=""){
+  try { await addDoc(collection(db,"notifications"),{type,title,message,relatedId,read:false,createdAt:serverTimestamp()}); } catch(e){ console.warn("Notification failed",e); }
 }
-
-function nav() {
-  document.querySelectorAll('#nav a').forEach((a) => {
-    a.classList.toggle('active', a.dataset.route === route);
-  });
+function unreadCount(){ return notifications.filter(n=>n.read!==true).length; }
+function updateNotificationBadge(){
+  const n=unreadCount();
+  $("#navNotificationCount").textContent=n;
+  $("#navNotificationCount").classList.toggle("hidden",n===0);
+  $("#bellCount").textContent=n;
+  $("#bellCount").classList.toggle("hidden",n===0);
 }
+function nav(){ document.querySelectorAll("#nav a").forEach(a=>a.classList.toggle("active",a.dataset.route===route)); }
+function closeMenu(){ $("#sidebar").classList.remove("open"); $("#overlay").classList.remove("show"); }
+function baseHead(title,sub,button=""){ return `<div class="page-head"><div><h1>${title}</h1><p>${sub}</p></div>${button}</div>`; }
+function statusBadge(s){ return `<span class="badge ${String(s).toLowerCase()}">${esc(s)}</span>`; }
+function pageLoader(){ view.innerHTML=`<div class="loading-panel"><div class="loader"></div><p>Loading data…</p></div>`; }
 
-function baseHead(title, subtitle, action = '') {
-  return `<div class="page-head"><div><h1>${esc(title)}</h1><p>${esc(subtitle)}</p></div>${action}</div>`;
-}
-
-function render() {
+function render(){
   nav();
-  const renderers = {
-    dashboard: renderDashboard,
-    units: renderUnits,
-    reports: renderReports,
-    payments: renderPayments,
-    statements: renderStatements,
-    settings: renderSettings
-  };
-  (renderers[route] || renderDashboard)();
+  const renderers={dashboard:renderDashboard,units:renderUnits,reports:renderReports,payments:renderPayments,statements:renderStatements,notifications:renderNotifications,activity:renderActivity,settings:renderSettings,profile:renderProfile};
+  (renderers[route]||renderDashboard)();
   closeMenu();
-  window.scrollTo({ top: 0, behavior: 'smooth' });
+  updateNotificationBadge();
+  window.scrollTo({top:0,behavior:"smooth"});
 }
 
-function currentRows(month = monthKey()) {
-  const monthRecords = records.filter((r) => r.month === month);
-  return units.map((u) => {
-    const r = monthRecords.find((x) => x.unitId === u.id) || { unitId: u.id, month, grossSales: 0 };
-    return { u, r, c: calc(r) };
-  });
-}
-
-function renderDashboard() {
-  const month = monthKey();
-  const rows = currentRows(month);
-  const activeRows = rows.filter((x) => x.u.active !== false);
-  const total = activeRows.reduce((a, x) => ({
-    gross: a.gross + x.c.gross,
-    owner: a.owner + x.c.owner,
-    client: a.client + x.c.client,
-    electricity: a.electricity + x.c.electricity,
-    due: a.due + x.c.clientTotal,
-    paid: a.paid + x.c.paid,
-    balance: a.balance + x.c.balance
-  }), { gross: 0, owner: 0, client: 0, electricity: 0, due: 0, paid: 0, balance: 0 });
-
-  view.innerHTML = baseHead(
-    'Dashboard',
-    'Overview of all your Piso WiFi units',
-    '<button class="primary-btn" id="addUnitTop">+ Add New Unit</button>'
-  ) + `
-    <div class="wifi-status"><span class="wifi-dot">●</span><div><strong>Piso WiFi Network</strong><small>Management system connected to Firebase</small></div><span class="online">ONLINE</span></div>
+function renderDashboard(){
+  const rows=normalizeRows(), t=totals(rows), active=units.filter(u=>u.active!==false).length;
+  const top=[...rows].sort((a,b)=>b.c.gross-a.c.gross).slice(0,5);
+  const outstanding=rows.filter(x=>x.c.balance>0).sort((a,b)=>b.c.balance-a.c.balance).slice(0,5);
+  view.innerHTML=baseHead("Dashboard","Overview of your Piso WiFi business.",`<button class="primary-btn" id="addUnitTop">+ Add New Unit</button>`)+`
+  <div class="dashboard-grid">
     <div class="kpis">
-      <article class="kpi"><div class="kpi-icon">♙</div><span>Total Units</span><b>${units.length}</b><small>Registered units</small></article>
-      <article class="kpi"><div class="kpi-icon">₱</div><span>Gross Sales</span><b>${money(total.gross)}</b><small>${esc(monthLabel(month))}</small></article>
-      <article class="kpi"><div class="kpi-icon">◉</div><span>Internet Cost</span><b>${money(settings.internetCost * activeRows.length)}</b><small>Configured per unit</small></article>
-      <article class="kpi green"><div class="kpi-icon">70%</div><span>Owner Share</span><b>${money(total.owner)}</b><small>Based on settings</small></article>
-      <article class="kpi purple"><div class="kpi-icon">30%</div><span>Client Share</span><b>${money(total.client)}</b><small>Before electricity</small></article>
-      <article class="kpi orange"><div class="kpi-icon">⚡</div><span>Electricity</span><b>${money(total.electricity)}</b><small>Current month</small></article>
+      ${kpi("▦","Total Units",units.length,"All registered units")}
+      ${kpi("●","Active Units",active,"Currently active","green")}
+      ${kpi("₱","Gross Sales",money(t.gross),"This month","orange")}
+      ${kpi("70%","Owner Share",money(t.owner),settings.ownerPercent+"% share","gold")}
+      ${kpi("30%","Client Share",money(t.client),settings.clientPercent+"% share","purple")}
+      ${kpi("!","Total Due",money(t.due),"Pending payments","red")}
     </div>
-    <div class="summary-grid">
-      <div class="summary-card report-highlight"><h3>CLIENT AMOUNT DUE</h3><strong>${money(total.due)}</strong><span class="muted">Current month across active units</span></div>
-      <div class="summary-card"><h3>PAYMENTS RECEIVED</h3><strong>${money(total.paid)}</strong><span class="muted">Recorded for ${esc(monthLabel(month))}</span></div>
-      <div class="summary-card"><h3>OUTSTANDING BALANCE</h3><strong class="danger-text">${money(total.balance)}</strong><span class="muted">Amount still to collect</span></div>
+    <div class="analytics-grid">
+      <div class="panel chart-panel"><div class="panel-head"><div><h3>Sales Trend (Last 6 Months)</h3><p>Gross sales from actual monthly records</p></div><select class="compact-select" id="chartMetric"><option>Gross Sales</option><option>Owner Share</option><option>Client Share</option><option>Payments</option></select></div><div class="chart-wrap" id="salesChart">${salesChart()}</div></div>
+      <div class="panel"><div class="panel-head"><div><h3>Top Performing Units</h3><p>Ranked by gross sales</p></div><select class="compact-select" id="topPeriod"><option value="month">This Month</option><option value="last">Last Month</option><option value="3">Last 3 Months</option><option value="year">This Year</option></select></div><div class="rank-list" id="topUnits">${topUnitsHtml(top)}</div></div>
+      <div class="panel"><div class="panel-head"><div><h3>Outstanding Payments</h3><p>Clients with balances greater than zero</p></div><button class="link-btn" id="viewOutstanding">View All</button></div><div class="outstanding-list">${outstanding.length?outstanding.map(x=>`<button class="outstanding-row" data-pay-unit="${x.u.id}"><span><b>${esc(x.u.unitCode)}</b><small>${esc(x.u.name)}</small></span><strong>${money(x.c.balance)}</strong></button>`).join(""):empty("No outstanding payments.")}</div></div>
     </div>
-    <div class="panel">
-      <div class="panel-head"><div><h3>Units / Clients</h3><p>Monthly computation for ${esc(monthLabel(month))}</p></div><div class="tools"><input class="search" id="dashSearch" placeholder="Search client or unit..." value="${esc(search)}"><select id="dashStatus" class="search"><option value="">All statuses</option><option>Paid</option><option>Partial</option><option>Unpaid</option></select></div></div>
-      <div class="table-wrap"><table><thead><tr><th>#</th><th>Client / Unit</th><th>Gross Sales</th><th>Internet</th><th>Owner Share</th><th>Client Share</th><th>Electricity</th><th>Amount Due</th><th>Status</th><th></th></tr></thead><tbody id="dashBody"></tbody></table></div>
-    </div>
-    <div class="quick-grid"><button class="quick" id="quickUnit"><b>+ Add New Unit</b><span>Create a Piso WiFi unit and client record.</span></button><button class="quick" id="quickReport"><b>▥ Generate Monthly Report</b><span>Review current-month calculations.</span></button><button class="quick" id="quickStatement"><b>▤ Print Statements</b><span>Open client statements and print.</span></button></div>`;
-
-  $('#addUnitTop').onclick = () => openUnit();
-  $('#quickUnit').onclick = () => openUnit();
-  $('#quickReport').onclick = () => setRoute('reports');
-  $('#quickStatement').onclick = () => setRoute('statements');
-  $('#dashSearch').oninput = (e) => { search = e.target.value; updateDashRows(); };
-  $('#dashStatus').onchange = updateDashRows;
-  updateDashRows();
+    <div class="panel"><div class="panel-head"><div><h3>Units / Clients</h3><p>Monthly computation for ${monthLabel(selectedMonth)}</p></div><div class="tools"><input class="search" id="dashSearch" placeholder="Search client or unit…"><select id="dashStatus" class="search"><option value="">All Payment Status</option><option>Paid</option><option>Partial</option><option>Unpaid</option></select></div></div><div class="table-wrap"><table><thead><tr><th>Unit Code</th><th>Client Name</th><th>Location</th><th>Status</th><th>This Month</th><th>Payment</th><th>Actions</th></tr></thead><tbody id="dashBody">${rows.length?rows.map(dashboardRow).join(""):emptyRow(7,"No clients or units found.")}</tbody></table></div></div>
+  </div>`;
+  $("#addUnitTop").onclick=()=>openUnitModal();
+  $("#dashSearch").oninput=e=>filterDashboard(e.target.value,$("#dashStatus").value);
+  $("#dashStatus").onchange=e=>filterDashboard($("#dashSearch").value,e.target.value);
+  $("#viewOutstanding").onclick=()=>{location.hash="#payments";};
+  $("#chartMetric").onchange=e=>$("#salesChart").innerHTML=salesChart(e.target.value);
+  $("#topPeriod").onchange=e=>renderTopUnits(e.target.value);
+  bindDynamicButtons();
+  document.querySelectorAll("[data-pay-unit]").forEach(b=>b.onclick=()=>openPaymentModal(b.dataset.payUnit));
+}
+function kpi(icon,title,value,sub,cls=""){ return `<article class="kpi ${cls}"><div class="kpi-icon">${icon}</div><span>${title}</span><b>${value}</b><small>${sub}</small></article>`; }
+function empty(msg){ return `<div class="empty">${esc(msg)}</div>`; }
+function emptyRow(cols,msg){ return `<tr><td colspan="${cols}" class="empty">${esc(msg)}</td></tr>`; }
+function dashboardRow(x){ return `<tr><td><b>${esc(x.u.unitCode||"—")}</b></td><td><b>${esc(x.u.name||"—")}</b></td><td>${esc(x.u.location||"—")}</td><td>${statusBadge(x.u.active!==false?"Active":"Inactive")}</td><td class="amount">${money(x.c.gross)}</td><td>${statusBadge(x.c.status)}</td><td><button class="action-btn" data-profile="${x.u.id}">View</button><button class="action-btn" data-sale="${x.u.id}">Gross Sale</button></td></tr>`; }
+function filterDashboard(q,status){ const rows=normalizeRows().filter(x=>(!q||`${x.u.name} ${x.u.unitCode} ${x.u.location} ${x.u.contact}`.toLowerCase().includes(q.toLowerCase()))&&(!status||x.c.status===status)); $("#dashBody").innerHTML=rows.length?rows.map(dashboardRow).join(""):emptyRow(7,"No matching units."); bindDynamicButtons(); }
+function bindDynamicButtons(){
+  document.querySelectorAll("[data-profile]").forEach(b=>b.onclick=()=>openProfile(b.dataset.profile));
+  document.querySelectorAll("[data-sale]").forEach(b=>b.onclick=()=>openSalesModal(b.dataset.sale));
+  document.querySelectorAll("[data-edit-sale]").forEach(b=>b.onclick=()=>openSalesModal(b.dataset.editSale));
+  document.querySelectorAll("[data-delete-sale]").forEach(b=>b.onclick=()=>confirmDeleteSale(b.dataset.deleteSale));
+  document.querySelectorAll("[data-edit-unit]").forEach(b=>b.onclick=()=>openUnitModal(b.dataset.editUnit));
+  document.querySelectorAll("[data-toggle-unit]").forEach(b=>b.onclick=()=>toggleUnit(b.dataset.toggleUnit));
+  document.querySelectorAll("[data-payment]").forEach(b=>b.onclick=()=>openPaymentModal(b.dataset.payment));
+  document.querySelectorAll("[data-view-statement]").forEach(b=>b.onclick=()=>{location.hash=`#statements?unit=${encodeURIComponent(b.dataset.viewStatement)}`;});
 }
 
-function rowHtml(item, index) {
-  return `<tr><td>${index + 1}</td><td><b>${esc(item.u.name || 'Unnamed Client')}</b><br><span class="muted">${esc(item.u.unitCode || item.u.location || 'Unit')}</span></td><td class="amount">${money(item.c.gross)}</td><td>${money(item.c.internet)}</td><td>${money(item.c.owner)}</td><td>${money(item.c.client)}</td><td>${money(item.c.electricity)}</td><td class="amount">${money(item.c.clientTotal)}</td><td><span class="badge ${item.c.status.toLowerCase()}">${item.c.status}</span></td><td><button class="action-btn primary-action" data-record-sale="${esc(item.u.id)}">Gross Sale</button> <button class="action-btn" data-view-unit="${esc(item.u.id)}">View</button></td></tr>`;
+function sixMonths(){ const out=[]; const [y,m]=selectedMonth.split("-").map(Number); for(let i=5;i>=0;i--){const d=new Date(y,m-1-i,1);out.push(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`);} return out; }
+function metricTotal(month,metric){ const rs=records.filter(r=>r.month===month); return rs.reduce((sum,r)=>{const c=calc(r); return sum+(metric==="Owner Share"?c.owner:metric==="Client Share"?c.client:metric==="Payments"?c.paid:c.gross)},0); }
+function salesChart(metric="Gross Sales"){
+  const ms=sixMonths(), vals=ms.map(m=>metricTotal(m,metric)), max=Math.max(...vals,1);
+  return `<div class="bars">${vals.map((v,i)=>`<div class="bar-col"><div class="bar-value">${money(v)}</div><div class="bar" style="height:${Math.max(8,(v/max)*150)}px"></div><small>${new Date(ms[i]+"-01").toLocaleString("en-US",{month:"short"})}</small></div>`).join("")}</div>`;
+}
+function topUnitsHtml(rows){ return rows.length?rows.map((x,i)=>`<div class="rank-row"><span class="rank-num">${i+1}</span><span><b>${esc(x.u.unitCode)}</b><small>${esc(x.u.name)}</small></span><strong>${money(x.c.gross)}</strong></div>`).join(""):empty("No sales recorded for this period."); }
+function renderTopUnits(period){
+  const ms=period==="month"?[selectedMonth]:period==="last"?[shiftMonth(selectedMonth,-1)]:period==="3"?rangeMonths(3):yearMonths(selectedMonth);
+  const map=units.map(u=>{const gross=records.filter(r=>r.unitId===u.id&&ms.includes(r.month)).reduce((s,r)=>s+Number(r.grossSales||0),0);return{u,c:{gross}}}).sort((a,b)=>b.c.gross-a.c.gross).slice(0,5);
+  $("#topUnits").innerHTML=topUnitsHtml(map);
+}
+function shiftMonth(k,delta){const [y,m]=k.split("-").map(Number);const d=new Date(y,m-1+delta,1);return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`;}
+function rangeMonths(n){return Array.from({length:n},(_,i)=>shiftMonth(selectedMonth,-i));}
+function yearMonths(k){const y=Number(k.slice(0,4));return Array.from({length:12},(_,i)=>`${y}-${String(i+1).padStart(2,"0")}`);}
+
+function renderUnits(){
+  const rows=normalizeRows().filter(x=>(!unitSearch||`${x.u.name} ${x.u.unitCode} ${x.u.location} ${x.u.contact}`.toLowerCase().includes(unitSearch.toLowerCase()))&&(!unitStatus||String(x.u.active!==false?"Active":"Inactive")===unitStatus)&&(!unitPaymentStatus||x.c.status===unitPaymentStatus));
+  view.innerHTML=baseHead("Units / Clients","Manage your Piso WiFi units and clients.",`<button class="primary-btn" id="addUnitBtn">+ Add Client / Unit</button>`)+`<div class="panel"><div class="panel-head"><div><h3>Registered Units</h3><p>Showing ${rows.length} of ${units.length} units · ${monthLabel(selectedMonth)}</p></div><div class="tools"><input id="unitSearch" class="search" placeholder="Search client or unit…" value="${esc(unitSearch)}"><select id="unitStatus" class="search"><option value="">All Status</option><option ${unitStatus==="Active"?"selected":""}>Active</option><option ${unitStatus==="Inactive"?"selected":""}>Inactive</option></select><select id="unitPaymentStatus" class="search"><option value="">All Payment Status</option><option ${unitPaymentStatus==="Paid"?"selected":""}>Paid</option><option ${unitPaymentStatus==="Partial"?"selected":""}>Partial</option><option ${unitPaymentStatus==="Unpaid"?"selected":""}>Unpaid</option></select><button class="secondary-btn" id="exportUnits">Export Excel/CSV</button></div></div><div class="table-wrap"><table><thead><tr><th>Unit Code</th><th>Client Name</th><th>Location</th><th>Contact</th><th>Status</th><th>This Month</th><th>Payment</th><th>Actions</th></tr></thead><tbody>${rows.length?rows.map(x=>`<tr><td><b>${esc(x.u.unitCode||"—")}</b></td><td>${esc(x.u.name||"—")}</td><td>${esc(x.u.location||"—")}</td><td>${esc(x.u.contact||"—")}</td><td>${statusBadge(x.u.active!==false?"Active":"Inactive")}</td><td class="amount">${money(x.c.gross)}</td><td>${statusBadge(x.c.status)}</td><td><button class="action-btn" data-sale="${x.u.id}">Gross Sale</button><button class="action-btn" data-profile="${x.u.id}">View</button><button class="action-btn" data-edit-unit="${x.u.id}">Edit</button><button class="action-btn danger" data-toggle-unit="${x.u.id}">${x.u.active!==false?"Deactivate":"Activate"}</button></td></tr>`).join(""):emptyRow(8,"No clients or units found.")}</tbody></table></div></div>`;
+  $("#addUnitBtn").onclick=()=>openUnitModal();
+  $("#unitSearch").oninput=e=>{unitSearch=e.target.value;renderUnits()};
+  $("#unitStatus").onchange=e=>{unitStatus=e.target.value;renderUnits()};
+  $("#unitPaymentStatus").onchange=e=>{unitPaymentStatus=e.target.value;renderUnits()};
+  $("#exportUnits").onclick=()=>exportUnitsExcel(rows);
+  bindDynamicButtons();
+}
+function exportUnitsCsv(rows){ downloadCsv(`piso-wifi-units-${selectedMonth}.csv`,[["Unit Code","Client","Location","Contact","Status","Gross Sales","Amount Due","Paid","Balance","Payment Status"],...rows.map(x=>[x.u.unitCode,x.u.name,x.u.location,x.u.contact,x.u.active!==false?"Active":"Inactive",x.c.gross,x.c.clientTotal,x.c.paid,x.c.balance,x.c.status])]); }
+
+function renderReports(){
+  const rows=normalizeRows(), t=totals(rows);
+  view.innerHTML=baseHead("Monthly Reports","View and export monthly summaries.",`<div class="tools"><button class="secondary-btn" id="generateReport">Generate Report</button><button class="secondary-btn" id="exportCsv">Export CSV</button><button class="secondary-btn" id="exportExcel">Export Excel</button><button class="primary-btn" id="printReport">Print Report</button></div>`)+`<div class="report-cards">${reportCard("Total Units",units.length)}${reportCard("Total Gross Sales",money(t.gross))}${reportCard("Total Internet Cost",money(t.internet))}${reportCard("Total Owner Share",money(t.owner))}${reportCard("Total Client Share",money(t.client))}${reportCard("Total Electricity",money(t.elec))}${reportCard("Total Amount Due",money(t.due))}${reportCard("Total Collected",money(t.paid),"green")}${reportCard("Outstanding",money(t.balance),"red")}</div><div class="panel"><div class="panel-head"><div><h3>${monthLabel(selectedMonth)} Detail</h3><p>All calculations use the current business settings.</p></div><span class="report-rule">Internet ${money(settings.internetCost)} · Owner ${settings.ownerPercent}% · Client ${settings.clientPercent}% · Electricity ${money(settings.electricity)}</span></div><div class="table-wrap"><table><thead><tr><th>Unit</th><th>Client</th><th>Gross Sales</th><th>Internet</th><th>Owner Share</th><th>Client Share</th><th>Electricity</th><th>Amount Due</th><th>Paid</th><th>Balance</th><th>Status</th></tr></thead><tbody>${rows.length?rows.map(x=>`<tr><td>${esc(x.u.unitCode)}</td><td>${esc(x.u.name)}</td><td>${money(x.c.gross)}</td><td>${money(x.c.internet)}</td><td>${money(x.c.owner)}</td><td>${money(x.c.client)}</td><td>${money(x.c.elec)}</td><td>${money(x.c.clientTotal)}</td><td>${money(x.c.paid)}</td><td class="amount">${money(x.c.balance)}</td><td>${statusBadge(x.c.status)}</td></tr>`).join(""):emptyRow(11,"No sales recorded for this month.")}</tbody></table></div></div>`;
+  $("#generateReport").onclick=async()=>{await logActivity("Reports",`Generated monthly report for ${monthLabel(selectedMonth)}`);await addNotification("report","Monthly report is ready.",`${monthLabel(selectedMonth)} report was generated.`);await loadData();render();notify("Monthly report generated.");}; $("#exportCsv").onclick=()=>exportReportCsv(rows); $("#exportExcel").onclick=()=>exportReportExcel(rows); $("#printReport").onclick=()=>printReport(t,rows);
+}
+function reportCard(label,value,cls=""){return `<article class="report-card ${cls}"><span>${label}</span><strong>${value}</strong></article>`;}
+function exportReportCsv(rows){downloadCsv(`piso-wifi-report-${selectedMonth}.csv`,[["Unit","Client","Gross Sales","Internet","Owner Share","Client Share","Electricity","Amount Due","Paid","Balance","Status"],...rows.map(x=>[x.u.unitCode,x.u.name,x.c.gross,x.c.internet,x.c.owner,x.c.client,x.c.elec,x.c.clientTotal,x.c.paid,x.c.balance,x.c.status])]);}
+function exportReportExcel(rows){downloadXlsx(`piso-wifi-report-${selectedMonth}.xlsx`,"Monthly Report",[["Unit","Client","Gross Sales","Internet","Owner Share","Client Share","Electricity","Amount Due","Paid","Balance","Status"],...rows.map(x=>[x.u.unitCode,x.u.name,x.c.gross,x.c.internet,x.c.owner,x.c.client,x.c.elec,x.c.clientTotal,x.c.paid,x.c.balance,x.c.status])]);}
+function downloadXlsx(name,sheetName,data){if(!window.XLSX){notify("Excel exporter is still loading. Please try again.","error");return;}const wb=XLSX.utils.book_new();const ws=XLSX.utils.aoa_to_sheet(data);XLSX.utils.book_append_sheet(wb,ws,sheetName);XLSX.writeFile(wb,name);}
+function downloadCsv(name,data){const csv=data.map(r=>r.map(v=>`"${String(v??"").replaceAll('"','""')}"`).join(",")).join("\n");const blob=new Blob([csv],{type:"text/csv;charset=utf-8"});const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),500);}
+function printReport(t,rows){ const html=`<html><head><title>PISO WIFI Monthly Report</title><style>${printCss()}</style></head><body><h1>PISO WIFI — Monthly Report</h1><p>${monthLabel(selectedMonth)}</p><div class="print-grid">${[["Total Units",units.length],["Gross Sales",money(t.gross)],["Internet",money(t.internet)],["Owner Share",money(t.owner)],["Client Share",money(t.client)],["Electricity",money(t.elec)],["Amount Due",money(t.due)],["Collected",money(t.paid)],["Outstanding",money(t.balance)]].map(x=>`<div><b>${x[0]}</b><strong>${x[1]}</strong></div>`).join("")}</div><table><thead><tr><th>Unit</th><th>Client</th><th>Gross</th><th>Internet</th><th>Owner</th><th>Client</th><th>Electricity</th><th>Due</th><th>Paid</th><th>Balance</th><th>Status</th></tr></thead><tbody>${rows.map(x=>`<tr><td>${esc(x.u.unitCode)}</td><td>${esc(x.u.name)}</td><td>${money(x.c.gross)}</td><td>${money(x.c.internet)}</td><td>${money(x.c.owner)}</td><td>${money(x.c.client)}</td><td>${money(x.c.elec)}</td><td>${money(x.c.clientTotal)}</td><td>${money(x.c.paid)}</td><td>${money(x.c.balance)}</td><td>${esc(x.c.status)}</td></tr>`).join("")}</tbody></table></body></html>`;openPrintWindow(html);}
+
+function renderPayments(){
+  const rows=normalizeRows().filter(x=>x.c.balance>0);
+  const all=payments.filter(p=>p.month===selectedMonth).sort((a,b)=>String(b.date||"").localeCompare(String(a.date||"")));
+  view.innerHTML=baseHead("Payments","Record and track client payments.",`<button class="primary-btn" id="recordPayment">+ Record Payment</button>`)+`<div class="summary-grid"><div class="summary-card"><h3>AMOUNT DUE</h3><strong>${money(totals(normalizeRows()).due)}</strong></div><div class="summary-card"><h3>COLLECTED</h3><strong class="success-text">${money(totals(normalizeRows()).paid)}</strong></div><div class="summary-card"><h3>OUTSTANDING</h3><strong class="danger-text">${money(totals(normalizeRows()).balance)}</strong></div></div><div class="panel"><div class="panel-head"><div><h3>Outstanding Payments</h3><p>Clients with balances for ${monthLabel(selectedMonth)}</p></div><button class="secondary-btn" id="paymentSearchAll">Show Payment History</button></div><div class="table-wrap"><table><thead><tr><th>Unit</th><th>Client</th><th>Amount Due</th><th>Paid</th><th>Balance</th><th>Status</th><th>Action</th></tr></thead><tbody>${rows.length?rows.map(x=>`<tr><td>${esc(x.u.unitCode)}</td><td>${esc(x.u.name)}</td><td>${money(x.c.clientTotal)}</td><td>${money(x.c.paid)}</td><td class="amount">${money(x.c.balance)}</td><td>${statusBadge(x.c.status)}</td><td><button class="action-btn" data-payment="${x.u.id}">Record Payment</button></td></tr>`).join(""):emptyRow(7,"No outstanding payments.")}</tbody></table></div></div><div class="panel" id="paymentHistory"><div class="panel-head"><div><h3>Payment History</h3><p>${monthLabel(selectedMonth)}</p></div></div><div class="table-wrap"><table><thead><tr><th>Date</th><th>Unit</th><th>Client</th><th>Amount</th><th>Method</th><th>Reference</th></tr></thead><tbody>${all.length?all.map(p=>{const u=units.find(x=>x.id===p.unitId);return `<tr><td>${dateLabel(p.date)}</td><td>${esc(u?.unitCode||"—")}</td><td>${esc(u?.name||"—")}</td><td class="amount">${money(p.amount)}</td><td>${esc(p.method||"—")}</td><td>${esc(p.reference||"—")}</td></tr>`}).join(""):emptyRow(6,"No payments recorded.")}</tbody></table></div></div>`;
+  $("#recordPayment").onclick=()=>openPaymentModal(); $("#paymentSearchAll").onclick=()=>$("#paymentHistory").scrollIntoView({behavior:"smooth"}); bindDynamicButtons();
 }
 
-function updateDashRows() {
-  const body = $('#dashBody');
-  if (!body) return;
-  const status = $('#dashStatus')?.value || '';
-  const q = search.trim().toLowerCase();
-  const rows = currentRows().filter((x) => {
-    const text = `${x.u.name || ''} ${x.u.unitCode || ''} ${x.u.location || ''}`.toLowerCase();
-    return (!q || text.includes(q)) && (!status || x.c.status === status);
-  });
-  body.innerHTML = rows.length ? rows.map(rowHtml).join('') : '<tr><td colspan="10" class="empty">No matching units.</td></tr>';
-  document.querySelectorAll('[data-view-unit]').forEach((b) => { b.onclick = () => openUnit(b.dataset.viewUnit); });
-  document.querySelectorAll('[data-record-sale]').forEach((b) => { b.onclick = () => recordSale(b.dataset.recordSale); });
+function renderStatements(){
+  view.innerHTML=baseHead("Client Statements","Generate printable statements for a selected client/month.",`<button class="secondary-btn" id="printSelectedStatement">Print Selected Statement</button>`)+`<div class="panel"><div class="panel-head"><div><h3>Statement of Account</h3><p>Select a client and month.</p></div><div class="tools"><select class="search" id="statementUnit"><option value="">Select client / unit</option>${units.map(u=>`<option value="${u.id}">${esc(u.unitCode)} — ${esc(u.name)}</option>`).join("")}</select><select class="search" id="statementMonth">${monthsList().map(m=>`<option value="${m}" ${m===selectedMonth?"selected":""}>${monthLabel(m)}</option>`).join("")}</select></div></div><div id="statementPreview" class="statement-preview">${empty("Select a client to view the statement.")}</div></div>`;
+  $("#statementUnit").onchange=()=>renderStatementPreview(); $("#statementMonth").onchange=()=>renderStatementPreview(); $("#printSelectedStatement").onclick=()=>{const id=$("#statementUnit").value;if(id)printStatement(id,$("#statementMonth").value);else notify("Select a client first.","error");};
+}
+function statementData(unitId,month){ const u=units.find(x=>x.id===unitId); const r=records.find(x=>x.unitId===unitId&&x.month===month)||{unitId,month,grossSales:0}; return {u,r,c:calc(r)}; }
+function renderStatementPreview(){ const id=$("#statementUnit").value; if(!id){$("#statementPreview").innerHTML=empty("Select a client to view the statement.");return;} const month=$("#statementMonth").value; const {u,c}=statementData(id,month); $("#statementPreview").innerHTML=statementHtml(u,c,month); }
+function statementHtml(u,c,month){return `<div class="statement-sheet"><div class="statement-brand"><div class="statement-logo">◔</div><div><h2>PISO WIFI</h2><span>Management System</span></div><div class="statement-actions"><button class="primary-btn" data-print-inline="1">Print</button><button class="secondary-btn" data-pdf-inline="1">Download PDF</button></div></div><div class="statement-meta"><div><b>Client:</b><span>${esc(u?.name||"—")}</span><b>Unit:</b><span>${esc(u?.unitCode||"—")}</span><b>Location:</b><span>${esc(u?.location||"—")}</span><b>Contact:</b><span>${esc(u?.contact||"—")}</span></div><div><b>Period:</b><span>${monthLabel(month)}</span><b>Date Generated:</b><span>${dateLabel(new Date())}</span><b>Status:</b><span>${c.status}</span></div></div><table class="statement-table"><tbody><tr><td>Gross Sales</td><td>${money(c.gross)}</td></tr><tr><td>Internet Cost</td><td>${money(c.internet)}</td></tr><tr><td>Owner Share (${settings.ownerPercent}%)</td><td>${money(c.owner)}</td></tr><tr><td>Client Share (${settings.clientPercent}%)</td><td>${money(c.client)}</td></tr><tr><td>Electricity</td><td>${money(c.elec)}</td></tr><tr class="total"><td>Amount Due</td><td>${money(c.clientTotal)}</td></tr><tr><td>Payments</td><td>${money(c.paid)}</td></tr><tr class="balance"><td>Balance</td><td>${money(c.balance)}</td></tr></tbody></table></div>`;}
+function downloadStatementPdf(id,month){
+  const {u,c}=statementData(id,month);
+  const api=window.jspdf;
+  if(!api?.jsPDF){notify("PDF exporter is still loading. Please try again.","error");return;}
+  const pdf=new api.jsPDF();
+  pdf.setFontSize(18); pdf.text("PISO WIFI",20,20);
+  pdf.setFontSize(10); pdf.setTextColor(100,116,139); pdf.text("Management System — Statement of Account",20,27);
+  pdf.setTextColor(23,36,58); pdf.setFontSize(11);
+  pdf.text(`Client: ${u?.name||"—"}`,20,40); pdf.text(`Unit: ${u?.unitCode||"—"}`,20,47); pdf.text(`Location: ${u?.location||"—"}`,20,54); pdf.text(`Period: ${monthLabel(month)}`,125,40); pdf.text(`Status: ${c.status}`,125,47);
+  const lines=[["Gross Sales",money(c.gross)],["Internet Cost",money(c.internet)],[`Owner Share (${settings.ownerPercent}%)`,money(c.owner)],[`Client Share (${settings.clientPercent}%)`,money(c.client)],["Electricity",money(c.elec)],["Amount Due",money(c.clientTotal)],["Payments",money(c.paid)],["Balance",money(c.balance)]];
+  let y=70; pdf.setFontSize(10); lines.forEach(([label,value],i)=>{if(i===5)pdf.setFont(undefined,"bold");pdf.text(label,22,y);pdf.text(value,170,y,{align:"right"});pdf.setDrawColor(225,231,239);pdf.line(20,y+3,190,y+3);if(i===5)pdf.setFont(undefined,"normal");y+=12;});
+  pdf.save(`piso-wifi-statement-${u?.unitCode||"client"}-${month}.pdf`);
+}
+function printStatement(id,month){const {u,c}=statementData(id,month);const html=`<html><head><title>PISO WIFI Statement</title><style>${printCss()}</style></head><body><h1>PISO WIFI — Statement of Account</h1><p>Client: ${esc(u?.name)} · Unit: ${esc(u?.unitCode)} · Period: ${monthLabel(month)}</p><table><tbody><tr><th>Gross Sales</th><td>${money(c.gross)}</td></tr><tr><th>Internet Cost</th><td>${money(c.internet)}</td></tr><tr><th>Owner Share (${settings.ownerPercent}%)</th><td>${money(c.owner)}</td></tr><tr><th>Client Share (${settings.clientPercent}%)</th><td>${money(c.client)}</td></tr><tr><th>Electricity</th><td>${money(c.elec)}</td></tr><tr><th>Amount Due</th><td>${money(c.clientTotal)}</td></tr><tr><th>Payments</th><td>${money(c.paid)}</td></tr><tr><th>Balance</th><td>${money(c.balance)}</td></tr></tbody></table></body></html>`;openPrintWindow(html);}
+
+function renderNotifications(){
+  view.innerHTML=baseHead("Notifications","Stay updated on payments, balances, reports and system changes.",`<button class="secondary-btn" id="markAllRead">Mark all as read</button>`)+`<div class="notification-list">${notifications.length?notifications.map(n=>`<button class="notification-card ${n.read===true?"read":"unread"}" data-notification="${n.id}"><span class="notification-icon">${n.type==="payment"?"₱":n.type==="balance"?"!":n.type==="report"?"▥":"●"}</span><span><b>${esc(n.title)}</b><small>${esc(n.message)}</small><time>${dateTimeLabel(n.createdAt)}</time></span>${n.read!==true?"<em>NEW</em>":""}</button>`).join(""):empty("You're all caught up.")}</div>`;
+  $("#markAllRead").onclick=markAllNotificationsRead; document.querySelectorAll("[data-notification]").forEach(b=>b.onclick=()=>openNotification(b.dataset.notification));
+}
+async function openNotification(id){const n=notifications.find(x=>x.id===id);if(!n)return;if(n.read!==true){await updateDoc(doc(db,"notifications",id),{read:true});await loadData();} if(n.relatedId && units.some(u=>u.id===n.relatedId)){openProfile(n.relatedId);}else{render();}}
+async function markAllNotificationsRead(){const unread=notifications.filter(n=>n.read!==true);await Promise.all(unread.map(n=>updateDoc(doc(db,"notifications",n.id),{read:true})));await loadData();render();notify("All notifications marked as read.");}
+
+function renderActivity(){
+  view.innerHTML=baseHead("Activity Log","Trace important financial and management actions.",`<select class="search" id="activityFilter"><option value="">All Activities</option><option>Sales</option><option>Payments</option><option>Clients</option><option>Units</option><option>Settings</option><option>Reports</option></select>`)+`<div class="panel"><div class="table-wrap"><table><thead><tr><th>Date & Time</th><th>Activity</th><th>Details</th></tr></thead><tbody id="activityBody">${activityRows("")}</tbody></table></div></div>`;
+  $("#activityFilter").onchange=e=>$("#activityBody").innerHTML=activityRows(e.target.value);
+}
+function activityRows(filter){const list=activities.filter(a=>!filter||a.activityType===filter);return list.length?list.map(a=>`<tr><td>${dateTimeLabel(a.createdAt)}</td><td><span class="activity-dot"></span>${esc(a.activityType||"Activity")}</td><td>${esc(a.description||"—")}</td></tr>`).join(""):emptyRow(3,"No activity recorded.");}
+
+function renderSettings(){
+  view.innerHTML=baseHead("Settings","Configure the business rules used by all calculations.")+`<div class="settings-layout"><div class="panel settings-card"><div class="panel-head"><div><h3>Business Settings</h3><p>These values drive dashboard, payments, statements and reports.</p></div></div><div class="settings-body"><div class="setting-row"><div><b>Internet Cost</b><small>Fixed internet cost per unit/month.</small></div><input id="sInternet" type="number" min="0" step="0.01" value="${settings.internetCost}"></div><div class="setting-row"><div><b>Owner Share</b><small>Percentage of net sales allocated to owner.</small></div><input id="sOwner" type="number" min="0" max="100" step="1" value="${settings.ownerPercent}"></div><div class="setting-row"><div><b>Client Share</b><small>Percentage of net sales allocated to client.</small></div><input id="sClient" type="number" min="0" max="100" step="1" value="${settings.clientPercent}"></div><div class="setting-row"><div><b>Electricity</b><small>Electricity amount per unit/month.</small></div><input id="sElec" type="number" min="0" step="0.01" value="${settings.electricity}"></div><div class="setting-row"><div><b>Electricity Rule</b><small>How electricity affects the client amount.</small></div><select id="sRule"><option value="ADD_TO_CLIENT" ${settings.electricityRule==="ADD_TO_CLIENT"?"selected":""}>Add to Client</option><option value="SUBTRACT_FROM_CLIENT" ${settings.electricityRule==="SUBTRACT_FROM_CLIENT"?"selected":""}>Deduct from Client</option><option value="SEPARATE_CHARGE" ${settings.electricityRule==="SEPARATE_CHARGE"?"selected":""}>Separate Charge</option></select></div><div class="settings-actions"><button class="primary-btn" id="saveSettings">Save Settings</button></div></div></div><div class="panel"><div class="panel-head"><div><h3>Current Formula</h3><p>Used for ${monthLabel(selectedMonth)}</p></div></div><div class="formula-box"><div>Gross Sales</div><strong>− ${money(settings.internetCost)} Internet</strong><div>= Net Sales</div><strong>× ${settings.ownerPercent}% Owner</strong><strong>× ${settings.clientPercent}% Client</strong><div>Electricity: <b>${settings.electricityRule.replaceAll("_"," ")}</b></div></div></div></div>`;
+  $("#saveSettings").onclick=saveSettings;
+}
+async function saveSettings(){
+  const internet=Number($("#sInternet").value), owner=Number($("#sOwner").value), client=Number($("#sClient").value), electricity=Number($("#sElec").value);
+  if([internet,owner,client,electricity].some(n=>Number.isNaN(n)||n<0))return notify("Settings must contain valid non-negative numbers.","error");
+  if(owner+client!==100)return notify("Owner + Client share must equal 100%.","error");
+  settings={internetCost:internet,ownerPercent:owner,clientPercent:client,electricity,electricityRule:$("#sRule").value};
+  await setDoc(doc(db,"settings","business"),settings,{merge:true});
+  await logActivity("Settings",`Updated settings — Internet ${money(internet)}, Owner ${owner}%, Client ${client}%, Electricity ${money(electricity)}`);
+  await addNotification("settings","Settings were updated.",`Internet cost is now ${money(internet)}.`,"");
+  await loadData(); render(); notify("Settings saved.");
 }
 
-function renderUnits() {
-  view.innerHTML = baseHead('Units / Clients', 'Manage your Piso WiFi machines and associated clients.', '<button class="primary-btn" id="addUnitBtn">+ Add New Unit</button>') + `
-    <div class="panel"><div class="panel-head"><div><h3>Registered Units</h3><p>${units.length} unit(s) in the system</p></div><div class="tools"><input id="unitSearch" class="search" placeholder="Search client, unit or location..."></div></div>
-    <div class="table-wrap"><table><thead><tr><th>Unit</th><th>Client</th><th>Location</th><th>Contact</th><th>Status</th><th>Actions</th></tr></thead><tbody id="unitsBody">${units.length ? units.map((u) => `<tr><td><b>${esc(u.unitCode || '—')}</b></td><td>${esc(u.name || '—')}</td><td>${esc(u.location || '—')}</td><td>${esc(u.contact || '—')}</td><td><span class="badge ${u.active !== false ? 'active' : 'inactive'}">${u.active !== false ? 'Active' : 'Inactive'}</span></td><td><button class="action-btn primary-action" data-record-sale="${esc(u.id)}">Gross Sale</button><button class="action-btn" data-edit="${esc(u.id)}">Edit</button><button class="action-btn danger" data-toggle="${esc(u.id)}">${u.active !== false ? 'Deactivate' : 'Activate'}</button></td></tr>`).join('') : '<tr><td colspan="6" class="empty">No units yet. Click Add New Unit to begin.</td></tr>'}</tbody></table></div></div>`;
-
-  $('#addUnitBtn').onclick = () => openUnit();
-  document.querySelectorAll('[data-edit]').forEach((b) => { b.onclick = () => openUnit(b.dataset.edit); });
-  document.querySelectorAll('[data-toggle]').forEach((b) => { b.onclick = () => toggleUnit(b.dataset.toggle); });
-  document.querySelectorAll('[data-record-sale]').forEach((b) => { b.onclick = () => recordSale(b.dataset.recordSale); });
-  $('#unitSearch').oninput = (e) => {
-    const q = e.target.value.toLowerCase();
-    document.querySelectorAll('#unitsBody tr').forEach((r) => { r.style.display = r.textContent.toLowerCase().includes(q) ? '' : 'none'; });
-  };
+function renderProfile(){ renderDashboard(); }
+function openProfile(id){
+  const u=units.find(x=>x.id===id); if(!u)return;
+  const rows=records.filter(r=>r.unitId===id).sort((a,b)=>String(b.month).localeCompare(String(a.month)));
+  const r=records.find(x=>x.unitId===id&&x.month===selectedMonth)||{unitId:id,month:selectedMonth,grossSales:0}; const c=calc(r);
+  view.innerHTML=baseHead("Client Profile","Financial and historical information for this unit.",`<button class="secondary-btn" id="backUnits">← Back to Units</button><button class="primary-btn" id="profileEdit">Edit</button>`)+`<div class="profile-hero"><div class="avatar big">${esc((u.name||"CL").slice(0,2).toUpperCase())}</div><div><h2>${esc(u.name)}</h2><p>${esc(u.unitCode)} · ${esc(u.location||"No location")}</p><span>${statusBadge(u.active!==false?"Active":"Inactive")}</span></div></div><div class="tabs"><button class="tab active" data-tab="overview">Overview</button><button class="tab" data-tab="sales">Monthly Sales</button><button class="tab" data-tab="payments">Payments</button><button class="tab" data-tab="statement">Statement</button></div><div id="profileTab"></div>`;
+  const tab=localStorage.getItem("pisoProfileTab")||"overview"; renderProfileTab(id,tab);
+  $("#backUnits").onclick=()=>{location.hash="#units"}; $("#profileEdit").onclick=()=>openUnitModal(id);
+  document.querySelectorAll("[data-tab]").forEach(b=>b.onclick=()=>{localStorage.setItem("pisoProfileTab",b.dataset.tab);document.querySelectorAll("[data-tab]").forEach(x=>x.classList.toggle("active",x===b));renderProfileTab(id,b.dataset.tab);});
+}
+function renderProfileTab(id,tab){
+  const u=units.find(x=>x.id===id), host=$("#profileTab"); if(!host)return;
+  if(tab==="overview"){const r=records.find(x=>x.unitId===id&&x.month===selectedMonth)||{unitId:id,month:selectedMonth,grossSales:0};const c=calc(r);host.innerHTML=`<div class="summary-grid"><div class="summary-card"><h3>GROSS SALES</h3><strong>${money(c.gross)}</strong></div><div class="summary-card"><h3>INTERNET COST</h3><strong>${money(c.internet)}</strong></div><div class="summary-card"><h3>OWNER SHARE (${settings.ownerPercent}%)</h3><strong>${money(c.owner)}</strong></div><div class="summary-card"><h3>CLIENT SHARE (${settings.clientPercent}%)</h3><strong>${money(c.client)}</strong></div><div class="summary-card"><h3>ELECTRICITY</h3><strong>${money(c.elec)}</strong></div><div class="summary-card"><h3>AMOUNT DUE</h3><strong>${money(c.clientTotal)}</strong></div><div class="summary-card"><h3>AMOUNT PAID</h3><strong class="success-text">${money(c.paid)}</strong></div><div class="summary-card"><h3>BALANCE</h3><strong class="danger-text">${money(c.balance)}</strong></div></div><div class="panel profile-contact"><h3>Client Details</h3><p><b>Phone:</b> ${esc(u.contact||"—")}</p><p><b>Location:</b> ${esc(u.location||"—")}</p></div>`;return;}
+  if(tab==="sales"){const rows=records.filter(r=>r.unitId===id).sort((a,b)=>String(b.month).localeCompare(String(a.month)));host.innerHTML=`<div class="panel"><div class="panel-head"><div><h3>Monthly Sales History</h3><p>Historical records are kept by month.</p></div><button class="primary-btn" data-sale="${id}">Gross Sale</button></div><div class="table-wrap"><table><thead><tr><th>Month</th><th>Gross Sales</th><th>Internet</th><th>Owner Share</th><th>Client Share</th><th>Electricity</th><th>Amount Due</th><th>Actions</th></tr></thead><tbody>${rows.length?rows.map(r=>{const c=calc(r);return `<tr><td>${monthLabel(r.month)}</td><td>${money(c.gross)}</td><td>${money(c.internet)}</td><td>${money(c.owner)}</td><td>${money(c.client)}</td><td>${money(c.elec)}</td><td>${money(c.clientTotal)}</td><td><button class="action-btn" data-edit-sale="${r.id}">Edit</button><button class="action-btn danger" data-delete-sale="${r.id}">Delete</button></td></tr>`}).join(""):emptyRow(8,"No sales recorded for this client.")}</tbody></table></div></div>`;bindDynamicButtons();return;}
+  if(tab==="payments"){const ps=payments.filter(p=>p.unitId===id).sort((a,b)=>String(b.date||"").localeCompare(String(a.date||"")));host.innerHTML=`<div class="panel"><div class="panel-head"><div><h3>Payment History</h3><p>All recorded payments for ${esc(u.name)}.</p></div><button class="primary-btn" data-payment="${id}">Record Payment</button></div><div class="table-wrap"><table><thead><tr><th>Date</th><th>Month</th><th>Amount</th><th>Method</th><th>Reference</th><th>Status</th></tr></thead><tbody>${ps.length?ps.map(p=>`<tr><td>${dateLabel(p.date)}</td><td>${monthLabel(p.month)}</td><td>${money(p.amount)}</td><td>${esc(p.method||"—")}</td><td>${esc(p.reference||"—")}</td><td>${statusBadge("Paid")}</td></tr>`).join(""):emptyRow(5,"No payments recorded.")}</tbody></table></div></div>`;bindDynamicButtons();return;}
+  if(tab==="statement"){host.innerHTML=`<div class="panel"><div class="panel-head"><div><h3>Statement</h3><p>${monthLabel(selectedMonth)}</p></div><button class="primary-btn" id="profilePrintStatement">Print / PDF</button></div>${statementHtml(u,calc(records.find(r=>r.unitId===id&&r.month===selectedMonth)||{unitId:id,month:selectedMonth,grossSales:0}),selectedMonth)}</div>`;$("#profilePrintStatement").onclick=()=>printStatement(id,selectedMonth);}
 }
 
-function reportSummary(month) {
-  const rows = currentRows(month);
-  return {
-    rows,
-    gross: rows.reduce((a, x) => a + x.c.gross, 0),
-    owner: rows.reduce((a, x) => a + x.c.owner, 0),
-    due: rows.reduce((a, x) => a + x.c.clientTotal, 0),
-    paid: rows.reduce((a, x) => a + x.c.paid, 0),
-    balance: rows.reduce((a, x) => a + x.c.balance, 0)
-  };
+function openModal(title,body,saveText,onSave,{danger=false}={}){
+  $("#modalRoot").innerHTML=`<div class="modal-backdrop" id="modalBackdrop"><div class="modal ${danger?"danger-modal":""}"><div class="modal-head"><h3>${title}</h3><button class="close" id="closeModal">×</button></div><div class="modal-body">${body}</div><div class="modal-actions"><button class="secondary-btn" id="cancelModal">Cancel</button><button class="${danger?"danger-btn":"primary-btn"}" id="saveModal">${saveText}</button></div></div></div>`;
+  $("#closeModal").onclick=closeModal; $("#cancelModal").onclick=closeModal; $("#modalBackdrop").onclick=e=>{if(e.target.id==="modalBackdrop")closeModal()};
+  $("#saveModal").onclick=async()=>{try{await onSave();closeModal();await loadData();render();notify("Saved successfully.");}catch(e){notify(e?.message||"Unable to save.","error");}};
+  setTimeout(()=>document.querySelector("#modalRoot input, #modalRoot select")?.focus(),50);
 }
-
-function renderReports() {
-  const months = [...new Set(records.map((r) => r.month).filter(Boolean))].sort().reverse();
-  const selected = months[0] || monthKey();
-  const summary = reportSummary(selected);
-  view.innerHTML = baseHead('Monthly Reports', 'Review financial performance by month.', `<div class="tools"><select id="reportMonth" class="search">${[monthKey(), ...months].filter((v, i, a) => a.indexOf(v) === i).map((m) => `<option value="${m}" ${m === selected ? 'selected' : ''}>${esc(monthLabel(m))}</option>`).join('')}</select><button class="secondary-btn" id="exportReport">Export CSV</button><button class="primary-btn" id="printReport">Print</button></div>`) + `
-    <div class="summary-grid"><div class="summary-card"><h3>GROSS SALES</h3><strong>${money(summary.gross)}</strong></div><div class="summary-card"><h3>OWNER SHARE</h3><strong>${money(summary.owner)}</strong></div><div class="summary-card"><h3>CLIENT AMOUNT DUE</h3><strong>${money(summary.due)}</strong></div></div>
-    <div class="panel"><div class="panel-head"><div><h3>${esc(monthLabel(selected))} — Unit Report</h3><p>Each month is stored separately; prior months are not overwritten.</p></div></div><div class="table-wrap"><table><thead><tr><th>Unit</th><th>Gross Sales</th><th>Internet</th><th>Owner</th><th>Client</th><th>Electricity</th><th>Amount Due</th><th>Paid</th><th>Balance</th><th>Status</th></tr></thead><tbody id="reportBody"></tbody></table></div></div>`;
-  fillReportBody(summary.rows);
-  $('#reportMonth').onchange = (e) => {
-    const next = reportSummary(e.target.value);
-    fillReportBody(next.rows);
-  };
-  $('#exportReport').onclick = () => exportCsv(selected, summary.rows);
-  $('#printReport').onclick = () => window.print();
-}
-
-function fillReportBody(rows) {
-  const body = $('#reportBody');
-  if (!body) return;
-  body.innerHTML = rows.length ? rows.map((x) => `<tr><td><b>${esc(x.u.unitCode || '—')}</b><br>${esc(x.u.name || '')}</td><td>${money(x.c.gross)}</td><td>${money(x.c.internet)}</td><td>${money(x.c.owner)}</td><td>${money(x.c.client)}</td><td>${money(x.c.electricity)}</td><td>${money(x.c.clientTotal)}</td><td>${money(x.c.paid)}</td><td class="amount">${money(x.c.balance)}</td><td><span class="badge ${x.c.status.toLowerCase()}">${x.c.status}</span></td></tr>`).join('') : '<tr><td colspan="10" class="empty">No monthly records for this month.</td></tr>';
-}
-
-function renderPayments() {
-  view.innerHTML = baseHead('Payments', 'Record client payments and automatically update balances.', '<button class="primary-btn" id="addPaymentBtn">+ Record Payment</button>') + `
-    <div class="panel"><div class="panel-head"><div><h3>Payment History</h3><p>All payment entries are retained for reporting.</p></div><div class="tools"><input id="paymentSearch" class="search" placeholder="Search unit or client..."></div></div><div class="table-wrap"><table><thead><tr><th>Date</th><th>Unit / Client</th><th>Month</th><th>Amount</th><th>Method</th><th>Reference</th><th>Notes</th></tr></thead><tbody id="paymentBody"></tbody></table></div></div>`;
-  fillPayments('');
-  $('#addPaymentBtn').onclick = () => openPayment();
-  $('#paymentSearch').oninput = (e) => fillPayments(e.target.value.toLowerCase());
-}
-
-function fillPayments(q) {
-  const body = $('#paymentBody');
-  if (!body) return;
-  const list = [...payments].sort((a, b) => String(b.date || '').localeCompare(String(a.date || ''))).filter((p) => {
-    const u = units.find((x) => x.id === p.unitId);
-    return !q || `${u?.unitCode || ''} ${u?.name || ''}`.toLowerCase().includes(q);
-  });
-  body.innerHTML = list.length ? list.map((p) => {
-    const u = units.find((x) => x.id === p.unitId);
-    return `<tr><td>${esc(p.date || '—')}</td><td><b>${esc(u?.unitCode || '—')}</b><br>${esc(u?.name || '')}</td><td>${p.month ? esc(monthLabel(p.month)) : '—'}</td><td class="amount">${money(p.amount)}</td><td>${esc(p.method || '—')}</td><td>${esc(p.reference || '—')}</td><td>${esc(p.notes || '—')}</td></tr>`;
-  }).join('') : '<tr><td colspan="7" class="empty">No payments recorded yet.</td></tr>';
-}
-
-function renderStatements() {
-  view.innerHTML = baseHead('Client Statements', 'View monthly balances, payment history, and print statements.', '<button class="secondary-btn" id="printStatements">Print</button>') + `
-    <div class="panel"><div class="panel-head"><div><h3>Client Statements</h3><p>Select a client to view the full monthly statement.</p></div><select id="statementUnit" class="search"><option value="">Select a unit / client</option>${units.map((u) => `<option value="${esc(u.id)}">${esc(u.unitCode || 'Unit')} — ${esc(u.name || 'Client')}</option>`).join('')}</select></div><div id="statementContent"><div class="empty">Choose a client to display their statement.</div></div></div>`;
-  $('#statementUnit').onchange = (e) => drawStatement(e.target.value);
-  $('#printStatements').onclick = () => window.print();
-}
-
-function drawStatement(id) {
-  const u = units.find((x) => x.id === id);
-  const body = $('#statementContent');
-  if (!body) return;
-  if (!u) { body.innerHTML = '<div class="empty">Choose a client.</div>'; return; }
-  const rs = records.filter((r) => r.unitId === id).sort((a, b) => String(b.month).localeCompare(String(a.month)));
-  body.innerHTML = `<div class="settings-card"><h2>${esc(u.name || 'Client')} <span class="muted">${esc(u.unitCode || '')}</span></h2><p class="muted">${esc(u.location || '')} · ${esc(u.contact || '')}</p><div class="table-wrap"><table><thead><tr><th>Month</th><th>Gross Sales</th><th>Owner Share</th><th>Client Share</th><th>Electricity</th><th>Amount Due</th><th>Paid</th><th>Balance</th><th>Status</th></tr></thead><tbody>${rs.length ? rs.map((r) => { const c = calc(r); return `<tr><td>${esc(monthLabel(r.month))}</td><td>${money(c.gross)}</td><td>${money(c.owner)}</td><td>${money(c.client)}</td><td>${money(c.electricity)}</td><td>${money(c.clientTotal)}</td><td>${money(c.paid)}</td><td class="amount">${money(c.balance)}</td><td><span class="badge ${c.status.toLowerCase()}">${c.status}</span></td></tr>`; }).join('') : '<tr><td colspan="9" class="empty">No monthly records for this client.</td></tr>'}</tbody></table></div></div>`;
-}
-
-function renderSettings() {
-  view.innerHTML = baseHead('Settings', 'Configure the business rules used by all calculations.') + `
-    <div class="panel"><div class="settings-card"><h3>Financial Rules</h3><div class="notice">Changes here are used by the dashboard, reports, statements, and payment balances.</div>
-    <div class="setting-row"><div><b>Internet Cost</b><small>Fixed internet cost per unit, per month.</small></div><input id="sInternet" type="number" min="0" step="0.01" value="${settings.internetCost}"></div>
-    <div class="setting-row"><div><b>Owner Share (%)</b><small>Percentage of gross sales allocated to the owner.</small></div><input id="sOwner" type="number" min="0" max="100" step="1" value="${settings.ownerPercent}"></div>
-    <div class="setting-row"><div><b>Client Share (%)</b><small>Percentage of gross sales allocated to the client.</small></div><input id="sClient" type="number" min="0" max="100" step="1" value="${settings.clientPercent}"></div>
-    <div class="setting-row"><div><b>Electricity</b><small>Configured electricity amount per unit/month.</small></div><input id="sElec" type="number" min="0" step="0.01" value="${settings.electricity}"></div>
-    <div class="setting-row"><div><b>Electricity Rule</b><small>Choose whether electricity is added to or subtracted from the client share.</small></div><select id="sRule"><option value="ADD_TO_CLIENT" ${settings.electricityRule === 'ADD_TO_CLIENT' ? 'selected' : ''}>Add to Client Total</option><option value="SUBTRACT_FROM_CLIENT" ${settings.electricityRule === 'SUBTRACT_FROM_CLIENT' ? 'selected' : ''}>Subtract from Client Share</option></select></div>
-    <div style="display:flex;justify-content:flex-end;margin-top:20px"><button class="primary-btn" id="saveSettings">Save Settings</button></div></div></div>`;
-  $('#saveSettings').onclick = saveSettings;
-}
-
-async function saveSettings() {
-  const owner = Number($('#sOwner').value);
-  const client = Number($('#sClient').value);
-  if (owner + client !== 100) { notify('Owner + Client share must equal 100%.'); return; }
-  settings = {
-    internetCost: Number($('#sInternet').value || 0),
-    ownerPercent: owner,
-    clientPercent: client,
-    electricity: Number($('#sElec').value || 0),
-    electricityRule: $('#sRule').value
-  };
-  await fb.setDoc(fb.doc(db, 'settings', 'business'), settings, { merge: true });
-  notify('Settings saved.');
-  render();
-}
-
-function openModal(title, body, onSave) {
-  $('#modalRoot').innerHTML = `<div class="modal-backdrop" id="backdrop"><div class="modal"><div class="modal-head"><h3>${esc(title)}</h3><button class="close" id="closeModal">×</button></div><div class="modal-body">${body}</div><div class="modal-actions"><button class="secondary-btn" id="cancelModal">Cancel</button><button class="primary-btn" id="saveModal">Save</button></div></div></div>`;
-  const close = () => { $('#modalRoot').innerHTML = ''; };
-  $('#closeModal').onclick = close;
-  $('#cancelModal').onclick = close;
-  $('#saveModal').onclick = async () => {
-    try {
-      await onSave();
-      close();
-      await loadData();
-      render();
-      notify('Saved successfully.');
-    } catch (e) {
-      notify(e?.message || 'Unable to save.');
-    }
-  };
-}
-
-function openUnit(id = null) {
-  const u = id ? units.find((x) => x.id === id) : null;
-  openModal(id ? 'Edit Unit' : 'Add New Unit', `<div class="form-grid"><div class="field"><label>Unit Code *</label><input id="fCode" value="${esc(u?.unitCode || '')}" placeholder="UNIT-001"></div><div class="field"><label>Client Name *</label><input id="fName" value="${esc(u?.name || '')}" placeholder="Client name"></div><div class="field"><label>Location</label><input id="fLocation" value="${esc(u?.location || '')}" placeholder="Location"></div><div class="field"><label>Contact</label><input id="fContact" value="${esc(u?.contact || '')}" placeholder="Contact number"></div><div class="field full"><label>Notes</label><textarea id="fNotes" rows="3">${esc(u?.notes || '')}</textarea></div></div>`, async () => {
-    const data = {
-      unitCode: $('#fCode').value.trim(),
-      name: $('#fName').value.trim(),
-      location: $('#fLocation').value.trim(),
-      contact: $('#fContact').value.trim(),
-      notes: $('#fNotes').value.trim(),
-      active: u?.active !== false
-    };
-    if (!data.unitCode || !data.name) throw new Error('Unit Code and Client Name are required.');
-    if (id) await fb.updateDoc(fb.doc(db, 'units', id), data);
-    else await fb.addDoc(fb.collection(db, 'units'), { ...data, createdAt: fb.serverTimestamp() });
+function closeModal(){ $("#modalRoot").innerHTML=""; }
+function openUnitModal(id=null){
+  const u=id?units.find(x=>x.id===id):null;
+  openModal(id?"Edit Client / Unit":"Add New Client / Unit",`<div class="form-grid"><div class="field"><label>Unit Code *</label><input id="fCode" value="${esc(u?.unitCode||"")}" placeholder="UNIT-001"></div><div class="field"><label>Client Name *</label><input id="fName" value="${esc(u?.name||"")}" placeholder="Juan Dela Cruz"></div><div class="field"><label>Location</label><input id="fLocation" value="${esc(u?.location||"")}" placeholder="Barangay 1"></div><div class="field"><label>Contact Number</label><input id="fContact" value="${esc(u?.contact||"")}" placeholder="09171234567"></div><div class="field"><label>Status</label><select id="fStatus"><option value="active" ${u?.active!==false?"selected":""}>Active</option><option value="inactive" ${u?.active===false?"selected":""}>Inactive</option></select></div><div class="field full"><label>Notes</label><textarea id="fNotes" rows="3">${esc(u?.notes||"")}</textarea></div></div>`,`Save Client`,async()=>{
+    const unitCode=$("#fCode").value.trim(),name=$("#fName").value.trim(); if(!unitCode||!name)throw new Error("Client name and Unit Code are required.");
+    const data={unitCode,name,location:$("#fLocation").value.trim(),contact:$("#fContact").value.trim(),notes:$("#fNotes").value.trim(),active:$("#fStatus").value==="active",updatedAt:serverTimestamp()};
+    if(id){await updateDoc(doc(db,"units",id),data);await logActivity("Clients",`Edited ${unitCode} — ${name}`,id);}else{const ref=await addDoc(collection(db,"units"),{...data,createdAt:serverTimestamp()});await logActivity("Clients",`Added new client ${unitCode} — ${name}`,ref.id);await addNotification("client","New client added.",`${name} (${unitCode}) was added.`,ref.id);}
   });
 }
+async function toggleUnit(id){const u=units.find(x=>x.id===id);if(!u)return;const next=u.active===false; if(!confirm(`${next?"Activate":"Deactivate"} ${u.unitCode}? Historical sales and payments will remain.`))return;await updateDoc(doc(db,"units",id),{active:next,updatedAt:serverTimestamp()});await logActivity("Units",`${next?"Activated":"Deactivated"} ${u.unitCode}`,id);await addNotification("unit",`${u.unitCode} is ${next?"active":"inactive"}.`,`Unit status was changed.`,id);await loadData();render();notify(`Unit ${next?"activated":"deactivated"}.`);}
 
-async function toggleUnit(id) {
-  const u = units.find((x) => x.id === id);
-  if (!u) return;
-  const action = u.active !== false ? 'Deactivate' : 'Activate';
-  if (!confirm(`${action} ${u.unitCode || u.name}?`)) return;
-  await fb.updateDoc(fb.doc(db, 'units', id), { active: u.active === false });
-  await loadData();
-  render();
-  notify(`Unit ${action.toLowerCase()}d.`);
-}
-
-function openPayment() {
-  openModal('Record Payment', `<div class="form-grid"><div class="field full"><label>Unit / Client *</label><select id="pUnit"><option value="">Select unit</option>${units.filter((u) => u.active !== false).map((u) => `<option value="${esc(u.id)}">${esc(u.unitCode)} — ${esc(u.name)}</option>`).join('')}</select></div><div class="field"><label>Month *</label><input id="pMonth" type="month" value="${monthKey()}"></div><div class="field"><label>Amount *</label><input id="pAmount" type="number" min="0" step="0.01"></div><div class="field"><label>Date</label><input id="pDate" type="date" value="${new Date().toISOString().slice(0, 10)}"></div><div class="field"><label>Method</label><select id="pMethod"><option>Cash</option><option>GCash</option><option>Bank Transfer</option><option>Other</option></select></div><div class="field"><label>Reference</label><input id="pRef"></div><div class="field full"><label>Notes</label><textarea id="pNotes" rows="3"></textarea></div></div>`, async () => {
-    const unitId = $('#pUnit').value;
-    const amount = Number($('#pAmount').value);
-    if (!unitId || amount <= 0) throw new Error('Unit and a payment amount greater than zero are required.');
-    await fb.addDoc(fb.collection(db, 'payments'), { unitId, month: $('#pMonth').value, amount, date: $('#pDate').value, method: $('#pMethod').value, reference: $('#pRef').value.trim(), notes: $('#pNotes').value.trim(), createdAt: fb.serverTimestamp() });
+function openSalesModal(unitId,recordId=null){
+  const u=units.find(x=>x.id===unitId); const existing=recordId?records.find(r=>r.id===recordId):records.find(r=>r.unitId===unitId&&r.month===selectedMonth); const month=existing?.month||selectedMonth;
+  openModal(existing?"Edit Monthly Sales":"Record Monthly Sales",`<div class="notice">${esc(u?.unitCode||"")} — ${esc(u?.name||"")}</div><div class="form-grid"><div class="field"><label>Unit</label><input value="${esc(u?.unitCode||"")} — ${esc(u?.name||"")}" disabled></div><div class="field"><label>Month *</label><input id="saleMonth" type="month" value="${month}" ${recordId?"disabled":""}></div><div class="field full"><label>Gross Sales *</label><input id="saleGross" type="number" min="0" step="0.01" value="${existing?.grossSales??0}"><small class="hint">System will automatically calculate internet cost, net sales, shares, electricity and amount due.</small></div></div>`,existing?"Update Sales":"Save Sales",async()=>{
+    const gross=Number($("#saleGross").value); const saleMonth=$("#saleMonth").value; if(!saleMonth)throw new Error("Month is required."); if(Number.isNaN(gross)||gross<0)throw new Error("Gross sales must be a valid non-negative number.");
+    const duplicate=records.find(r=>r.unitId===unitId&&r.month===saleMonth&&r.id!==(existing?.id||"")); if(duplicate)throw new Error("This unit already has a sales record for the selected month. Edit the existing record instead.");
+    if(existing){const old=Number(existing.grossSales||0);await updateDoc(doc(db,"monthlyRecords",existing.id),{grossSales:gross,month:saleMonth,updatedAt:serverTimestamp()});await logActivity("Sales",`Edited sales ${u.unitCode} — ${money(old)} → ${money(gross)}`,existing.id);await addNotification("sales","Sales record updated.",`${u.unitCode} changed to ${money(gross)} for ${monthLabel(saleMonth)}.`,u.id);}else{const ref=await addDoc(collection(db,"monthlyRecords"),{unitId,month:saleMonth,grossSales:gross,createdAt:serverTimestamp(),updatedAt:serverTimestamp()});await logActivity("Sales",`Recorded sales ${u.unitCode} — ${money(gross)}`,ref.id);const c=calc({unitId,month:saleMonth,grossSales:gross});if(c.balance>0)await addNotification("balance",`${u.name} has ${money(c.balance)} balance.`,`Outstanding amount for ${monthLabel(saleMonth)}.`,u.id);}
   });
 }
-
-function recordSale(id) {
-  const u = units.find((x) => x.id === id);
-  const existing = records.find((r) => r.unitId === id && r.month === monthKey());
-  openModal('Record Monthly Sales', `<div class="notice">${esc(u?.unitCode || '')} — ${esc(u?.name || '')} · ${esc(monthLabel(monthKey()))}</div><br><div class="field"><label>Gross Sales *</label><input id="saleGross" type="number" min="0" step="0.01" value="${existing?.grossSales || 0}"></div>`, async () => {
-    const gross = Number($('#saleGross').value);
-    if (gross < 0) throw new Error('Gross sales cannot be negative.');
-    const data = { unitId: id, month: monthKey(), grossSales: gross, updatedAt: fb.serverTimestamp() };
-    if (existing) await fb.updateDoc(fb.doc(db, 'monthlyRecords', existing.id), data);
-    else await fb.addDoc(fb.collection(db, 'monthlyRecords'), data);
+async function confirmDeleteSale(id){
+  const r=records.find(x=>x.id===id),u=units.find(x=>x.id===r?.unitId);if(!r||!u)return;
+  openModal("Delete Monthly Sales?",`<div class="delete-confirm"><div class="delete-icon">⌫</div><h4>Delete Monthly Sales?</h4><p>Are you sure you want to delete the sales record for <b>${monthLabel(r.month)}</b>?</p><p class="danger-text">This action cannot be undone.</p></div>`,"Delete",async()=>{await deleteDoc(doc(db,"monthlyRecords",id));await logActivity("Sales",`Deleted sales ${u.unitCode} — ${monthLabel(r.month)} — ${money(r.grossSales)}`,id);await addNotification("sales","Sales record deleted.",`${u.unitCode} sales for ${monthLabel(r.month)} were deleted.`,u.id);});
+  $("#saveModal").classList.add("danger-btn");
+}
+function openPaymentModal(unitId=""){
+  const eligible=units.filter(u=>u.active!==false); const defaultUnit=unitId||eligible[0]?.id||"";
+  openModal("Record Payment",`<div class="form-grid"><div class="field full"><label>Unit / Client *</label><select id="pUnit">${eligible.length?eligible.map(u=>`<option value="${u.id}" ${u.id===defaultUnit?"selected":""}>${esc(u.unitCode)} — ${esc(u.name)}</option>`).join(""):"<option value=\"\">No active units</option>"}</select></div><div class="field"><label>Month *</label><input id="pMonth" type="month" value="${selectedMonth}"></div><div class="field"><label>Amount Due</label><input id="pDue" value="${money(calc(records.find(r=>r.unitId===defaultUnit&&r.month===selectedMonth)||{unitId:defaultUnit,month:selectedMonth,grossSales:0}).clientTotal)}" disabled></div><div class="field"><label>Payment Amount *</label><input id="pAmount" type="number" min="0" step="0.01"></div><div class="field"><label>Payment Date *</label><input id="pDate" type="date" value="${new Date().toISOString().slice(0,10)}"></div><div class="field"><label>Payment Method</label><select id="pMethod"><option>Cash</option><option>GCash</option><option>Bank Transfer</option><option>Other</option></select></div><div class="field full"><label>Reference</label><input id="pRef" placeholder="OR#12345"></div></div>`,"Save Payment",async()=>{
+    const uid=$("#pUnit").value,month=$("#pMonth").value,amount=Number($("#pAmount").value);if(!uid||!month||Number.isNaN(amount)||amount<=0)throw new Error("Unit, month and a positive payment amount are required.");
+    const due=calc(records.find(r=>r.unitId===uid&&r.month===month)||{unitId:uid,month,grossSales:0}).clientTotal; const paid=payments.filter(p=>p.unitId===uid&&p.month===month).reduce((s,p)=>s+Number(p.amount||0),0); if(amount>Math.max(0,due-paid))throw new Error(`Payment cannot exceed the remaining balance of ${money(Math.max(0,due-paid))}.`);
+    const ref=await addDoc(collection(db,"payments"),{unitId:uid,month,amount,paymentDate:$("#pDate").value,method:$("#pMethod").value,reference:$("#pRef").value.trim(),createdAt:serverTimestamp()});
+    const u=units.find(x=>x.id===uid); await logActivity("Payments",`Recorded payment ${u?.unitCode||uid} — ${money(amount)} — ${$("#pMethod").value}`,ref.id); await addNotification("payment","Payment received.",`${u?.name||"Client"} paid ${money(amount)}.`,uid);
   });
+  $("#pUnit").onchange=updatePaymentDue; $("#pMonth").onchange=updatePaymentDue;
 }
+function updatePaymentDue(){const uid=$("#pUnit").value,month=$("#pMonth").value;const c=calc(records.find(r=>r.unitId===uid&&r.month===month)||{unitId:uid,month,grossSales:0});const paid=payments.filter(p=>p.unitId===uid&&p.month===month).reduce((s,p)=>s+Number(p.amount||0),0);$("#pDue").value=money(Math.max(0,c.clientTotal-paid));}
 
-function exportCsv(month, rows) {
-  const data = [['Unit', 'Client', 'Gross Sales', 'Internet Cost', 'Owner Share', 'Client Share', 'Electricity', 'Amount Due', 'Paid', 'Balance', 'Status']];
-  rows.forEach((x) => data.push([x.u.unitCode, x.u.name, x.c.gross, x.c.internet, x.c.owner, x.c.client, x.c.electricity, x.c.clientTotal, x.c.paid, x.c.balance, x.c.status]));
-  const csv = data.map((r) => r.map((v) => `"${String(v ?? '').replaceAll('"', '""')}"`).join(',')).join('\n');
-  const blob = new Blob([csv], { type: 'text/csv' });
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = `piso-wifi-report-${month}.csv`;
-  a.click();
-  URL.revokeObjectURL(a.href);
-}
+function printCss(){return `body{font-family:Arial,sans-serif;color:#17243a;padding:30px}h1{margin-bottom:4px}p{color:#64748b}table{width:100%;border-collapse:collapse;margin-top:22px}th,td{border:1px solid #dbe3ee;padding:8px;text-align:left;font-size:12px}th{background:#f5f8fc}.print-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:20px 0}.print-grid div{border:1px solid #dbe3ee;padding:12px}.print-grid b,.print-grid strong{display:block}.print-grid strong{font-size:18px;margin-top:5px}`;}
+function openPrintWindow(html){const w=window.open("","_blank","width=1200,height=800");if(!w){notify("Please allow pop-ups to print.","error");return;}w.document.open();w.document.write(html);w.document.close();w.focus();setTimeout(()=>w.print(),350);}
 
-// Navigation and shell events.
-document.addEventListener('click', (e) => {
-  const link = e.target.closest('[data-route]');
-  if (link) {
-    e.preventDefault();
-    setRoute(link.dataset.route);
-  }
-});
-window.addEventListener('hashchange', () => {
-  const next = window.location.hash.replace('#', '') || 'dashboard';
-  route = next;
-  render();
-});
-$('#menuBtn').onclick = () => { $('#sidebar').classList.add('open'); $('#overlay').classList.add('show'); };
-$('#overlay').onclick = closeMenu;
+function showAuthError(message){console.error("[PISO WIFI]",message);const loader=$("#authLoading");if(loader){loader.innerHTML=`<div class="auth-error"><strong>Unable to open the dashboard</strong><span>${esc(message)}</span><button onclick="location.href='index.html'">Return to Login</button></div>`;loader.classList.remove("hidden");}}
+async function bootstrap(user){if(!user){location.replace("index.html");return;}currentUser=user;try{await authorize(user);await loadData();setupMonthSelector();$("#authLoading").classList.add("hidden");$("#app").classList.remove("hidden");$("#userEmail").textContent=user.email||"Owner";route=location.hash.replace("#","").split("?")[0]||"dashboard";render();}catch(e){showAuthError(e?.message||"Firebase authorization or database access failed.");}}
 
-async function doLogout() {
-  try {
-    await fb.signOut(auth);
-    window.location.href = 'index.html';
-  } catch (e) {
-    notify(e?.message || 'Unable to log out.');
-  }
-}
-$('#logoutBtn').onclick = doLogout;
+function parseRoute(){const raw=location.hash.replace("#","");return raw.split("?")[0]||"dashboard";}
+document.addEventListener("click",e=>{const a=e.target.closest("[data-route]");if(a){e.preventDefault();location.hash="#"+a.dataset.route;} const p=e.target.closest("[data-print-inline]");if(p){const id=$("#statementUnit")?.value;if(id)printStatement(id,$("#statementMonth").value);} const pdf=e.target.closest("[data-pdf-inline]");if(pdf){const id=$("#statementUnit")?.value;if(id)downloadStatementPdf(id,$("#statementMonth").value);}});
+window.addEventListener("hashchange",()=>{route=parseRoute();render();});
+$("#menuBtn").onclick=()=>{$("#sidebar").classList.add("open");$("#overlay").classList.add("show")};$("#overlay").onclick=closeMenu;
+$("#logoutBtn").onclick=async()=>{await signOut(auth);location.href="index.html"};
+$("#notificationBtn").onclick=()=>{location.hash="#notifications"};
+$("#globalSearch").oninput=e=>{const q=e.target.value.trim();if(q.length>=2){unitSearch=q;route="units";if(location.hash!=="#units")location.hash="#units";else renderUnits();}else if(!q){unitSearch="";if(route==="units")renderUnits();}};
 
-async function bootstrap(user) {
-  if (!user) {
-    window.location.replace('index.html');
-    return;
-  }
-  currentUser = user;
-  try {
-    await authorize(user);
-    await loadData();
-    $('#authLoading').classList.add('hidden');
-    $('#app').classList.remove('hidden');
-    $('#userEmail').textContent = user.email || 'Admin';
-    $('#currentMonthChip').textContent = monthLabel(monthKey());
-    route = window.location.hash.replace('#', '') || 'dashboard';
-    render();
-  } catch (e) {
-    showStartupError('Unable to open the dashboard', e?.message || 'Firebase authorization or database access failed.');
-  }
-}
-
-async function init() {
-  if (authStarted) return;
-  authStarted = true;
-  try {
-    const [appMod, authMod, fsMod, configMod] = await Promise.all([
-      import('https://www.gstatic.com/firebasejs/12.2.1/firebase-app.js'),
-      import('https://www.gstatic.com/firebasejs/12.2.1/firebase-auth.js'),
-      import('https://www.gstatic.com/firebasejs/12.2.1/firebase-firestore.js'),
-      import('./firebase-config.js')
-    ]);
-
-    const app = appMod.initializeApp(configMod.firebaseConfig);
-    auth = authMod.getAuth(app);
-    db = fsMod.getFirestore(app);
-    fb = {
-      ...fsMod,
-      signOut: authMod.signOut,
-      onAuthStateChanged: authMod.onAuthStateChanged
-    };
-
-    const timeout = setTimeout(() => {
-      if (!authFinished) {
-        const user = auth.currentUser;
-        if (user) {
-          authFinished = true;
-          bootstrap(user);
-        } else {
-          showStartupError('Authentication timed out', 'Firebase Authentication did not finish restoring the login session. Return to Login and sign in again.');
-        }
-      }
-    }, 10000);
-
-    fb.onAuthStateChanged(auth, (user) => {
-      authFinished = true;
-      clearTimeout(timeout);
-      bootstrap(user);
-    });
-
-    if (auth.currentUser) {
-      authFinished = true;
-      clearTimeout(timeout);
-      bootstrap(auth.currentUser);
-    }
-  } catch (e) {
-    showStartupError('Dashboard failed to start', `${e?.name || 'Error'}: ${e?.message || e}`);
-  }
-}
-
-window.addEventListener('error', (e) => {
-  if (!authFinished) showStartupError('Dashboard JavaScript error', e.message || 'An unexpected JavaScript error occurred.');
-});
-window.addEventListener('unhandledrejection', (e) => {
-  if (!authFinished) showStartupError('Firebase startup error', e.reason?.message || String(e.reason || 'An unexpected Firebase error occurred.'));
-});
-
-init();
+let authResolved=false;
+const authTimeout=setTimeout(()=>{if(!authResolved){const u=auth.currentUser;if(u)bootstrap(u);else showAuthError("Firebase Authentication did not finish loading. Please refresh the page and try logging in again.");}},8000);
+onAuthStateChanged(auth,user=>{authResolved=true;clearTimeout(authTimeout);bootstrap(user);});

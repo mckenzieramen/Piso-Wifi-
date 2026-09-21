@@ -1,37 +1,51 @@
 <!doctype html>
 <html lang="en">
 <head>
-<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>PISO WIFI — Management System</title>
-<link rel="stylesheet" href="css/style.css">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>PISO WIFI — Management System</title>
+  <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
-<div id="authLoading" class="auth-loading"><div class="loader"></div><span>Checking authentication…</span></div>
-<div id="app" class="app hidden">
-  <aside class="sidebar" id="sidebar">
-    <div class="brand"><div class="brand-mark small"><span class="wifi-symbol">⌁</span></div><div><strong>PISO WIFI</strong><span>Management System</span></div></div>
-    <nav class="nav" id="nav">
-      <a href="#dashboard" data-route="dashboard" class="active"><span>⌂</span>Dashboard</a>
-      <a href="#units" data-route="units"><span>♙</span>Units / Clients</a>
-      <a href="#reports" data-route="reports"><span>▥</span>Monthly Reports</a>
-      <a href="#payments" data-route="payments"><span>▣</span>Payments</a>
-      <a href="#statements" data-route="statements"><span>▤</span>Client Statements</a>
-      <a href="#settings" data-route="settings"><span>⚙</span>Settings</a>
-    </nav>
-    <div class="sidebar-footer"><span class="wifi-mini">⌁</span><div><b>Connect · Earn</b><small>Grow Together</small></div></div>
-    <button id="logoutBtn" class="logout-btn"><span>↪</span> Logout</button>
-  </aside>
-  <div class="overlay" id="overlay"></div>
-  <main class="main">
-    <header class="topbar">
-      <button id="menuBtn" class="icon-btn">☰</button>
-      <div class="welcome"><h2 id="welcomeTitle">Welcome, Admin!</h2><span id="welcomeSub">Manage your Piso WiFi business easily.</span></div>
-      <div class="top-actions"><div class="month-chip" id="currentMonthChip"></div><div class="profile" id="userEmail">Admin</div></div>
-    </header>
-    <section class="content" id="view"></section>
-  </main>
-</div>
-<div id="toast" class="toast"></div>
-<div id="modalRoot"></div>
-<script type="module" src="js/dashboard.js"></script>
-</body></html>
+  <div id="authLoading" class="auth-loading"><div class="loader"></div><span>Checking authentication…</span></div>
+  <div id="app" class="app hidden">
+    <aside class="sidebar" id="sidebar">
+      <div class="brand">
+        <div class="brand-mark small"><span class="wifi-symbol">◔</span></div>
+        <div><strong>PISO WIFI</strong><span>Management System</span></div>
+      </div>
+      <nav class="nav" id="nav">
+        <a href="#dashboard" data-route="dashboard"><span>⌂</span>Dashboard</a>
+        <a href="#units" data-route="units"><span>♙</span>Units / Clients</a>
+        <a href="#reports" data-route="reports"><span>▥</span>Monthly Reports</a>
+        <a href="#payments" data-route="payments"><span>₱</span>Payments</a>
+        <a href="#statements" data-route="statements"><span>▤</span>Client Statements</a>
+        <a href="#notifications" data-route="notifications"><span>♢</span>Notifications <em id="navNotificationCount" class="nav-count hidden">0</em></a>
+        <a href="#activity" data-route="activity"><span>◷</span>Activity Log</a>
+        <a href="#settings" data-route="settings"><span>⚙</span>Settings</a>
+      </nav>
+      <div class="sidebar-footer"><span class="wifi-mini">⌁</span><div><b>Connect · Earn</b><small>Grow Together</small></div></div>
+      <button id="logoutBtn" class="logout-btn"><span>↪</span> Logout</button>
+    </aside>
+    <div class="overlay" id="overlay"></div>
+    <main class="main">
+      <header class="topbar">
+        <button id="menuBtn" class="icon-btn" aria-label="Open menu">☰</button>
+        <div class="welcome"><h2 id="welcomeTitle">Welcome, Admin!</h2><span id="welcomeSub">Overview of your Piso WiFi business.</span></div>
+        <div class="top-search"><span>⌕</span><input id="globalSearch" placeholder="Search anything..." autocomplete="off"></div>
+        <div class="top-actions">
+          <label class="month-select"><span>₱</span><select id="globalMonth"></select></label>
+          <button class="bell-btn" id="notificationBtn" title="Notifications">♢<em id="bellCount" class="bell-count hidden">0</em></button>
+          <div class="profile"><span class="avatar">AA</span><span><b>Admin</b><small id="userEmail">Owner</small></span><span>⌄</span></div>
+        </div>
+      </header>
+      <section class="content" id="view"></section>
+    </main>
+  </div>
+  <div id="toast" class="toast"></div>
+  <div id="modalRoot"></div>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script type="module" src="js/dashboard.js"></script>
+</body>
+</html>

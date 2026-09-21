@@ -1,22 +1,32 @@
 # PISO WIFI Management System
 
-This build keeps the existing Firebase Email/Password login and adds a navigable Firebase/Firestore admin dashboard based on the supplied PISO WIFI recreation specification.
+Firebase-powered Piso WiFi business management dashboard based on the supplied Master Full-System Implementation Prompt.
 
-## Navigation
-Dashboard, Units / Clients, Monthly Reports, Payments, Client Statements, Settings, Logout.
+## Implemented
+- Firebase Authentication + admin authorization
+- Dashboard with dynamic KPIs and six-month sales trend
+- Global month selector
+- Units / Clients: add, edit, search, status/payment filters, activate/deactivate
+- Monthly Gross Sales: record, edit, delete with confirmation
+- Automatic calculation: Gross Sales -> Internet Cost -> Net Sales -> Owner/Client shares -> Electricity -> Amount Due
+- Payment recording with balance and Paid/Partial/Unpaid status
+- Client Profile: Overview, Monthly Sales, Payments, Statement
+- Client Statements with print and PDF download
+- Monthly Reports with CSV, Excel and print export
+- Notifications with unread/read state and Mark all as read
+- Activity Log
+- Configurable business settings
+- Historical monthly records (one sales record per unit/month)
+- Responsive desktop/tablet/mobile layout
+- Firestore persistence and admin-only Firestore rules
 
-## Firestore collections
-- `users/{UID}` — admin authorization (`role: admin`, `active: true`)
-- `units`
-- `monthlyRecords`
-- `payments`
-- `settings/business`
-
-## Current admin UID
-`ZhP8E64YOXcTgOUKPMcap3a24Gk2`
+## Firebase collections
+`users`, `units`, `monthlyRecords`, `payments`, `settings`, `notifications`, `activities`
 
 ## Deployment
-Cloudflare Pages can deploy the repository directly from GitHub. No build command is required; publish the repository root.
+Upload/push the project files to the connected GitHub repository used by Cloudflare Pages. Cloudflare Pages should build it as a static site with no build command and the repository root as the output directory.
+
+Before using Notifications and Activity Log in production, publish the included `firestore.rules` in Firebase Console.
 
 ## Important
-The Firebase web configuration in `js/firebase-config.js` is client-side configuration. Do not put Firebase Admin SDK/service-account private keys in this repository.
+The Firebase web config is client-side configuration. Keep private service-account credentials out of the repository.
