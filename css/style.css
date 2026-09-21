@@ -299,3 +299,7 @@ body{background:radial-gradient(circle at 80% -10%,#e9f3ff 0,transparent 35%),va
 .sidebar{z-index:100!important;pointer-events:auto!important}
 .nav{position:relative;z-index:101;pointer-events:auto!important}
 .nav button[data-route]{position:relative;z-index:102;pointer-events:auto!important;touch-action:manipulation}
+
+/* Net Sales value emphasis: value only, not the card or label */
+.kpi.net-sales b{color:#12a765}
+.report-card.net-sales strong{color:#12a765}
