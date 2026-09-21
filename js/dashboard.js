@@ -154,6 +154,8 @@ function renderDashboard(){
       ${kpi("▦","Total Units",units.length,"All registered units")}
       ${kpi("●","Active Units",active,"Currently active","green")}
       ${kpi("₱","Gross Sales",money(t.gross),"This month","orange")}
+      ${kpi("−","Internet Cost",money(t.internet),"Monthly internet cost","red")}
+      ${kpi("=","Net After Internet",money(t.net),"Gross sales − internet","blue")}
       ${kpi("70%","Owner Share",money(t.owner),settings.ownerPercent+"% share","gold")}
       ${kpi("30%","Client Share",money(t.client),settings.clientPercent+"% share","purple")}
       ${kpi("✓","Customer Net",money(customerNet),"Client share less electricity","customer-net")}
