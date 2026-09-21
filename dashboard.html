@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PISO WIFI — Dashboard</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div id="authLoading" class="auth-loading">Checking authentication...</div>
+  <div id="app" class="app hidden">
+    <aside class="sidebar" id="sidebar">
+      <div class="brand">
+        <div class="brand-mark small">◉</div>
+        <div><strong>PISO WIFI</strong><span>Management System</span></div>
+      </div>
+      <nav>
+        <a class="active" href="dashboard.html">⌂ Dashboard</a>
+        <a href="#">♙ Units / Clients</a>
+        <a href="#">▥ Monthly Reports</a>
+        <a href="#">▣ Payments</a>
+        <a href="#">▤ Client Statements</a>
+        <a href="#">⚙ Settings</a>
+      </nav>
+      <button id="logoutBtn" class="logout-btn">↪ Logout</button>
+    </aside>
+
+    <main class="main">
+      <header class="topbar">
+        <button id="menuBtn" class="icon-btn">☰</button>
+        <div>
+          <h2>Welcome, Admin!</h2>
+          <span>Manage your Piso WiFi business easily.</span>
+        </div>
+        <div class="profile" id="userEmail">Admin</div>
+      </header>
+
+      <section class="content">
+        <div class="page-head">
+          <div><h1>Dashboard</h1><p id="monthText">Overview of all your Piso WiFi units</p></div>
+          <button class="primary-btn" id="addUnitBtn">+ Add New Unit</button>
+        </div>
+
+        <div class="kpis">
+          <article class="kpi"><span>Total Units</span><b id="totalUnits">0</b><small>Active Units</small></article>
+          <article class="kpi"><span>Total Gross Sales</span><b id="grossSales">₱0</b><small>Current month</small></article>
+          <article class="kpi"><span>Total Internet Cost</span><b id="internetCost">₱0</b><small>Configured cost</small></article>
+          <article class="kpi"><span>Your 70% Share</span><b id="ownerShare">₱0</b><small>Total income</small></article>
+          <article class="kpi"><span>Clients' 30% Share</span><b id="clientShare">₱0</b><small>Before electricity</small></article>
+          <article class="kpi"><span>Total Electricity</span><b id="electricity">₱0</b><small>Configured share</small></article>
+        </div>
+
+        <div class="panel">
+          <div class="panel-head"><div><h3>Units / Clients</h3><p>Monthly computation</p></div>
+            <input id="search" class="search" placeholder="Search client or unit...">
+          </div>
+          <div class="table-wrap">
+            <table><thead><tr><th>#</th><th>Client Name</th><th>Gross Sales</th><th>Internet</th><th>Your Share</th><th>Client Share</th><th>Electricity</th><th>Client Total</th><th>Status</th></tr></thead>
+            <tbody id="unitsBody"><tr><td colspan="9" class="empty">No units found. Add your first unit.</td></tr></tbody></table>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+  <script type="module" src="js/dashboard.js"></script>
+</body>
+</html>

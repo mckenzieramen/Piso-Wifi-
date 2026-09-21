@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PISO WIFI — Login</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body class="login-page">
+  <main class="login-card">
+    <div class="brand-mark">◉</div>
+    <h1>PISO WIFI</h1>
+    <p>Management System</p>
+    <form id="loginForm">
+      <label>Email Address</label>
+      <input id="email" type="email" autocomplete="email" required placeholder="admin@example.com">
+      <label>Password</label>
+      <div class="password-wrap">
+        <input id="password" type="password" autocomplete="current-password" required placeholder="Enter your password">
+        <button type="button" id="togglePassword">Show</button>
+      </div>
+      <button class="primary-btn" type="submit">Log In</button>
+      <button class="link-btn" type="button" id="resetPassword">Forgot password?</button>
+      <div id="loginMessage" class="message"></div>
+    </form>
+  </main>
+  <script type="module" src="js/auth.js"></script>
+</body>
+</html>
