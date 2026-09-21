@@ -8,7 +8,7 @@ const form = document.querySelector("#loginForm");
 const msg = document.querySelector("#loginMessage");
 
 onAuthStateChanged(auth, user => {
-  if (user) window.location.replace("/dashboard");
+  if (user) window.location.replace("dashboard.html");
 });
 
 form.addEventListener("submit", async e => {
@@ -20,7 +20,7 @@ form.addEventListener("submit", async e => {
       document.querySelector("#email").value.trim(),
       document.querySelector("#password").value
     );
-    window.location.replace("/dashboard");
+    window.location.replace("dashboard.html");
   } catch (err) {
     msg.textContent = "Login failed. Please check your email and password.";
   }

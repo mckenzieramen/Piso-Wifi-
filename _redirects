@@ -1,3 +1,2 @@
-/dashboard /dashboard.html 200
-/dashboard/ /dashboard.html 200
-/ /index.html 200
+# Intentionally no pretty-URL redirects.
+# The app uses explicit HTML entry points to avoid auth/rewrite loops.
