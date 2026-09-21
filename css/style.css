@@ -18,3 +18,71 @@
 @media(max-width:900px){.sidebar{transform:translateX(-100%);transition:.22s}.sidebar.open{transform:translateX(0)}.overlay.show{display:block;position:fixed;inset:0;background:#08142688;z-index:35}.main{margin-left:0;width:100%}.icon-btn{display:block}.topbar{padding:0 16px}.top-search{display:none}.content{padding:18px}.analytics-grid{grid-template-columns:1fr}.kpis{grid-template-columns:repeat(2,1fr)}.summary-grid,.quick-grid{grid-template-columns:1fr}.report-cards{grid-template-columns:repeat(2,1fr)}.page-head{align-items:flex-start;flex-direction:column}.statement-meta{grid-template-columns:1fr}.setting-row{grid-template-columns:1fr}.profile{min-width:auto}.profile span:nth-child(2){display:none}}
 @media(max-width:560px){.top-actions{gap:5px}.month-select{max-width:140px}.month-select select{max-width:105px}.profile{padding:4px}.kpis{grid-template-columns:1fr}.report-cards{grid-template-columns:1fr}.form-grid{grid-template-columns:1fr}.field.full{grid-column:auto}.statement-actions{display:none}.tabs{overflow:auto}.tab{white-space:nowrap}.panel-head{align-items:flex-start;flex-direction:column}.tools{width:100%}.search{min-width:0;flex:1;width:100%}}
 @media print{.sidebar,.topbar,.page-head,.toast,.modal-backdrop{display:none!important}.main{margin:0;width:100%}.content{padding:0}.panel{box-shadow:none;border:0}}
+
+/* =========================================================
+   PISO WIFI PREMIUM UI LAYER
+   Visual direction: premium blue SaaS / financial dashboard
+   ========================================================= */
+:root{
+  --navy:#0b1730;
+  --navy-2:#102347;
+  --blue:#1477ff;
+  --blue-2:#0b63e5;
+  --ink:#17243a;
+  --muted:#6b7b91;
+  --line:#e6edf6;
+  --surface:#ffffff;
+  --canvas:#f3f7fc;
+  --green:#10b981;
+  --red:#ef4456;
+  --orange:#f59e0b;
+  --purple:#7c4dff;
+  --shadow:0 12px 32px rgba(15,35,67,.07);
+}
+html{background:var(--canvas)}
+body{background:radial-gradient(circle at 80% -10%,#e9f3ff 0,transparent 35%),var(--canvas);color:var(--ink)}
+.app{background:transparent}
+.sidebar{
+  width:270px;padding:20px 14px 16px;
+  background:linear-gradient(180deg,#0b1832 0%,#0d1d3b 55%,#0a162c 100%);
+  border-right:1px solid rgba(255,255,255,.06);
+  box-shadow:18px 0 50px rgba(8,20,42,.14)
+}
+.brand{padding:5px 11px 28px}.brand-mark.small{
+  width:45px;height:45px;border-radius:14px;
+  background:linear-gradient(145deg,#2492ff,#0b63e5);
+  box-shadow:0 10px 25px rgba(20,119,255,.25)
+}.brand strong{letter-spacing:.35px}.brand span{color:#8fa6c7}
+.nav{gap:5px}.nav a{border:1px solid transparent;padding:12px 13px;color:#aebed5}
+.nav a:hover{background:rgba(20,119,255,.12);border-color:rgba(20,119,255,.15);color:#fff;box-shadow:none}
+.nav a.active{background:linear-gradient(90deg,#1477ff,#126cf0);border-color:#3d94ff;color:#fff;box-shadow:0 10px 25px rgba(20,119,255,.28)}
+.sidebar-footer{border-top:1px solid rgba(255,255,255,.08);color:#dbeafe}.wifi-mini{color:#43a5ff}
+.logout-btn{background:rgba(255,255,255,.055);color:#dbeafe;border:1px solid rgba(255,255,255,.05)}
+.logout-btn:hover{background:rgba(239,68,86,.11);color:#fff}
+.main{margin-left:270px;width:calc(100% - 270px)}
+.topbar{height:76px;padding:0 30px;background:rgba(255,255,255,.94);backdrop-filter:blur(14px);border-bottom:1px solid rgba(221,230,241,.9);box-shadow:0 4px 20px rgba(15,35,67,.035)}
+.welcome h2{font-size:18px;letter-spacing:-.25px}.welcome span{color:#718198}
+.top-search{width:300px;background:#f7faff;border-color:#e1eaf5;box-shadow:inset 0 1px 2px rgba(15,35,67,.02)}
+.month-select,.bell-btn,.profile{border-color:#dfe8f3;background:#f8fbff}.month-select{box-shadow:0 3px 10px rgba(15,35,67,.035)}
+.avatar{background:linear-gradient(145deg,#258bff,#0c63df);box-shadow:0 5px 14px rgba(20,119,255,.2)}
+.content{padding:30px;max-width:1800px}.page-head{margin-bottom:22px}.page-head h1{font-size:30px;letter-spacing:-.8px}.page-head p{font-size:12.5px}
+.primary-btn,.secondary-btn,.danger-btn,.link-btn{border-radius:10px}.primary-btn{background:linear-gradient(135deg,#1984ff,#0b65e6);box-shadow:0 9px 22px rgba(20,119,255,.23)}.primary-btn:hover{background:linear-gradient(135deg,#2690ff,#0860da)}
+.secondary-btn{background:#edf5ff;color:#1269c8;border:1px solid #d9e9fb}.danger-btn{box-shadow:0 8px 18px rgba(239,68,86,.18)}
+.panel,.kpi,.summary-card,.report-card,.wifi-status,.profile-hero,.statement-sheet{border-color:#e2eaf4;box-shadow:var(--shadow)}
+.panel{border-radius:16px}.panel-head{padding:19px 21px;background:linear-gradient(180deg,#fff,#fcfdff)}
+.panel-head h3{font-size:14px;letter-spacing:-.15px}.panel-head p{font-size:11px}
+.kpis{gap:16px}.kpi{position:relative;overflow:hidden;border-radius:16px;padding:18px}.kpi:after{content:"";position:absolute;right:-28px;top:-28px;width:90px;height:90px;border-radius:50%;background:rgba(20,119,255,.035)}.kpi b{font-size:23px;letter-spacing:-.5px}.kpi .kpi-icon{box-shadow:0 6px 16px rgba(20,119,255,.08)}
+.analytics-grid{gap:16px}.bars{height:220px;padding:22px 30px 15px}.bar{background:linear-gradient(180deg,#1985ff,#69b5ff);box-shadow:0 6px 15px rgba(20,119,255,.15)}
+.rank-row{padding:12px 4px}.rank-num{box-shadow:inset 0 0 0 1px #d8e8fb}.outstanding-row{padding:13px 5px}.outstanding-row:hover{background:#f8fbff}
+.search,.compact-select,.field input,.field select,.field textarea,.setting-row input,.setting-row select{border-color:#d8e3ef;background:#fff;border-radius:10px;min-height:40px}.search:focus,.field input:focus,.field select:focus,.field textarea:focus,.setting-row input:focus,.setting-row select:focus{border-color:#1685f5;box-shadow:0 0 0 4px rgba(20,119,255,.09)}
+.table-wrap{padding:0 1px}table{min-width:980px}th{background:#f6f9fd;color:#687a92;padding:13px 14px;font-size:9.5px;letter-spacing:.55px}td{padding:13px 14px;border-bottom-color:#edf2f7}tbody tr:hover td{background:#f9fcff}
+.badge{padding:5px 10px}.action-btn{border:1px solid #dce9f7;background:#f0f6ff;color:#0d68cf;padding:7px 10px;border-radius:8px;transition:.16s}.action-btn:hover{transform:translateY(-1px);box-shadow:0 5px 12px rgba(15,35,67,.07)}.action-btn.danger{background:#fff3f5;border-color:#ffd7dd;color:#d83b4d}.action-btn.solid-danger{background:#ef4456;border-color:#ef4456;color:#fff;box-shadow:0 5px 12px rgba(239,68,86,.16)}
+.modal-backdrop{background:rgba(6,18,38,.64);backdrop-filter:blur(4px)}.modal{border:1px solid #e1e9f3;border-radius:19px;box-shadow:0 30px 90px rgba(3,14,31,.3)}.modal-head{padding:20px 22px}.modal-body{padding:22px}.modal-actions{padding:16px 22px;background:#fbfdff}.close{transition:.15s}.close:hover{background:#e8eef7;transform:rotate(3deg)}
+.notice{border-radius:11px}.delete-confirm{padding:10px 14px}.delete-warning{margin:14px auto;padding:11px 14px;border-radius:10px;background:#fff5f6;border:1px solid #ffd8de;color:#b52e40;font-size:11px;max-width:390px}.delete-warning b{font-size:13px}.client-delete-confirm .field{max-width:340px;margin:16px auto 0;text-align:left}
+.toast{border:1px solid rgba(255,255,255,.08);box-shadow:0 16px 40px rgba(4,15,30,.24)}
+.settings-layout{gap:20px}.formula-box{background:linear-gradient(145deg,#f6faff,#fff)}
+.notification-card,.profile-hero{border-radius:16px}.notification-card:hover{transform:translateY(-1px);box-shadow:0 9px 24px rgba(15,35,67,.07)}
+.profile-hero{background:linear-gradient(135deg,#fff,#f8fbff)}
+.statement-sheet{box-shadow:0 18px 45px rgba(15,35,67,.08)}
+@media(max-width:900px){.main{margin-left:0;width:100%}.topbar{height:70px}.content{padding:20px}.sidebar{width:270px}}
+@media(max-width:560px){.content{padding:14px}.page-head h1{font-size:25px}.topbar{padding:0 12px}.month-select{max-width:130px}.panel-head{padding:16px}.kpi{padding:16px}}

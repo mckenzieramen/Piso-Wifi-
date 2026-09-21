@@ -1,7 +1,7 @@
 import { auth, db } from "./firebase.js";
 import { onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-auth.js";
 import {
-  collection, doc, getDoc, getDocs, setDoc, addDoc, updateDoc, deleteDoc,
+  collection, doc, getDoc, getDocs, setDoc, addDoc, updateDoc, deleteDoc, writeBatch,
   serverTimestamp, Timestamp
 } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-firestore.js";
 
@@ -22,6 +22,10 @@ let settings = { internetCost:1000, ownerPercent:70, clientPercent:30, electrici
 let route = "dashboard";
 let selectedMonth = localStorage.getItem("pisoSelectedMonth") || todayKey();
 let unitSearch = "", unitStatus = "", unitPaymentStatus = "";
+
+// TEMPORARY ADMIN FEATURE: keep true while client deletion is needed.
+// Set to false later to remove the Delete Client button without changing the rest of the system.
+const ENABLE_CLIENT_DELETE = true;
 
 function notify(msg, type="success") {
   toastEl.textContent = msg;
@@ -179,6 +183,7 @@ function bindDynamicButtons(){
   document.querySelectorAll("[data-delete-sale]").forEach(b=>b.onclick=()=>confirmDeleteSale(b.dataset.deleteSale));
   document.querySelectorAll("[data-edit-unit]").forEach(b=>b.onclick=()=>openUnitModal(b.dataset.editUnit));
   document.querySelectorAll("[data-toggle-unit]").forEach(b=>b.onclick=()=>toggleUnit(b.dataset.toggleUnit));
+  document.querySelectorAll("[data-delete-unit]").forEach(b=>b.onclick=()=>confirmDeleteUnit(b.dataset.deleteUnit));
   document.querySelectorAll("[data-payment]").forEach(b=>b.onclick=()=>openPaymentModal(b.dataset.payment));
   document.querySelectorAll("[data-view-statement]").forEach(b=>b.onclick=()=>{location.hash=`#statements?unit=${encodeURIComponent(b.dataset.viewStatement)}`;});
 }
@@ -201,7 +206,7 @@ function yearMonths(k){const y=Number(k.slice(0,4));return Array.from({length:12
 
 function renderUnits(){
   const rows=normalizeRows().filter(x=>(!unitSearch||`${x.u.name} ${x.u.unitCode} ${x.u.location} ${x.u.contact}`.toLowerCase().includes(unitSearch.toLowerCase()))&&(!unitStatus||String(x.u.active!==false?"Active":"Inactive")===unitStatus)&&(!unitPaymentStatus||x.c.status===unitPaymentStatus));
-  view.innerHTML=baseHead("Units / Clients","Manage your Piso WiFi units and clients.",`<button class="primary-btn" id="addUnitBtn">+ Add Client / Unit</button>`)+`<div class="panel"><div class="panel-head"><div><h3>Registered Units</h3><p>Showing ${rows.length} of ${units.length} units · ${monthLabel(selectedMonth)}</p></div><div class="tools"><input id="unitSearch" class="search" placeholder="Search client or unit…" value="${esc(unitSearch)}"><select id="unitStatus" class="search"><option value="">All Status</option><option ${unitStatus==="Active"?"selected":""}>Active</option><option ${unitStatus==="Inactive"?"selected":""}>Inactive</option></select><select id="unitPaymentStatus" class="search"><option value="">All Payment Status</option><option ${unitPaymentStatus==="Paid"?"selected":""}>Paid</option><option ${unitPaymentStatus==="Partial"?"selected":""}>Partial</option><option ${unitPaymentStatus==="Unpaid"?"selected":""}>Unpaid</option></select><button class="secondary-btn" id="exportUnits">Export Excel/CSV</button></div></div><div class="table-wrap"><table><thead><tr><th>Unit Code</th><th>Client Name</th><th>Location</th><th>Contact</th><th>Status</th><th>This Month</th><th>Payment</th><th>Actions</th></tr></thead><tbody>${rows.length?rows.map(x=>`<tr><td><b>${esc(x.u.unitCode||"—")}</b></td><td>${esc(x.u.name||"—")}</td><td>${esc(x.u.location||"—")}</td><td>${esc(x.u.contact||"—")}</td><td>${statusBadge(x.u.active!==false?"Active":"Inactive")}</td><td class="amount">${money(x.c.gross)}</td><td>${statusBadge(x.c.status)}</td><td><button class="action-btn" data-sale="${x.u.id}">Gross Sale</button><button class="action-btn" data-profile="${x.u.id}">View</button><button class="action-btn" data-edit-unit="${x.u.id}">Edit</button><button class="action-btn danger" data-toggle-unit="${x.u.id}">${x.u.active!==false?"Deactivate":"Activate"}</button></td></tr>`).join(""):emptyRow(8,"No clients or units found.")}</tbody></table></div></div>`;
+  view.innerHTML=baseHead("Units / Clients","Manage your Piso WiFi units and clients.",`<button class="primary-btn" id="addUnitBtn">+ Add Client / Unit</button>`)+`<div class="panel"><div class="panel-head"><div><h3>Registered Units</h3><p>Showing ${rows.length} of ${units.length} units · ${monthLabel(selectedMonth)}</p></div><div class="tools"><input id="unitSearch" class="search" placeholder="Search client or unit…" value="${esc(unitSearch)}"><select id="unitStatus" class="search"><option value="">All Status</option><option ${unitStatus==="Active"?"selected":""}>Active</option><option ${unitStatus==="Inactive"?"selected":""}>Inactive</option></select><select id="unitPaymentStatus" class="search"><option value="">All Payment Status</option><option ${unitPaymentStatus==="Paid"?"selected":""}>Paid</option><option ${unitPaymentStatus==="Partial"?"selected":""}>Partial</option><option ${unitPaymentStatus==="Unpaid"?"selected":""}>Unpaid</option></select><button class="secondary-btn" id="exportUnits">Export Excel/CSV</button></div></div><div class="table-wrap"><table><thead><tr><th>Unit Code</th><th>Client Name</th><th>Location</th><th>Contact</th><th>Status</th><th>This Month</th><th>Payment</th><th>Actions</th></tr></thead><tbody>${rows.length?rows.map(x=>`<tr><td><b>${esc(x.u.unitCode||"—")}</b></td><td>${esc(x.u.name||"—")}</td><td>${esc(x.u.location||"—")}</td><td>${esc(x.u.contact||"—")}</td><td>${statusBadge(x.u.active!==false?"Active":"Inactive")}</td><td class="amount">${money(x.c.gross)}</td><td>${statusBadge(x.c.status)}</td><td><button class="action-btn" data-sale="${x.u.id}">Gross Sale</button><button class="action-btn" data-profile="${x.u.id}">View</button><button class="action-btn" data-edit-unit="${x.u.id}">Edit</button><button class="action-btn danger" data-toggle-unit="${x.u.id}">${x.u.active!==false?"Deactivate":"Activate"}</button>${ENABLE_CLIENT_DELETE?`<button class="action-btn danger solid-danger" data-delete-unit="${x.u.id}">Delete</button>`:""}</td></tr>`).join(""):emptyRow(8,"No clients or units found.")}</tbody></table></div></div>`;
   $("#addUnitBtn").onclick=()=>openUnitModal();
   $("#unitSearch").oninput=e=>{unitSearch=e.target.value;renderUnits()};
   $("#unitStatus").onchange=e=>{unitStatus=e.target.value;renderUnits()};
@@ -314,6 +319,36 @@ function openUnitModal(id=null){
   });
 }
 async function toggleUnit(id){const u=units.find(x=>x.id===id);if(!u)return;const next=u.active===false; if(!confirm(`${next?"Activate":"Deactivate"} ${u.unitCode}? Historical sales and payments will remain.`))return;await updateDoc(doc(db,"units",id),{active:next,updatedAt:serverTimestamp()});await logActivity("Units",`${next?"Activated":"Deactivated"} ${u.unitCode}`,id);await addNotification("unit",`${u.unitCode} is ${next?"active":"inactive"}.`,`Unit status was changed.`,id);await loadData();render();notify(`Unit ${next?"activated":"deactivated"}.`);}
+
+async function confirmDeleteUnit(id){
+  if(!ENABLE_CLIENT_DELETE)return;
+  const u=units.find(x=>x.id===id); if(!u)return;
+  const relatedSales=records.filter(r=>r.unitId===id);
+  const relatedPayments=payments.filter(p=>p.unitId===id);
+  const relatedNotifications=notifications.filter(n=>n.relatedId===id);
+  const relatedActivities=activities.filter(a=>a.relatedId===id);
+  openModal("Delete Client / Unit?",`<div class="delete-confirm client-delete-confirm">
+    <div class="delete-icon">⌫</div>
+    <h4>Delete ${esc(u.name||u.unitCode)}?</h4>
+    <p>This temporary delete feature permanently removes the client/unit and its linked monthly sales and payment records.</p>
+    <div class="delete-warning"><b>${relatedSales.length}</b> sales record(s) · <b>${relatedPayments.length}</b> payment record(s)</div>
+    <p class="danger-text"><b>This cannot be undone.</b> For normal operations, use Deactivate so financial history remains available.</p>
+    <div class="field"><label>Type DELETE to confirm</label><input id="deleteClientConfirm" autocomplete="off" placeholder="DELETE"></div>
+  </div>`,"Delete Client",async()=>{
+    if (($('#deleteClientConfirm')?.value||'').trim() !== 'DELETE') throw new Error('Type DELETE to confirm permanent client removal.');
+    const batch=writeBatch(db);
+    batch.delete(doc(db,"units",id));
+    relatedSales.forEach(r=>batch.delete(doc(db,"monthlyRecords",r.id)));
+    relatedPayments.forEach(p=>batch.delete(doc(db,"payments",p.id)));
+    relatedNotifications.forEach(n=>batch.delete(doc(db,"notifications",n.id)));
+    relatedActivities.forEach(a=>batch.delete(doc(db,"activities",a.id)));
+    await batch.commit();
+    // The activity for the deletion itself cannot point to a now-deleted client record,
+    // so store the unit code/name in the description and leave a fresh activity entry.
+    await logActivity("Clients",`Permanently deleted ${u.unitCode} — ${u.name} (temporary delete feature)`,"");
+    await addNotification("client","Client deleted.",`${u.name||u.unitCode} was permanently removed.`,"");
+  },{danger:true});
+}
 
 function openSalesModal(unitId,recordId=null){
   const u=units.find(x=>x.id===unitId); const existing=recordId?records.find(r=>r.id===recordId):records.find(r=>r.unitId===unitId&&r.month===selectedMonth); const month=existing?.month||selectedMonth;
