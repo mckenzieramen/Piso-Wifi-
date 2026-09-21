@@ -10,3 +10,6 @@ V8 preserves the existing Firebase authentication, financial data model, Custome
 
 ## Temporary client delete
 `ENABLE_CLIENT_DELETE` remains `true` in `js/dashboard.js` and can later be set to `false` to hide the Delete Client button.
+
+
+V10 fixes sidebar navigation by directly binding every navigation button; no hash links are used for the sidebar.

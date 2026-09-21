@@ -126,7 +126,7 @@ function updateNotificationBadge(){
   $("#bellCount").textContent=n;
   $("#bellCount").classList.toggle("hidden",n===0);
 }
-function nav(){ document.querySelectorAll("#nav a").forEach(a=>a.classList.toggle("active",a.dataset.route===route)); }
+function nav(){ document.querySelectorAll("#nav [data-route]").forEach(a=>a.classList.toggle("active",a.dataset.route===route)); }
 function closeMenu(){ $("#sidebar").classList.remove("open"); $("#overlay").classList.remove("show"); }
 function baseHead(title,sub,button=""){ return `<div class="page-head"><div><h1>${title}</h1><p>${sub}</p></div>${button}</div>`; }
 function statusBadge(s){ return `<span class="badge ${String(s).toLowerCase()}">${esc(s)}</span>`; }
@@ -414,9 +414,20 @@ function showRouteError(err){
   console.error("[PISO WIFI] Navigation render error:",err);
   if(view) view.innerHTML=`<div class="route-error panel"><div class="route-error-icon">!</div><h2>Unable to open this section</h2><p>${esc(err?.message||"An unexpected error occurred while opening the page.")}</p><button class="primary-btn" onclick="location.hash='#dashboard'">Return to Dashboard</button></div>`;
 }
+// Sidebar navigation is bound directly to the actual buttons. This avoids
+// relying on anchor/hash behavior and guarantees a real section render.
+document.querySelectorAll("#nav [data-route]").forEach(btn=>{
+  btn.addEventListener("click", e=>{
+    e.preventDefault();
+    e.stopPropagation();
+    const target=btn.dataset.route;
+    if(target) navigateTo(target);
+  });
+});
+
 document.addEventListener("click",e=>{
   const a=e.target.closest("[data-route]");
-  if(a){e.preventDefault();navigateTo(a.dataset.route);return;}
+  if(a && !a.closest("#nav")){e.preventDefault();navigateTo(a.dataset.route);return;}
   const p=e.target.closest("[data-print-inline]");if(p){const id=$("#statementUnit")?.value;if(id)printStatement(id,$("#statementMonth").value);}
   const pdf=e.target.closest("[data-pdf-inline]");if(pdf){const id=$("#statementUnit")?.value;if(id)downloadStatementPdf(id,$("#statementMonth").value);}
   const html=e.target.closest("[data-html-inline]");if(html){const id=$("#statementUnit")?.value;if(id)downloadStatementHtml(id,$("#statementMonth").value);}

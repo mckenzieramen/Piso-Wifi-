@@ -280,3 +280,17 @@ body{background:radial-gradient(circle at 80% -10%,#e9f3ff 0,transparent 35%),va
 .nav button[data-route]:hover{background:rgba(255,255,255,.07);}
 .nav button[data-route].active{background:#1677ff; color:#fff; box-shadow:0 8px 20px rgba(22,119,255,.22);}
 .nav button[data-route]:focus-visible{outline:2px solid #67b3ff; outline-offset:2px;}
+
+/* V10: real sidebar buttons -- no hash links, no browser-default button styling. */
+.nav button[data-route]{
+  appearance:none; -webkit-appearance:none; width:100%; border:1px solid transparent;
+  background:transparent; color:#aebed5; display:flex; align-items:center; gap:11px;
+  padding:12px 13px; border-radius:10px; font:inherit; font-size:13px; font-weight:650;
+  text-align:left; cursor:pointer; user-select:none; -webkit-tap-highlight-color:transparent;
+  transition:background .18s ease,color .18s ease,box-shadow .18s ease,border-color .18s ease;
+}
+.nav button[data-route]:hover{background:rgba(20,119,255,.12);border-color:rgba(20,119,255,.15);color:#fff;}
+.nav button[data-route].active{background:linear-gradient(90deg,#1477ff,#126cf0);border-color:#3d94ff;color:#fff;box-shadow:0 10px 25px rgba(20,119,255,.28);}
+.nav button[data-route] .nav-icon{width:20px;height:20px;display:grid;place-items:center;flex:0 0 20px;}
+.nav button[data-route] .nav-icon svg{width:17px;height:17px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;}
+.nav button[data-route] .nav-count{margin-left:auto;}
