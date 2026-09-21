@@ -410,5 +410,10 @@ $("#notificationBtn").onclick=()=>{location.hash="#notifications"};
 $("#globalSearch").oninput=e=>{const q=e.target.value.trim();if(q.length>=2){unitSearch=q;route="units";if(location.hash!=="#units")location.hash="#units";else renderUnits();}else if(!q){unitSearch="";if(route==="units")renderUnits();}};
 
 let authResolved=false;
-const authTimeout=setTimeout(()=>{if(!authResolved){const u=auth.currentUser;if(u)bootstrap(u);else showAuthError("Firebase Authentication did not finish loading. Please refresh the page and try logging in again.");}},8000);
-onAuthStateChanged(auth,user=>{authResolved=true;clearTimeout(authTimeout);bootstrap(user);});
+// Keep authentication checks invisible to the user. The app either opens
+// after Firebase resolves the session or redirects to the login page.
+onAuthStateChanged(auth,user=>{
+  if(authResolved) return;
+  authResolved=true;
+  bootstrap(user);
+});
