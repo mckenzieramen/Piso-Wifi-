@@ -86,19 +86,3 @@ body{background:radial-gradient(circle at 80% -10%,#e9f3ff 0,transparent 35%),va
 .statement-sheet{box-shadow:0 18px 45px rgba(15,35,67,.08)}
 @media(max-width:900px){.main{margin-left:0;width:100%}.topbar{height:70px}.content{padding:20px}.sidebar{width:270px}}
 @media(max-width:560px){.content{padding:14px}.page-head h1{font-size:25px}.topbar{padding:0 12px}.month-select{max-width:130px}.panel-head{padding:16px}.kpi{padding:16px}}
-
-
-/* =========================================================
-   PREMIUM BRAND / ICON SYSTEM V4
-   ========================================================= */
-.brand{gap:12px}.premium-logo{position:relative;display:grid!important;place-items:center;overflow:hidden}.premium-logo svg{width:31px;height:31px;display:block}.premium-logo:after{content:"";position:absolute;inset:1px;border-radius:13px;box-shadow:inset 0 1px 0 rgba(255,255,255,.28),0 0 0 1px rgba(255,255,255,.05)}
-.nav a{gap:11px}.nav-icon{width:20px;height:20px;display:grid;place-items:center;flex:0 0 20px}.nav-icon svg,.header-icon svg,.bell-btn svg,.premium-mini-logo svg{width:17px;height:17px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}.nav a.active .nav-icon{filter:drop-shadow(0 3px 6px rgba(255,255,255,.12))}.nav-count{margin-left:auto}.premium-mini-logo{display:grid;place-items:center}.premium-mini-logo svg{width:20px;height:20px;stroke:#48a7ff;stroke-width:1.8}
-.header-icon{display:grid;place-items:center;color:#1477ff}.month-select{gap:7px}.bell-btn{display:grid;place-items:center;position:relative}.bell-btn>svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}.bell-count{position:absolute;right:-3px;top:-5px}
-.logout-btn .nav-icon{color:inherit}.logout-btn{display:flex;align-items:center;gap:9px}
-.kpi.customer-net{background:linear-gradient(145deg,#f0f8ff 0%,#ffffff 72%);border-color:#b8dcff;box-shadow:0 14px 30px rgba(20,119,255,.11),inset 0 1px 0 #fff}.kpi.customer-net .kpi-icon{background:linear-gradient(145deg,#258cff,#0d64e4)!important;color:#fff!important}.kpi.customer-net b{color:#0d70ee}
-.report-card.customer-net{background:linear-gradient(145deg,#eef8ff,#fff);border-color:#b8dcff;box-shadow:0 12px 28px rgba(20,119,255,.1)}.report-card.customer-net strong{color:#0d70ee}
-.report-cards .report-card{min-height:92px}.report-rule{font-size:10px;color:#7a8ba0;background:#f7faff;border:1px solid #e4edf7;padding:7px 10px;border-radius:999px}
-.table-wrap table thead th:nth-child(9){color:#0d70ee;background:#edf7ff}.table-wrap table tbody td:nth-child(9){font-weight:850;color:#0d70ee;background:linear-gradient(90deg,rgba(238,248,255,.42),transparent)}
-.panel-head h3:before{content:"";display:inline-block;width:7px;height:7px;border-radius:50%;background:#1477ff;box-shadow:0 0 0 4px rgba(20,119,255,.08);margin:0 8px 2px 0}
-@media(max-width:560px){.premium-logo svg{width:28px;height:28px}.brand-mark.small{width:42px;height:42px}.report-rule{border-radius:10px}}
-.kpi-icon svg{width:19px;height:19px;fill:none;stroke:currentColor;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}.kpi .kpi-icon{display:grid;place-items:center}

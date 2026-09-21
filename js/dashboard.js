@@ -175,18 +175,7 @@ function renderDashboard(){
   bindDynamicButtons();
   document.querySelectorAll("[data-pay-unit]").forEach(b=>b.onclick=()=>openPaymentModal(b.dataset.payUnit));
 }
-function kpi(icon,title,value,sub,cls=""){
-  const icons={
-    "Total Units":"<svg viewBox="0 0 24 24"><path d="M4 20V8l8-4 8 4v12M8 20v-5h8v5M9 9h.01M15 9h.01"/></svg>",
-    "Active Units":"<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="m8.5 12 2.3 2.3 4.7-5"/></svg>",
-    "Gross Sales":"<svg viewBox="0 0 24 24"><path d="M6 20V10M12 20V4M18 20v-7"/></svg>",
-    "Owner Share":"<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 8v8M9.5 10c.5-1.5 5-1.5 5 0 0 2-5 1-5 3 0 1.5 4.5 1.5 5 0"/></svg>",
-    "Client Share":"<svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="3"/><path d="M5 20c.8-4 3-6 7-6s6.2 2 7 6"/></svg>",
-    "Customer Net":"<svg viewBox="0 0 24 24"><path d="M5 5h14v14H5z"/><path d="M8 9h8M8 13h5M8 16h8"/></svg>",
-    "Total Due":"<svg viewBox="0 0 24 24"><path d="M12 3v18M16 7.5c-.6-2-6.5-2.2-6.5.7 0 3.3 6.5 1.7 6.5 5 0 3-6 3.1-7 0"/></svg>"
-  };
-  return `<article class="kpi ${cls}"><div class="kpi-icon">${icons[title]||icon}</div><span>${title}</span><b>${value}</b><small>${sub}</small></article>`;
-}
+function kpi(icon,title,value,sub,cls=""){ return `<article class="kpi ${cls}"><div class="kpi-icon">${icon}</div><span>${title}</span><b>${value}</b><small>${sub}</small></article>`; }
 function empty(msg){ return `<div class="empty">${esc(msg)}</div>`; }
 function emptyRow(cols,msg){ return `<tr><td colspan="${cols}" class="empty">${esc(msg)}</td></tr>`; }
 function dashboardRow(x){ return `<tr><td><b>${esc(x.u.unitCode||"—")}</b></td><td><b>${esc(x.u.name||"—")}</b></td><td>${esc(x.u.location||"—")}</td><td>${statusBadge(x.u.active!==false?"Active":"Inactive")}</td><td class="amount">${money(x.c.gross)}</td><td>${statusBadge(x.c.status)}</td><td><button class="action-btn" data-profile="${x.u.id}">View</button><button class="action-btn" data-sale="${x.u.id}">Gross Sale</button></td></tr>`; }
