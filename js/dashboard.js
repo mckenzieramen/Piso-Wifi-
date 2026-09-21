@@ -133,12 +133,24 @@ function statusBadge(s){ return `<span class="badge ${String(s).toLowerCase()}">
 function pageLoader(){ view.innerHTML=`<div class="loading-panel"><div class="loader"></div><p>Loading data…</p></div>`; }
 
 function render(){
+  route=parseRoute();
   nav();
   const renderers={dashboard:renderDashboard,units:renderUnits,reports:renderReports,payments:renderPayments,statements:renderStatements,notifications:renderNotifications,activity:renderActivity,settings:renderSettings,profile:renderProfile};
-  (renderers[route]||renderDashboard)();
+  const renderer=renderers[route]||renderDashboard;
+  // Always leave visible content in the view before invoking a renderer.
+  // This prevents a navigation error from producing a blank page.
+  view.innerHTML=`<div class="loading-panel"><div><div class="loader"></div><p>Opening ${esc(routeLabel(route))}…</p></div></div>`;
+  try {
+    renderer();
+  } catch(err) {
+    showRouteError(err);
+  }
   closeMenu();
   updateNotificationBadge();
   window.scrollTo({top:0,behavior:"smooth"});
+}
+function routeLabel(r){
+  return ({dashboard:"Dashboard",units:"Units / Clients",reports:"Monthly Reports",payments:"Payments",statements:"Client Statements",notifications:"Notifications",activity:"Activity Log",settings:"Settings",profile:"Client Profile"})[r]||"Dashboard";
 }
 
 function renderDashboard(){
@@ -401,56 +413,41 @@ function openPrintWindow(html){const w=window.open("","_blank","width=1200,heigh
 function showAuthError(message){console.error("[PISO WIFI]",message);const loader=$("#authLoading");if(loader){loader.innerHTML=`<div class="auth-error"><strong>Unable to open the dashboard</strong><span>${esc(message)}</span><button onclick="location.href='index.html'">Return to Login</button></div>`;loader.classList.remove("hidden");}}
 async function bootstrap(user){if(!user){location.replace("index.html");return;}currentUser=user;try{await authorize(user);await loadData();setupMonthSelector();$("#authLoading").classList.add("hidden");$("#app").classList.remove("hidden");$("#userEmail").textContent=user.email||"Owner";route=parseRoute();render();}catch(e){showAuthError(e?.message||"Firebase authorization or database access failed.");}}
 
-function parseRoute(){const raw=location.hash.replace(/^#/,"");return raw.split("?")[0]||"dashboard";}
+function parseRoute(){const raw=location.hash.replace(/^#/ ,"");return raw.split("?")[0]||"dashboard";}
 function navigateTo(nextRoute, options={}){
   const allowed=new Set(["dashboard","units","reports","payments","statements","notifications","activity","settings"]);
   const target=allowed.has(String(nextRoute))?String(nextRoute):"dashboard";
-  try {
-    route=target;
-    // Use the URL hash for client-side sections. This avoids rewriting the
-    // Pages pathname and keeps navigation reliable on Cloudflare Pages.
-    if(options.push!==false){
-      const current=parseRoute();
-      if(current!==target || location.hash!==`#${target}`){ location.hash=`#${target}`; }
-    }
-    render();
-  } catch(err) {
-    showRouteError(err);
-  }
+  const nextHash=`#${target}`;
+  if(location.hash===nextHash){ render(); }
+  else { location.hash=nextHash; }
   if(options.closeMenu!==false) closeMenu();
   return false;
 }
-// Expose navigation globally so the sidebar remains clickable even if another
-// component attaches its own click handler or the app is re-rendered.
-window.pisoNavigate = (target) => navigateTo(target);
+window.pisoNavigate=(target)=>navigateTo(target);
 function showRouteError(err){
   console.error("[PISO WIFI] Navigation render error:",err);
   if(view) view.innerHTML=`<div class="route-error panel"><div class="route-error-icon">!</div><h2>Unable to open this section</h2><p>${esc(err?.message||"An unexpected error occurred while opening the page.")}</p><button class="primary-btn" onclick="location.hash='#dashboard'">Return to Dashboard</button></div>`;
 }
-// Sidebar navigation is bound directly to the actual buttons. This avoids
-// relying on anchor/hash behavior and guarantees a real section render.
+// Navigation uses the browser hash as the single source of truth. The links
+// are real anchors, while this listener only closes the mobile menu. Rendering
+// is performed by the hashchange handler below, avoiding double renders.
 document.addEventListener("click",e=>{
   const navBtn=e.target.closest("#nav [data-route]");
   if(navBtn){
-    e.preventDefault();
-    e.stopPropagation();
-    navigateTo(navBtn.dataset.route);
+    closeMenu();
     return;
   }
   const a=e.target.closest("[data-route]");
-  if(a && !a.closest("#nav")){e.preventDefault();navigateTo(a.dataset.route);return;}
+  if(a){
+    closeMenu();
+    return;
+  }
   const p=e.target.closest("[data-print-inline]");if(p){const id=$("#statementUnit")?.value;if(id)printStatement(id,$("#statementMonth").value);}
   const pdf=e.target.closest("[data-pdf-inline]");if(pdf){const id=$("#statementUnit")?.value;if(id)downloadStatementPdf(id,$("#statementMonth").value);}
   const html=e.target.closest("[data-html-inline]");if(html){const id=$("#statementUnit")?.value;if(id)downloadStatementHtml(id,$("#statementMonth").value);}
 });
-window.addEventListener("popstate",e=>{
-  route=parseRoute();
-  try { render(); } catch(err) { showRouteError(err); }
-});
-window.addEventListener("hashchange",()=>{
-  route=parseRoute();
-  try { render(); } catch(err) { showRouteError(err); }
-});
+window.addEventListener("popstate",()=>render());
+window.addEventListener("hashchange",()=>render());
 $("#menuBtn").onclick=()=>{$("#sidebar").classList.add("open");$("#overlay").classList.add("show")};$("#overlay").onclick=closeMenu;
 $("#logoutBtn").onclick=async()=>{await signOut(auth);location.replace("index.html")};
 $("#notificationBtn").onclick=()=>navigateTo("notifications");

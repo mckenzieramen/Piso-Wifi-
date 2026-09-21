@@ -1,28 +1,11 @@
-# PISO WIFI Management System — Premium V8
+PISO WIFI — V16 NAVIGATION STABILITY FIX
 
-V8 preserves the existing Firebase authentication, financial data model, Customer Net summary, reports, statements, payments, settings, and client management.
+Built from the V15 Premium baseline.
 
-## Navigation fix
-- Sidebar navigation now uses an explicit SPA route handler.
-- Clicking Dashboard, Units / Clients, Monthly Reports, Payments, Client Statements, Notifications, Activity Log, or Settings renders the target section immediately.
-- Browser hash navigation/back-forward remains supported.
-- Navigation errors now show a useful error panel instead of a blank screen.
-
-## Temporary client delete
-`ENABLE_CLIENT_DELETE` remains `true` in `js/dashboard.js` and can later be set to `false` to hide the Delete Client button.
-
-
-V10 fixes sidebar navigation by directly binding every navigation button; no hash links are used for the sidebar.
-
-
-## V12 — Routing/Auth loop fix
-- Added Cloudflare Pages `_redirects` with 200 rewrites for `/` and `/dashboard`.
-- Authentication redirects now use clean `/dashboard` and `/` routes instead of `dashboard.html` / `index.html`.
-- Removed malformed inline navigation handlers; navigation continues through the existing delegated route handler.
-- No financial calculations, Firestore collections, UI sections, or business rules were changed.
-
-
-V14 navigation fix: dashboard sections use URL hash routing (#dashboard, #units, etc.) rather than history.pushState on the Pages pathname. This avoids Cloudflare Pages path rewrites while keeping sidebar navigation and browser back/forward working.
-
-
-V15 navigation fix: sidebar navigation uses native same-document hash anchors (#dashboard, #units, #reports, #payments, #statements, #notifications, #activity, #settings). No Cloudflare redirect is required.
+Navigation changes only:
+- Hash URL is the single source of truth.
+- Real sidebar anchors navigate normally.
+- No Cloudflare pathname rewrites.
+- Removed double-render navigation behavior.
+- Added a visible loading shell and route-error fallback so a renderer exception cannot leave a blank page.
+- Premium UI, Firebase authentication, Firestore data model, financial calculations, and existing feature renderers are preserved.
