@@ -4,8 +4,7 @@
 1. Create a Firebase project.
 2. Enable Authentication > Sign-in method > Email/Password.
 3. Create your first admin user under Authentication > Users.
-4. Create a Web App in Firebase and copy its config.
-5. Copy `firebase-config.example.js` to `js/firebase-config.js` and replace the placeholders.
+4. The Firebase Web App config is already included in `js/firebase-config.js` for this project.
 6. Create a Firestore database.
 7. Upload this project to GitHub.
 8. Enable GitHub Pages for the repository.
