@@ -303,3 +303,14 @@ body{background:radial-gradient(circle at 80% -10%,#e9f3ff 0,transparent 35%),va
 /* Net Sales value emphasis: value only, not the card or label */
 .kpi.net-sales b{color:#12a765}
 .report-card.net-sales strong{color:#12a765}
+
+
+/* Premium Dashboard Branding — visual-only enhancement */
+.premium-brand{position:relative;gap:14px;padding:7px 10px 30px;border-bottom:1px solid rgba(255,255,255,.07);margin-bottom:14px;}
+.premium-brand::after{content:"";position:absolute;left:10px;right:10px;bottom:-1px;height:1px;background:linear-gradient(90deg,transparent,rgba(72,167,255,.42),transparent);}
+.premium-logo{width:52px!important;height:52px!important;border-radius:17px!important;background:linear-gradient(145deg,#1685f5,#0757c9)!important;box-shadow:0 10px 28px rgba(22,133,245,.28),inset 0 1px 0 rgba(255,255,255,.35)!important;}
+.premium-logo svg{width:38px!important;height:38px!important;filter:drop-shadow(0 4px 8px rgba(0,0,0,.18));}
+.premium-brand strong{font-size:16px;letter-spacing:1px;font-weight:850;line-height:1.1;}
+.premium-brand span{font-size:10px;letter-spacing:.55px;color:#91a8c6;margin-top:5px;}
+/* Notifications removed from the visible dashboard UI */
+.bell-btn,#notificationBtn,#navNotificationCount{display:none!important;}
