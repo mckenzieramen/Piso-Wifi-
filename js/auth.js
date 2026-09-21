@@ -8,7 +8,7 @@ const form = document.querySelector("#loginForm");
 const msg = document.querySelector("#loginMessage");
 
 onAuthStateChanged(auth, user => {
-  if (user) window.location.href = "dashboard";
+  if (user) window.location.replace("/dashboard");
 });
 
 form.addEventListener("submit", async e => {
@@ -20,19 +20,9 @@ form.addEventListener("submit", async e => {
       document.querySelector("#email").value.trim(),
       document.querySelector("#password").value
     );
-    window.location.href = "dashboard";
+    window.location.replace("/dashboard");
   } catch (err) {
-    
-    const code = err?.code || "";
-    const messages = {
-      "auth/invalid-credential": "Incorrect email or password.",
-      "auth/invalid-login-credentials": "Incorrect email or password.",
-      "auth/user-not-found": "No account was found for this email.",
-      "auth/wrong-password": "Incorrect email or password.",
-      "auth/too-many-requests": "Too many attempts. Please wait a moment and try again.",
-      "auth/network-request-failed": "Network error. Check your internet connection and try again."
-    };
-    msg.textContent = messages[code] || "Login failed. Please check your email and password.";
+    msg.textContent = "Login failed. Please check your email and password.";
   }
 });
 

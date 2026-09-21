@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>PISO WIFI — Management System</title>
-  <link rel="stylesheet" href="css/style.css?v=12">
+  <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
   <div id="authLoading" class="auth-loading hidden" aria-hidden="true"></div>
@@ -54,23 +54,6 @@
   <div id="modalRoot"></div>
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-  <script>
-    // V12 navigation safety layer: capture sidebar clicks before any other handler.
-    document.addEventListener("click", function (event) {
-      var btn = event.target && event.target.closest ? event.target.closest("#nav [data-route]") : null;
-      if (!btn) return;
-      var route = btn.getAttribute("data-route");
-      if (!route) return;
-      event.preventDefault();
-      event.stopPropagation();
-      if (typeof window.pisoNavigate === "function") {
-        window.pisoNavigate(route);
-      } else {
-        window.location.hash = "#" + route;
-        window.dispatchEvent(new HashChangeEvent("hashchange"));
-      }
-    }, true);
-  </script>
-  <script type="module" src="js/dashboard.js?v=12"></script>
+  <script type="module" src="js/dashboard.js"></script>
 </body>
 </html>
