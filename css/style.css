@@ -314,3 +314,18 @@ body{background:radial-gradient(circle at 80% -10%,#e9f3ff 0,transparent 35%),va
 .premium-brand span{font-size:10px;letter-spacing:.55px;color:#91a8c6;margin-top:5px;}
 /* Notifications removed from the visible dashboard UI */
 .bell-btn,#notificationBtn,#navNotificationCount{display:none!important;}
+
+/* Accumulating-data scroll areas — keeps dashboard cards compact as records grow */
+.accumulating-list{max-height:270px;overflow-y:auto;overflow-x:hidden;scrollbar-width:thin;scrollbar-color:#cbd8e8 transparent}
+.accumulating-list::-webkit-scrollbar{width:7px}
+.accumulating-list::-webkit-scrollbar-track{background:transparent}
+.accumulating-list::-webkit-scrollbar-thumb{background:#cbd8e8;border-radius:10px}
+.accumulating-list::-webkit-scrollbar-thumb:hover{background:#aebfd4}
+.accumulating-table{max-height:430px;overflow:auto;scrollbar-width:thin;scrollbar-color:#cbd8e8 #f8fafc}
+.accumulating-table::-webkit-scrollbar{width:8px;height:8px}
+.accumulating-table::-webkit-scrollbar-track{background:#f8fafc}
+.accumulating-table::-webkit-scrollbar-thumb{background:#cbd8e8;border-radius:10px}
+.accumulating-table::-webkit-scrollbar-thumb:hover{background:#aebfd4}
+.accumulating-table thead th{position:sticky;top:0;z-index:2}
+@media(max-width:900px){.accumulating-list{max-height:240px}.accumulating-table{max-height:360px}}
+@media print{.accumulating-list,.accumulating-table{max-height:none;overflow:visible}}
