@@ -299,3 +299,8 @@ body{background:radial-gradient(circle at 80% -10%,#e9f3ff 0,transparent 35%),va
 .sidebar{z-index:100!important;pointer-events:auto!important}
 .nav{position:relative;z-index:101;pointer-events:auto!important}
 .nav button[data-route]{position:relative;z-index:102;pointer-events:auto!important;touch-action:manipulation}
+
+/* V15 navigation reliability: native hash anchors are the primary navigation mechanism. */
+.nav a[data-route]{display:flex;align-items:center;gap:11px;width:100%;box-sizing:border-box;cursor:pointer;pointer-events:auto!important;touch-action:manipulation;}
+.nav a[data-route] .nav-icon{width:20px;height:20px;display:grid;place-items:center;flex:0 0 20px;}
+.nav a[data-route] .nav-icon svg{width:17px;height:17px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;}

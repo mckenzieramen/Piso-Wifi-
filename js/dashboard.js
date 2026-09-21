@@ -399,15 +399,20 @@ function printCss(){return `body{font-family:Arial,sans-serif;color:#17243a;padd
 function openPrintWindow(html){const w=window.open("","_blank","width=1200,height=800");if(!w){notify("Please allow pop-ups to print.","error");return;}w.document.open();w.document.write(html);w.document.close();w.focus();setTimeout(()=>w.print(),350);}
 
 function showAuthError(message){console.error("[PISO WIFI]",message);const loader=$("#authLoading");if(loader){loader.innerHTML=`<div class="auth-error"><strong>Unable to open the dashboard</strong><span>${esc(message)}</span><button onclick="location.href='index.html'">Return to Login</button></div>`;loader.classList.remove("hidden");}}
-async function bootstrap(user){if(!user){location.replace("index.html");return;}currentUser=user;try{await authorize(user);await loadData();setupMonthSelector();$("#authLoading").classList.add("hidden");$("#app").classList.remove("hidden");$("#userEmail").textContent=user.email||"Owner";route="dashboard";history.replaceState({route:"dashboard"},"",location.pathname);render();}catch(e){showAuthError(e?.message||"Firebase authorization or database access failed.");}}
+async function bootstrap(user){if(!user){location.replace("index.html");return;}currentUser=user;try{await authorize(user);await loadData();setupMonthSelector();$("#authLoading").classList.add("hidden");$("#app").classList.remove("hidden");$("#userEmail").textContent=user.email||"Owner";route=parseRoute();render();}catch(e){showAuthError(e?.message||"Firebase authorization or database access failed.");}}
 
 function parseRoute(){const raw=location.hash.replace(/^#/,"");return raw.split("?")[0]||"dashboard";}
 function navigateTo(nextRoute, options={}){
   const allowed=new Set(["dashboard","units","reports","payments","statements","notifications","activity","settings"]);
   const target=allowed.has(String(nextRoute))?String(nextRoute):"dashboard";
-  route=target;
   try {
-    if(options.push!==false){ history.pushState({route:target},"",location.pathname); }
+    route=target;
+    // Use the URL hash for client-side sections. This avoids rewriting the
+    // Pages pathname and keeps navigation reliable on Cloudflare Pages.
+    if(options.push!==false){
+      const current=parseRoute();
+      if(current!==target || location.hash!==`#${target}`){ location.hash=`#${target}`; }
+    }
     render();
   } catch(err) {
     showRouteError(err);
@@ -439,7 +444,11 @@ document.addEventListener("click",e=>{
   const html=e.target.closest("[data-html-inline]");if(html){const id=$("#statementUnit")?.value;if(id)downloadStatementHtml(id,$("#statementMonth").value);}
 });
 window.addEventListener("popstate",e=>{
-  route=e.state?.route || "dashboard";
+  route=parseRoute();
+  try { render(); } catch(err) { showRouteError(err); }
+});
+window.addEventListener("hashchange",()=>{
+  route=parseRoute();
   try { render(); } catch(err) { showRouteError(err); }
 });
 $("#menuBtn").onclick=()=>{$("#sidebar").classList.add("open");$("#overlay").classList.add("show")};$("#overlay").onclick=closeMenu;

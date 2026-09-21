@@ -20,3 +20,9 @@ V10 fixes sidebar navigation by directly binding every navigation button; no has
 - Authentication redirects now use clean `/dashboard` and `/` routes instead of `dashboard.html` / `index.html`.
 - Removed malformed inline navigation handlers; navigation continues through the existing delegated route handler.
 - No financial calculations, Firestore collections, UI sections, or business rules were changed.
+
+
+V14 navigation fix: dashboard sections use URL hash routing (#dashboard, #units, etc.) rather than history.pushState on the Pages pathname. This avoids Cloudflare Pages path rewrites while keeping sidebar navigation and browser back/forward working.
+
+
+V15 navigation fix: sidebar navigation uses native same-document hash anchors (#dashboard, #units, #reports, #payments, #statements, #notifications, #activity, #settings). No Cloudflare redirect is required.
