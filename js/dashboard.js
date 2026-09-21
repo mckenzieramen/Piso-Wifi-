@@ -143,6 +143,9 @@ function render(){
 
 function renderDashboard(){
   const rows=normalizeRows(), t=totals(rows), active=units.filter(u=>u.active!==false).length;
+  // Dashboard-only metric: Customer Net = Customer 30% share less electricity.
+  // This is intentionally display-only and does NOT change the existing financial calculation flow.
+  const customerNet = Math.max(0, t.client - t.elec);
   const top=[...rows].sort((a,b)=>b.c.gross-a.c.gross).slice(0,5);
   const outstanding=rows.filter(x=>x.c.balance>0).sort((a,b)=>b.c.balance-a.c.balance).slice(0,5);
   view.innerHTML=baseHead("Dashboard","Overview of your Piso WiFi business.",`<button class="primary-btn" id="addUnitTop">+ Add New Unit</button>`)+`
@@ -153,6 +156,7 @@ function renderDashboard(){
       ${kpi("₱","Gross Sales",money(t.gross),"This month","orange")}
       ${kpi("70%","Owner Share",money(t.owner),settings.ownerPercent+"% share","gold")}
       ${kpi("30%","Client Share",money(t.client),settings.clientPercent+"% share","purple")}
+      ${kpi("✓","Customer Net",money(customerNet),"Client share less electricity","customer-net")}
       ${kpi("!","Total Due",money(t.due),"Pending payments","red")}
     </div>
     <div class="analytics-grid">
