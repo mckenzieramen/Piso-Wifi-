@@ -187,7 +187,7 @@ function renderDashboard() {
 }
 
 function rowHtml(item, index) {
-  return `<tr><td>${index + 1}</td><td><b>${esc(item.u.name || 'Unnamed Client')}</b><br><span class="muted">${esc(item.u.unitCode || item.u.location || 'Unit')}</span></td><td class="amount">${money(item.c.gross)}</td><td>${money(item.c.internet)}</td><td>${money(item.c.owner)}</td><td>${money(item.c.client)}</td><td>${money(item.c.electricity)}</td><td class="amount">${money(item.c.clientTotal)}</td><td><span class="badge ${item.c.status.toLowerCase()}">${item.c.status}</span></td><td><button class="action-btn" data-view-unit="${esc(item.u.id)}">View</button></td></tr>`;
+  return `<tr><td>${index + 1}</td><td><b>${esc(item.u.name || 'Unnamed Client')}</b><br><span class="muted">${esc(item.u.unitCode || item.u.location || 'Unit')}</span></td><td class="amount">${money(item.c.gross)}</td><td>${money(item.c.internet)}</td><td>${money(item.c.owner)}</td><td>${money(item.c.client)}</td><td>${money(item.c.electricity)}</td><td class="amount">${money(item.c.clientTotal)}</td><td><span class="badge ${item.c.status.toLowerCase()}">${item.c.status}</span></td><td><button class="action-btn primary-action" data-record-sale="${esc(item.u.id)}">Gross Sale</button> <button class="action-btn" data-view-unit="${esc(item.u.id)}">View</button></td></tr>`;
 }
 
 function updateDashRows() {
@@ -201,16 +201,18 @@ function updateDashRows() {
   });
   body.innerHTML = rows.length ? rows.map(rowHtml).join('') : '<tr><td colspan="10" class="empty">No matching units.</td></tr>';
   document.querySelectorAll('[data-view-unit]').forEach((b) => { b.onclick = () => openUnit(b.dataset.viewUnit); });
+  document.querySelectorAll('[data-record-sale]').forEach((b) => { b.onclick = () => recordSale(b.dataset.recordSale); });
 }
 
 function renderUnits() {
   view.innerHTML = baseHead('Units / Clients', 'Manage your Piso WiFi machines and associated clients.', '<button class="primary-btn" id="addUnitBtn">+ Add New Unit</button>') + `
     <div class="panel"><div class="panel-head"><div><h3>Registered Units</h3><p>${units.length} unit(s) in the system</p></div><div class="tools"><input id="unitSearch" class="search" placeholder="Search client, unit or location..."></div></div>
-    <div class="table-wrap"><table><thead><tr><th>Unit</th><th>Client</th><th>Location</th><th>Contact</th><th>Status</th><th>Actions</th></tr></thead><tbody id="unitsBody">${units.length ? units.map((u) => `<tr><td><b>${esc(u.unitCode || '—')}</b></td><td>${esc(u.name || '—')}</td><td>${esc(u.location || '—')}</td><td>${esc(u.contact || '—')}</td><td><span class="badge ${u.active !== false ? 'active' : 'inactive'}">${u.active !== false ? 'Active' : 'Inactive'}</span></td><td><button class="action-btn" data-edit="${esc(u.id)}">Edit</button><button class="action-btn danger" data-toggle="${esc(u.id)}">${u.active !== false ? 'Deactivate' : 'Activate'}</button></td></tr>`).join('') : '<tr><td colspan="6" class="empty">No units yet. Click Add New Unit to begin.</td></tr>'}</tbody></table></div></div>`;
+    <div class="table-wrap"><table><thead><tr><th>Unit</th><th>Client</th><th>Location</th><th>Contact</th><th>Status</th><th>Actions</th></tr></thead><tbody id="unitsBody">${units.length ? units.map((u) => `<tr><td><b>${esc(u.unitCode || '—')}</b></td><td>${esc(u.name || '—')}</td><td>${esc(u.location || '—')}</td><td>${esc(u.contact || '—')}</td><td><span class="badge ${u.active !== false ? 'active' : 'inactive'}">${u.active !== false ? 'Active' : 'Inactive'}</span></td><td><button class="action-btn primary-action" data-record-sale="${esc(u.id)}">Gross Sale</button><button class="action-btn" data-edit="${esc(u.id)}">Edit</button><button class="action-btn danger" data-toggle="${esc(u.id)}">${u.active !== false ? 'Deactivate' : 'Activate'}</button></td></tr>`).join('') : '<tr><td colspan="6" class="empty">No units yet. Click Add New Unit to begin.</td></tr>'}</tbody></table></div></div>`;
 
   $('#addUnitBtn').onclick = () => openUnit();
   document.querySelectorAll('[data-edit]').forEach((b) => { b.onclick = () => openUnit(b.dataset.edit); });
   document.querySelectorAll('[data-toggle]').forEach((b) => { b.onclick = () => toggleUnit(b.dataset.toggle); });
+  document.querySelectorAll('[data-record-sale]').forEach((b) => { b.onclick = () => recordSale(b.dataset.recordSale); });
   $('#unitSearch').oninput = (e) => {
     const q = e.target.value.toLowerCase();
     document.querySelectorAll('#unitsBody tr').forEach((r) => { r.style.display = r.textContent.toLowerCase().includes(q) ? '' : 'none'; });
