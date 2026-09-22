@@ -3,123 +3,114 @@ import {
   signInWithEmailAndPassword,
   onAuthStateChanged,
   sendPasswordResetEmail,
-  signOut
+  signOut,
+  setPersistence,
+  browserSessionPersistence
 } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-auth.js";
-import { doc, getDoc } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-firestore.js";
+import {
+  doc,
+  getDoc
+} from "https://www.gstatic.com/firebasejs/12.2.1/firebase-firestore.js";
 
 const form = document.querySelector("#loginForm");
 const msg = document.querySelector("#loginMessage");
-const button = form?.querySelector('button[type="submit"]');
 
-function message(text, type = "") {
+function showMessage(text, type = "") {
   msg.textContent = text;
-  msg.className = `login-message ${type}`;
+  msg.className = `login-message ${type}`.trim();
 }
 
 async function getRole(user) {
   const snap = await getDoc(doc(db, "users", user.uid));
-  if (!snap.exists()) return null;
-  return snap.data();
+  return snap.exists() ? snap.data() : null;
 }
 
-async function authorizeAdmin(user) {
-  if (!user) return { ok: false, reason: "No authenticated user." };
-
-  const data = await getRole(user);
-
-  if (!data || data.role !== "admin") {
-    return { ok: false, reason: "This account is not an Admin account." };
-  }
-
-  // Existing projects may not have an active field yet.
-  // Only an explicit active:false disables an admin.
-  if (data.active === false) {
-    return { ok: false, reason: "This Admin account is inactive." };
-  }
-
-  return { ok: true, data };
-}
-
-let routing = false;
-
-async function handleExistingSession(user) {
-  if (!user || routing) return;
+async function routeSignedInUser(user) {
+  if (!user) return;
 
   try {
-    const result = await authorizeAdmin(user);
-    if (result.ok) {
-      routing = true;
+    const profile = await getRole(user);
+
+    // ADMIN PORTAL IS STRICTLY ADMIN-ONLY.
+    if (profile?.role === "admin" && profile?.active !== false) {
       window.location.replace("/admin/dashboard.html");
       return;
     }
 
+    // A customer must never be routed into the Admin portal.
     await signOut(auth);
-    message(result.reason, "error");
-  } catch (error) {
-    console.error("Admin authorization failed:", error);
-    // Do NOT redirect to the Customer website on an Admin authorization error.
-    await signOut(auth).catch(() => {});
-    message("Admin authorization failed. Check the Admin users/{UID} record in Firestore and make sure role is 'admin'.", "error");
+    showMessage(
+      "This account is a Customer Account. Please use the Customer Account login.",
+      "error"
+    );
+  } catch (e) {
+    console.error("[PISO WIFI ADMIN AUTH]", e);
+    try { await signOut(auth); } catch {}
+    showMessage(
+      "This account is not authorized for the Admin Portal.",
+      "error"
+    );
   }
 }
 
-onAuthStateChanged(auth, handleExistingSession);
+// Session persistence is per browser tab so Admin and Customer portals
+// do not share an authentication session across tabs.
+onAuthStateChanged(auth, user => {
+  if (user) routeSignedInUser(user);
+});
 
-form.addEventListener("submit", async (event) => {
-  event.preventDefault();
-  if (routing) return;
-
+form.addEventListener("submit", async e => {
+  e.preventDefault();
   const email = document.querySelector("#email").value.trim().toLowerCase();
   const password = document.querySelector("#password").value;
 
   if (!email || !password) {
-    message("Enter your email and password.", "error");
+    showMessage("Enter your email and password.", "error");
     return;
   }
 
-  button.disabled = true;
-  button.textContent = "Signing in...";
-  message("Signing in...", "");
+  showMessage("Signing in…");
 
   try {
-    const cred = await signInWithEmailAndPassword(auth, email, password);
-    const result = await authorizeAdmin(cred.user);
+    await setPersistence(auth, browserSessionPersistence);
 
-    if (!result.ok) {
+    const cred = await signInWithEmailAndPassword(auth, email, password);
+    const profile = await getRole(cred.user);
+
+    if (profile?.role !== "admin" || profile?.active === false) {
       await signOut(auth);
-      message(result.reason + " Please use the correct portal for this account.", "error");
-      button.disabled = false;
-      button.textContent = "Log In";
+      showMessage(
+        "Access denied. This account is not an active Admin account.",
+        "error"
+      );
       return;
     }
 
-    routing = true;
-    message("Admin verified. Opening dashboard...", "success");
     window.location.replace("/admin/dashboard.html");
-  } catch (error) {
-    console.error("Admin login failed:", error);
-    message("Login failed. Check your Admin email and password.", "error");
-    button.disabled = false;
-    button.textContent = "Log In";
+  } catch (err) {
+    console.error("[PISO WIFI ADMIN LOGIN]", err);
+    showMessage("Login failed. Please check your Admin email and password.", "error");
   }
 });
 
 document.querySelector("#togglePassword").onclick = () => {
   const p = document.querySelector("#password");
   p.type = p.type === "password" ? "text" : "password";
-  document.querySelector("#togglePassword").textContent = p.type === "password" ? "Show" : "Hide";
+  document.querySelector("#togglePassword").textContent =
+    p.type === "password" ? "Show" : "Hide";
 };
 
 document.querySelector("#resetPassword").onclick = async () => {
   const email = document.querySelector("#email").value.trim();
   if (!email) {
-    message("Enter your email first.", "error");
+    showMessage("Enter your Admin email first.", "error");
     return;
   }
+
   try {
     await sendPasswordResetEmail(auth, email);
-    message("If an account exists for that email, password reset instructions have been sent.", "success");
+    showMessage("If an Admin account exists for that email, password reset instructions have been sent.", "success");
   } catch {
-    message("If an account exists for that email, password reset instructions have been sent.", "success");
+    showMessage("If an Admin account exists for that email, password reset instructions have been sent.", "success");
   }
 };
