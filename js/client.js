@@ -315,44 +315,14 @@ function printStatement(total,units,month){
 
 function renderProfile(){
   const u=primaryUnit();
-  $("#view").innerHTML=pageTitle("My Profile","Manage your personal customer information and private account password.")+`
-  <div class="profile-two-col">
-    <section class="client-panel profile-card">
-      <div class="client-panel-head"><div><h3>Personal Information</h3><p>Keep your customer details up to date.</p></div></div>
-      <div class="profile-form">
-        <label>Full Name<input id="profileName" value="${esc(clientName())}" autocomplete="name"></label>
-        <label>Email Address<input id="profileEmail" value="${esc(clientEmail())}" disabled></label>
-        <label>Contact Number<input id="profileContact" value="${esc(clientContact()==="—"?"":clientContact())}" autocomplete="tel"></label>
-        <label>Address<textarea id="profileAddress" rows="3" autocomplete="street-address">${esc(u.address||u.location||"")}</textarea></label>
-        <button class="client-primary" id="updateProfile">Save Profile</button>
-        <div id="profileMessage" class="client-login-message" role="status" aria-live="polite"></div>
-      </div>
-    </section>
-    <section class="client-panel profile-card">
-      <div class="client-panel-head"><div><h3>Account Information</h3><p>Your login identity is managed securely by Firebase.</p></div></div>
-      <div class="account-info">
-        <div><span>Unit ID / Login ID</span><b>${esc(u.unitCode||"—")}</b></div>
-        <div><span>Client ID</span><b>${esc(clientCode())}</b></div>
-        <div><span>Date Joined</span><b>${esc(dateLong(joinedDate()))}</b></div>
-        <div><span>Status</span><b>${statusBadge(u.active===false?"Inactive":"Active")}</b></div>
-        <div><span>Assigned Unit${clientUnits.length>1?"s":""}</span><b>${esc(clientUnits.map(x=>x.unitCode).join(", ")||"—")}</b></div>
-        <div><span>Authentication</span><b>${currentUser?.emailVerified?"Verified":"Secure account"}</b></div>
-      </div>
-      <div class="password-change-box">
-        <div class="client-panel-head"><div><h3>Change Password</h3><p>Only you can set your private password.</p></div></div>
-        <div class="profile-form">
-          <label>New Password<input id="profileNewPassword" type="password" minlength="8" autocomplete="new-password" placeholder="At least 8 characters"></label>
-          <label>Confirm New Password<input id="profileConfirmPassword" type="password" minlength="8" autocomplete="new-password" placeholder="Re-enter your password"></label>
-          <button class="client-secondary" id="changePasswordBtn" type="button">Change My Password</button>
-          <div id="passwordChangeMessage" class="client-login-message" role="status" aria-live="polite"></div>
-        </div>
-      </div>
-    </section>
-  </div>`;
+  $("#view").innerHTML=pageTitle("My Profile","View and update your account information.")+
+  `<div class="profile-two-col"><section class="client-panel profile-card"><div class="client-panel-head"><div><h3>Personal Information</h3><p>Keep your contact details up to date.</p></div></div>
+    <div class="profile-form"><label>Full Name<input id="profileName" value="${esc(clientName())}"></label><label>Email Address<input id="profileEmail" value="${esc(clientEmail())}" disabled></label><label>Contact Number<input id="profileContact" value="${esc(clientContact()==="—"?"":clientContact())}"></label><label>Address<input id="profileAddress" value="${esc(u.address||u.location||"")}"></label><button class="client-primary" id="updateProfile">Update Profile</button></div>
+  </section><section class="client-panel profile-card"><div class="client-panel-head"><div><h3>Account Information</h3><p>Account details managed by the system.</p></div></div>
+    <div class="account-info"><div><span>Client ID</span><b>${esc(clientCode())}</b></div><div><span>Date Joined</span><b>${esc(dateLong(joinedDate()))}</b></div><div><span>Status</span><b>${statusBadge(u.active===false?"Inactive":"Active")}</b></div><div><span>Assigned Unit${clientUnits.length>1?"s":""}</span><b>${esc(clientUnits.map(x=>x.unitCode).join(", ")||"—")}</b></div><div><span>Authentication</span><b>${currentUser?.emailVerified?"Verified":"Email account"}</b></div></div>
+  </section></div>`;
   $("#updateProfile").onclick=updateProfile;
-  $("#changePasswordBtn").onclick=changeProfilePassword;
 }
-
 async function updateProfile(){
   const name=$("#profileName").value.trim(),contact=$("#profileContact").value.trim(),address=$("#profileAddress").value.trim();
   if(!name) return toast("Full name is required.","error");
@@ -363,26 +333,6 @@ async function updateProfile(){
     clientUnits=clientUnits.map(u=>({...u,name,contact,address}));
     setupShell();renderProfile();toast("Profile updated successfully.");
   }catch(e){console.error(e);toast("Unable to update your profile right now.","error");}
-}
-
-async function changeProfilePassword(){
-  const a=$("#profileNewPassword")?.value||"", b=$("#profileConfirmPassword")?.value||"";
-  const msg=$("#passwordChangeMessage"); const btn=$("#changePasswordBtn");
-  if(a.length<8){msg.textContent="Use at least 8 characters.";msg.className="client-login-message error";return;}
-  if(a!==b){msg.textContent="Passwords do not match.";msg.className="client-login-message error";return;}
-  btn.disabled=true;btn.textContent="Updating…";
-  try{
-    await updatePassword(currentUser,a);
-    await Promise.all(clientUnits.map(u=>updateDoc(doc(db,"units",u.id),{forcePasswordChange:false,passwordChangedAt:serverTimestamp(),updatedAt:serverTimestamp()})));
-    clientUnits=clientUnits.map(u=>({...u,forcePasswordChange:false}));
-    msg.textContent="Your password has been changed successfully.";msg.className="client-login-message success";
-    $("#profileNewPassword").value="";$("#profileConfirmPassword").value="";
-    toast("Password changed successfully.");
-  }catch(err){
-    console.error(err);
-    msg.textContent=err?.code==="auth/requires-recent-login"?"For security, sign out and log in again before changing your password.":"Unable to change your password right now.";
-    msg.className="client-login-message error";
-  }finally{btn.disabled=false;btn.textContent="Change My Password";}
 }
 
 function renderNotifications(){
@@ -403,7 +353,16 @@ async function markAllNotifications(){
 }
 function updateBell(){
   const count=unread();
-  const badge=$("#notificationCount");if(badge){badge.textContent=count>99?"99+":String(count);badge.classList.toggle("hidden",count===0);}
+  const badge=$("#notificationCount");
+  if(badge){
+    badge.textContent=count>99?"99+":String(count);
+    badge.classList.toggle("hidden",count===0);
+  }
+  const navBadge=$("#clientNavNotificationCount");
+  if(navBadge){
+    navBadge.textContent=count>99?"99+":String(count);
+    navBadge.classList.toggle("hidden",count===0);
+  }
   renderNotificationsPopover();
 }
 function renderNotificationsPopover(){
@@ -417,7 +376,20 @@ function toggleNotificationPopover(){
 }
 
 function bindRouteButtons(){
-  document.querySelectorAll("[data-route]").forEach(el=>el.onclick=e=>{e.preventDefault();location.hash="#"+el.dataset.route;});
+  document.querySelectorAll("[data-route]").forEach(el=>{
+    if(el.dataset.routeBound==="1") return;
+    el.dataset.routeBound="1";
+    el.addEventListener("click",e=>{
+      e.preventDefault();
+      const target=el.dataset.route;
+      if(location.hash.replace("#","")===target){
+        route=target;
+        render();
+      }else{
+        location.hash="#"+target;
+      }
+    });
+  });
 }
 function renderNav(){
   document.querySelectorAll("#clientNav a[data-route]").forEach(a=>a.classList.toggle("active",a.dataset.route===route));
@@ -486,9 +458,10 @@ async function bootstrap(user){
   currentUser=user;
   try{
     const userSnap=await withTimeout(getDoc(doc(db,"users",user.uid)),8000,"Firebase user profile request timed out.");
-    if(!userSnap.exists() || userSnap.data().role!=="client" || userSnap.data().active===false){
-      await signOut(auth);
-      throw new Error("This account is not authorized for the Customer Account.");
+    if(userSnap.exists() && userSnap.data().role==="admin"){
+      bootstrapFinished=true; clearTimeout(bootTimer);
+      location.replace("/admin/dashboard.html");
+      return;
     }
     await withTimeout(loadClientData(),8000,"Client records request timed out. Please check Firebase rules and your connection.");
     $("#clientAuthLoading").classList.add("hidden");
@@ -511,5 +484,4 @@ document.addEventListener("click",e=>{
   if(!e.target.closest("#notificationWrap"))$("#notificationPopover")?.classList.remove("show");
 });
 window.addEventListener("hashchange",()=>{route=parseRoute();render();});
-window.addEventListener("load",()=>{route=parseRoute();renderNav();});
 onAuthStateChanged(auth,bootstrap);
