@@ -1,4 +1,5 @@
 import { auth, db } from "./firebase.js";
+import { calculateFinancialRecord } from "./finance.js";
 import { onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-auth.js";
 import {
   collection, doc, getDoc, getDocs, setDoc, addDoc, updateDoc, deleteDoc, writeBatch,
@@ -51,21 +52,7 @@ function normalizeRows(month=selectedMonth){
   });
 }
 function calc(r){
-  const gross=Math.max(0,Number(r.grossSales||0));
-  const internet=Math.max(0,Number(settings.internetCost||0));
-  const net=Math.max(0,gross-internet);
-  const owner=net*Number(settings.ownerPercent||0)/100;
-  const client=net*Number(settings.clientPercent||0)/100;
-  const elec=Math.max(0,Number(settings.electricity||0));
-  let clientTotal=client;
-  if(settings.electricityRule==="ADD_TO_CLIENT") clientTotal=client+elec;
-  if(settings.electricityRule==="SUBTRACT_FROM_CLIENT") clientTotal=Math.max(0,client-elec);
-  if(settings.electricityRule==="SEPARATE_CHARGE") clientTotal=client;
-  const paid=payments.filter(p=>p.unitId===r.unitId && p.month===r.month).reduce((a,p)=>a+Math.max(0,Number(p.amount||0)),0);
-  const due=Math.max(0,clientTotal);
-  const balance=Math.max(0,due-paid);
-  const status=due===0 ? (paid>0?"Paid":"Unpaid") : paid>=due ? "Paid" : paid>0 ? "Partial" : "Unpaid";
-  return {gross,internet,net,owner,client,elec,clientTotal:due,paid,balance,status};
+  return calculateFinancialRecord(r, settings, payments);
 }
 function totals(rows){ return rows.reduce((a,x)=>{a.gross+=x.c.gross;a.internet+=x.c.internet;a.net+=x.c.net;a.owner+=x.c.owner;a.client+=x.c.client;a.elec+=x.c.elec;a.due+=x.c.clientTotal;a.paid+=x.c.paid;a.balance+=x.c.balance;return a},{gross:0,internet:0,net:0,owner:0,client:0,elec:0,due:0,paid:0,balance:0}); }
 
@@ -332,10 +319,48 @@ function openModal(title,body,saveText,onSave,{danger=false}={}){
 function closeModal(){ $("#modalRoot").innerHTML=""; }
 function openUnitModal(id=null){
   const u=id?units.find(x=>x.id===id):null;
-  openModal(id?"Edit Client / Unit":"Add New Client / Unit",`<div class="form-grid"><div class="field"><label>Unit Code *</label><input id="fCode" value="${esc(u?.unitCode||"")}" placeholder="UNIT-001"></div><div class="field"><label>Client Name *</label><input id="fName" value="${esc(u?.name||"")}" placeholder="Juan Dela Cruz"></div><div class="field"><label>Location</label><input id="fLocation" value="${esc(u?.location||"")}" placeholder="Barangay 1"></div><div class="field"><label>Contact Number</label><input id="fContact" value="${esc(u?.contact||"")}" placeholder="09171234567"></div><div class="field"><label>Status</label><select id="fStatus"><option value="active" ${u?.active!==false?"selected":""}>Active</option><option value="inactive" ${u?.active===false?"selected":""}>Inactive</option></select></div><div class="field full"><label>Notes</label><textarea id="fNotes" rows="3">${esc(u?.notes||"")}</textarea></div></div>`,`Save Client`,async()=>{
-    const unitCode=$("#fCode").value.trim(),name=$("#fName").value.trim(); if(!unitCode||!name)throw new Error("Client name and Unit Code are required.");
-    const data={unitCode,name,location:$("#fLocation").value.trim(),contact:$("#fContact").value.trim(),notes:$("#fNotes").value.trim(),active:$("#fStatus").value==="active",updatedAt:serverTimestamp()};
-    if(id){await updateDoc(doc(db,"units",id),data);await logActivity("Clients",`Edited ${unitCode} — ${name}`,id);}else{const ref=await addDoc(collection(db,"units"),{...data,createdAt:serverTimestamp()});await logActivity("Clients",`Added new client ${unitCode} — ${name}`,ref.id);await addNotification("client","New client added.",`${name} (${unitCode}) was added.`,ref.id);}
+  const suggestedCode = u?.clientCode || `C-${String(units.length+1).padStart(3,"0")}`;
+  const suggestedDate = u?.dateJoined || new Date().toISOString().slice(0,10);
+  openModal(id?"Edit Client / Unit":"Add New Client / Unit",`
+    <div class="form-grid">
+      <div class="field"><label>Client ID *</label><input id="fClientCode" value="${esc(suggestedCode)}" placeholder="C-001"></div>
+      <div class="field"><label>Unit Code *</label><input id="fCode" value="${esc(u?.unitCode||"")}" placeholder="UNIT-001"></div>
+      <div class="field"><label>Client Name *</label><input id="fName" value="${esc(u?.name||"")}" placeholder="Juan Dela Cruz"></div>
+      <div class="field"><label>Client Email *</label><input id="fEmail" type="email" value="${esc(u?.email||"")}" placeholder="client@example.com"><small class="hint">Use the same email the client will use to sign in.</small></div>
+      <div class="field"><label>Contact Number</label><input id="fContact" value="${esc(u?.contact||"")}" placeholder="09171234567"></div>
+      <div class="field"><label>Date Joined</label><input id="fDateJoined" type="date" value="${esc(suggestedDate)}"></div>
+      <div class="field full"><label>Unit Location</label><input id="fLocation" value="${esc(u?.location||"")}" placeholder="Brgy. San Isidro, Antipolo"></div>
+      <div class="field full"><label>Client Address</label><input id="fAddress" value="${esc(u?.address||u?.location||"")}" placeholder="Client residential/contact address"></div>
+      <div class="field"><label>Status</label><select id="fStatus"><option value="active" ${u?.active!==false?"selected":""}>Active</option><option value="inactive" ${u?.active===false?"selected":""}>Inactive</option></select></div>
+      <div class="field"><label>Auth User ID</label><input id="fAuthUserId" value="${esc(u?.authUserId||"")}" placeholder="Auto-linked after client login"><small class="hint">Normally leave blank. The Client Portal can auto-link by email.</small></div>
+      <div class="field full"><label>Notes</label><textarea id="fNotes" rows="3">${esc(u?.notes||"")}</textarea></div>
+    </div>`,`Save Client`,async()=>{
+      const clientCode=$("#fClientCode").value.trim(), unitCode=$("#fCode").value.trim(), name=$("#fName").value.trim(), email=$("#fEmail").value.trim().toLowerCase();
+      if(!clientCode||!unitCode||!name||!email) throw new Error("Client ID, Unit Code, Client Name and Client Email are required.");
+      if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new Error("Enter a valid client email address.");
+      const data={
+        clientCode,
+        unitCode,
+        name,
+        email,
+        location:$("#fLocation").value.trim(),
+        address:$("#fAddress").value.trim(),
+        contact:$("#fContact").value.trim(),
+        dateJoined:$("#fDateJoined").value||suggestedDate,
+        authUserId:$("#fAuthUserId").value.trim(),
+        notes:$("#fNotes").value.trim(),
+        active:$("#fStatus").value==="active",
+        updatedAt:serverTimestamp()
+      };
+      if(id){
+        await updateDoc(doc(db,"units",id),data);
+        await logActivity("Clients",`Edited ${unitCode} — ${name}`,id);
+        await addNotification("client","Client profile updated.",`${name} (${clientCode}) was updated.`,id);
+      }else{
+        const ref=await addDoc(collection(db,"units"),{...data,createdAt:serverTimestamp()});
+        await logActivity("Clients",`Added new client ${clientCode} — ${unitCode} — ${name}`,ref.id);
+        await addNotification("client","New client added.",`${name} (${clientCode}) was added.`,ref.id);
+      }
   });
 }
 async function toggleUnit(id){const u=units.find(x=>x.id===id);if(!u)return;const next=u.active===false; if(!confirm(`${next?"Activate":"Deactivate"} ${u.unitCode}? Historical sales and payments will remain.`))return;await updateDoc(doc(db,"units",id),{active:next,updatedAt:serverTimestamp()});await logActivity("Units",`${next?"Activated":"Deactivated"} ${u.unitCode}`,id);await addNotification("unit",`${u.unitCode} is ${next?"active":"inactive"}.`,`Unit status was changed.`,id);await loadData();render();notify(`Unit ${next?"activated":"deactivated"}.`);}

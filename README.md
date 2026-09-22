@@ -38,3 +38,30 @@ Normal unit management should use **Deactivate**, which preserves historical fin
 
 ## Firebase
 Use the Firebase config already present in `js/firebase-config.js`. Publish `firestore.rules` in the Firebase Console.
+
+
+## Client Portal — Added
+The project now includes a real Firebase-backed Client Portal:
+- `client-login.html` — dedicated client login
+- `client.html` — authenticated client dashboard and portal routes
+- `js/client-login.js` — client authentication / role routing
+- `js/client.js` — client-only data loading, dashboard, units, sales, payments, statements, profile and notifications
+- `css/client.css` — reference-matched responsive client UI
+- `js/finance.js` — shared financial calculation logic used by both Admin and Client portals
+
+### Client/Admin connection
+Admin client/unit records now support:
+- `clientCode`
+- `email`
+- `dateJoined`
+- `address`
+- `authUserId` (auto-linked after the client signs in)
+- existing unit/location/contact/status fields
+
+The Client Portal finds the authenticated client by the same email stored on the Admin client record and then establishes the Firebase UID link. A client can have multiple units using the same client email.
+
+### Client security
+`firestore.rules` now separates Admin and Client access. Client reads are scoped to their own unit records, monthly sales, payments and notifications. Client profile updates are limited to personal fields and the UID-link field; financial records, unit assignments, payments and business settings remain Admin-controlled.
+
+### Important deployment step
+Publish the updated `firestore.rules` in Firebase Console before testing the Client Portal. The client account must already exist in Firebase Authentication and use the same email entered by Admin in the client/unit record.
