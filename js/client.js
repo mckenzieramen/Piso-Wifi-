@@ -412,19 +412,47 @@ async function maybeShowFirstLoginPasswordSetup(){
   };
 }
 
+let bootstrapFinished=false;
+const BOOT_TIMEOUT_MS=10000;
+const bootTimer=setTimeout(()=>{
+  if(!bootstrapFinished){
+    openAuthError("The Client Portal is taking too long to connect to Firebase. Check your internet connection and make sure this site is authorized in Firebase, then try again.");
+  }
+},BOOT_TIMEOUT_MS);
+
+async function withTimeout(promise,ms,label){
+  return await Promise.race([
+    promise,
+    new Promise((_,reject)=>setTimeout(()=>reject(new Error(label)),ms))
+  ]);
+}
+
 async function bootstrap(user){
-  if(!user){location.replace("client-login.html");return;}
+  if(!user){
+    bootstrapFinished=true; clearTimeout(bootTimer);
+    location.replace("client-login.html");
+    return;
+  }
   currentUser=user;
   try{
-    const userSnap=await getDoc(doc(db,"users",user.uid));
-    if(userSnap.exists() && userSnap.data().role==="admin"){location.replace("dashboard.html");return;}
-    await loadClientData();
+    const userSnap=await withTimeout(getDoc(doc(db,"users",user.uid)),8000,"Firebase user profile request timed out.");
+    if(userSnap.exists() && userSnap.data().role==="admin"){
+      bootstrapFinished=true; clearTimeout(bootTimer);
+      location.replace("../dashboard.html");
+      return;
+    }
+    await withTimeout(loadClientData(),8000,"Client records request timed out. Please check Firebase rules and your connection.");
     $("#clientAuthLoading").classList.add("hidden");
     $("#clientApp").classList.remove("hidden");
     setupShell();
     route=parseRoute();render();
+    bootstrapFinished=true; clearTimeout(bootTimer);
     await maybeShowFirstLoginPasswordSetup();
-  }catch(e){console.error(e);openAuthError(e?.message||"Client profile or database access could not be loaded.");}
+  }catch(e){
+    console.error("Client bootstrap failed:",e);
+    bootstrapFinished=true; clearTimeout(bootTimer);
+    openAuthError(e?.message||"Client profile or database access could not be loaded.");
+  }
 }
 $("#clientMenuBtn").onclick=()=>{$("#clientSidebar").classList.add("open");$("#clientOverlay").classList.add("show");};
 $("#clientOverlay").onclick=()=>{$("#clientSidebar").classList.remove("open");$("#clientOverlay").classList.remove("show");};

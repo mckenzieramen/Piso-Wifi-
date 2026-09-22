@@ -1,2 +1,6 @@
-/client /client/client-login.html 302
-/client/ /client/client-login.html 302
+/admin/ /admin 301
+/admin /index.html 200
+/client-login/ /client-login 301
+/client-login /client-login.html 200
+/client /client.html 200
+/client/ /client.html 200

@@ -1,0 +1,13 @@
+PISO WIFI PUBLIC ROUTES
+
+ADMIN
+https://piso-wifi.pages.dev/admin
+
+CLIENT LOGIN
+https://piso-wifi.pages.dev/client-login
+
+CLIENT DASHBOARD TARGET
+https://piso-wifi.pages.dev/client
+
+Cloudflare Pages must deploy the contents of this folder as the project root.
+The _redirects file provides clean routes.
