@@ -1,70 +1,101 @@
 import { auth, db } from "./firebase.js";
-import { signInWithEmailAndPassword, onAuthStateChanged, sendPasswordResetEmail, signOut } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-auth.js";
+import {
+  signInWithEmailAndPassword,
+  onAuthStateChanged,
+  sendPasswordResetEmail,
+  signOut
+} from "https://www.gstatic.com/firebasejs/12.2.1/firebase-auth.js";
 import { doc, getDoc } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-firestore.js";
 
 const form = document.querySelector("#loginForm");
 const msg = document.querySelector("#loginMessage");
 
-async function checkAdmin(user) {
-  if (!user) return false;
-  const snap = await getDoc(doc(db, "users", user.uid));
-  return snap.exists() && snap.data().role === "admin" && snap.data().active !== false;
+function showMessage(text) {
+  if (msg) msg.textContent = text;
 }
 
-async function routeSignedInAdmin(user) {
-  if (!user) return;
+async function getUserRole(user) {
+  const snap = await getDoc(doc(db, "users", user.uid));
+  if (!snap.exists()) return null;
+  const data = snap.data();
+  return {
+    role: String(data.role || "").toLowerCase(),
+    active: data.active !== false
+  };
+}
+
+// ADMIN LOGIN IS ADMIN-ONLY.
+// A client account must never be redirected to the customer portal from here.
+async function handleAdminUser(user) {
+  if (!user) return false;
+
   try {
-    const isAdmin = await checkAdmin(user);
-    if (isAdmin) {
-      window.location.replace("/admin/dashboard.html");
-      return;
+    const account = await getUserRole(user);
+
+    if (account?.role !== "admin" || account.active !== true) {
+      await signOut(auth);
+      showMessage(
+        account?.role === "client"
+          ? "This is a Customer Account. Please use the Customer Account login."
+          : "This account is not authorized for the Admin Portal."
+      );
+      return false;
     }
-    await signOut(auth);
-    msg.textContent = "This account is not authorized for the Admin Portal.";
+
+    window.location.replace("/admin/dashboard.html");
+    return true;
   } catch (error) {
-    console.error("Admin authorization check failed:", error);
-    try { await signOut(auth); } catch {}
-    msg.textContent = "Unable to verify Admin access. Please try again.";
+    console.error("[PISO WIFI Admin Auth]", error);
+    await signOut(auth).catch(() => {});
+    showMessage("Unable to verify Admin access. Please try again.");
+    return false;
   }
 }
 
-onAuthStateChanged(auth, routeSignedInAdmin);
+onAuthStateChanged(auth, user => {
+  if (user) handleAdminUser(user);
+});
 
-form.addEventListener("submit", async (e) => {
+form?.addEventListener("submit", async e => {
   e.preventDefault();
-  msg.textContent = "Signing in...";
+  showMessage("Signing in...");
+
+  const email = document.querySelector("#email")?.value.trim().toLowerCase();
+  const password = document.querySelector("#password")?.value || "";
+
+  if (!email || !password) {
+    showMessage("Enter your email and password.");
+    return;
+  }
+
   try {
-    const cred = await signInWithEmailAndPassword(
-      auth,
-      document.querySelector("#email").value.trim().toLowerCase(),
-      document.querySelector("#password").value
-    );
-    const isAdmin = await checkAdmin(cred.user);
-    if (!isAdmin) {
-      await signOut(auth);
-      msg.textContent = "This is a Customer Account. Please use the Customer Account login.";
-      return;
-    }
-    window.location.replace("/admin/dashboard.html");
+    const cred = await signInWithEmailAndPassword(auth, email, password);
+    await handleAdminUser(cred.user);
   } catch (err) {
-    console.error(err);
-    msg.textContent = "Login failed. Please check your email, password, and Admin access.";
+    console.error("[PISO WIFI Admin Login]", err);
+    showMessage("Login failed. Please check your email and password.");
   }
 });
 
-document.querySelector("#togglePassword").onclick = () => {
+document.querySelector("#togglePassword")?.addEventListener("click", () => {
   const p = document.querySelector("#password");
+  if (!p) return;
   p.type = p.type === "password" ? "text" : "password";
-  document.querySelector("#togglePassword").textContent = p.type === "password" ? "Show" : "Hide";
-};
+  document.querySelector("#togglePassword").textContent =
+    p.type === "password" ? "Show" : "Hide";
+});
 
-document.querySelector("#resetPassword").onclick = async () => {
-  const email = document.querySelector("#email").value.trim();
-  if (!email) { msg.textContent = "Enter your email first."; return; }
+document.querySelector("#resetPassword")?.addEventListener("click", async () => {
+  const email = document.querySelector("#email")?.value.trim().toLowerCase();
+  if (!email) {
+    showMessage("Enter your email first.");
+    return;
+  }
+
   try {
     await sendPasswordResetEmail(auth, email);
-    msg.textContent = "If an account exists for that email, password reset instructions have been sent.";
+    showMessage("If an account exists for that email, password reset instructions have been sent.");
   } catch {
-    msg.textContent = "If an account exists for that email, password reset instructions have been sent.";
+    showMessage("If an account exists for that email, password reset instructions have been sent.");
   }
-};
+});
