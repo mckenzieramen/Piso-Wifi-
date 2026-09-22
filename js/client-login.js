@@ -16,8 +16,8 @@ async function routeUser(user){
   try{
     const snap=await getDoc(doc(db,"users",user.uid));
     if(snap.exists() && snap.data().role==="admin"){ location.replace("dashboard.html"); return; }
-    location.replace("client.html");
-  }catch(e){ location.replace("client.html"); }
+    location.replace("/client");
+  }catch(e){ location.replace("/client"); }
 }
 
 onAuthStateChanged(auth,user=>{ if(user)routeUser(user); });
@@ -36,7 +36,7 @@ form.addEventListener("submit",async e=>{
       message("This is an Admin account. Please use the Admin Portal login.","error");
       submit.disabled=false; submit.textContent="Login"; return;
     }
-    location.replace("client.html");
+    location.replace("/client");
   }catch(err){
     console.error(err);
     message("Invalid Unit ID or password. If this is your first login, use the temporary password provided by Admin.","error");

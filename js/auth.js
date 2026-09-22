@@ -13,16 +13,16 @@ async function routeSignedInUser(user){
   try{
     const roleSnap=await getDoc(doc(db,"users",user.uid));
     if(roleSnap.exists() && roleSnap.data().role==="client"){
-      window.location.href="client.html"; return;
+      window.location.href="/client"; return;
     }
     if(roleSnap.exists() && roleSnap.data().role==="admin"){
-      window.location.href="dashboard.html"; return;
+      window.location.href="/admin/dashboard.html"; return;
     }
     const linked=await getDocs(query(collection(db,"units"),where("email","==",(user.email||"").toLowerCase())));
-    if(!linked.empty){window.location.href="client.html";return;}
-    window.location.href="dashboard.html";
+    if(!linked.empty){window.location.href="/client";return;}
+    window.location.href="/admin/dashboard.html";
   }catch(e){
-    window.location.href="dashboard.html";
+    window.location.href="/admin/dashboard.html";
   }
 }
 onAuthStateChanged(auth, routeSignedInUser);

@@ -1,12 +1,10 @@
-/admin
-  Cache-Control: no-store, no-cache, must-revalidate, max-age=0
+/*
+  Cache-Control: no-cache, no-store, must-revalidate
+  Pragma: no-cache
+  Expires: 0
+
 /admin/*
-  Cache-Control: no-store, no-cache, must-revalidate, max-age=0
-/client-login
-  Cache-Control: no-store, no-cache, must-revalidate, max-age=0
-/client-login.html
-  Cache-Control: no-store, no-cache, must-revalidate, max-age=0
-/client/*
-  Cache-Control: no-store, no-cache, must-revalidate, max-age=0
-/client.html
-  Cache-Control: no-store, no-cache, must-revalidate, max-age=0
+  Cache-Control: no-cache, no-store, must-revalidate
+
+/client*
+  Cache-Control: no-cache, no-store, must-revalidate

@@ -1,46 +1,16 @@
-# PISO WIFI Management System — Premium V2
+PISO WIFI — OFFICIAL ROUTE BUILD
 
-Premium Firebase-backed PISO WIFI management dashboard based on the supplied MASTER FULL-SYSTEM IMPLEMENTATION PROMPT.
+The official customer/client website is the root URL:
+https://piso-wifi.pages.dev/
 
-## Included
-- Premium navy/blue SaaS dashboard visual system
-- Dashboard KPI cards, six-month sales trend, top units, outstanding payments
-- Units / Clients management
-- Add / Edit / Activate / Deactivate clients
-- **Temporary permanent Delete Client / Unit feature** with `DELETE` confirmation
-- Gross Sales record / edit / delete
-- Automatic Internet / Net / Owner Share / Client Share / Electricity / Amount Due calculations
-- Payments with Paid / Partial / Unpaid states
-- Client Profile and Statement views
-- Monthly Reports + CSV / Excel / Print
-- Notifications and Activity Log
-- Business Settings and configurable calculation rules
-- Firebase Authentication + Firestore persistence
-- Responsive desktop / tablet / mobile layout
+The Admin portal is:
+https://piso-wifi.pages.dev/admin
 
-## Temporarily enabled client deletion
-In `js/dashboard.js`:
+The authenticated client dashboard is:
+https://piso-wifi.pages.dev/client
 
-```js
-const ENABLE_CLIENT_DELETE = true;
-```
+Deploy the contents of this package to the ROOT of the Cloudflare Pages project.
+Do not nest the whole package inside another folder.
 
-When the delete feature is no longer wanted, change it to:
-
-```js
-const ENABLE_CLIENT_DELETE = false;
-```
-
-This hides the Delete Client action without removing the rest of the management system.
-
-## Important
-Normal unit management should use **Deactivate**, which preserves historical financial records. The temporary Delete Client feature is a permanent administrative cleanup action and removes the selected unit together with its linked monthly sales and payment records after explicit `DELETE` confirmation.
-
-## Firebase
-Use the Firebase config already present in `js/firebase-config.js`. Publish `firestore.rules` in the Firebase Console.
-
-
-## Client Portal v4 deployment note
-The client portal pages now contain the full client CSS inline so the visual layout does not depend on a separate CSS asset loading correctly.
-Replace the deployed `client.html` and `client-login.html` with these files and deploy the entire `piso_work` folder. Do not open an old cached URL/file.
-Client authentication remains handled by `js/client-login.js` and `js/client.js`.
+The client portal remains client-only and uses the existing Firebase authentication/data layer.
+Each authenticated client must be authorized server-side to access only their own units, sales, payments, statements and notifications.

@@ -1,13 +1,20 @@
-PISO WIFI PUBLIC ROUTES
+PISO WIFI OFFICIAL ROUTES
 
-ADMIN
+CUSTOMER / CLIENT WEBSITE (OFFICIAL)
+https://piso-wifi.pages.dev/
+-> Client Login
+
+ADMIN WEBSITE
 https://piso-wifi.pages.dev/admin
+-> Admin Login
 
-CLIENT LOGIN
-https://piso-wifi.pages.dev/client-login
-
-CLIENT DASHBOARD TARGET
+CLIENT DASHBOARD AFTER LOGIN
 https://piso-wifi.pages.dev/client
+-> Client Dashboard
 
-Cloudflare Pages must deploy the contents of this folder as the project root.
-The _redirects file provides clean routes.
+OPTIONAL ALIAS
+https://piso-wifi.pages.dev/client-login
+-> same Client Login as the official root
+
+Do not add redirect rules that bounce between slash/no-slash variants.
+All rules above are Cloudflare Pages internal rewrites (status 200).

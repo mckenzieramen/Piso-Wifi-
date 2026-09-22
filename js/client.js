@@ -430,7 +430,7 @@ async function withTimeout(promise,ms,label){
 async function bootstrap(user){
   if(!user){
     bootstrapFinished=true; clearTimeout(bootTimer);
-    location.replace("client-login.html");
+    location.replace("/");
     return;
   }
   currentUser=user;
@@ -438,7 +438,7 @@ async function bootstrap(user){
     const userSnap=await withTimeout(getDoc(doc(db,"users",user.uid)),8000,"Firebase user profile request timed out.");
     if(userSnap.exists() && userSnap.data().role==="admin"){
       bootstrapFinished=true; clearTimeout(bootTimer);
-      location.replace("../dashboard.html");
+      location.replace("/admin/dashboard.html");
       return;
     }
     await withTimeout(loadClientData(),8000,"Client records request timed out. Please check Firebase rules and your connection.");
@@ -456,7 +456,7 @@ async function bootstrap(user){
 }
 $("#clientMenuBtn").onclick=()=>{$("#clientSidebar").classList.add("open");$("#clientOverlay").classList.add("show");};
 $("#clientOverlay").onclick=()=>{$("#clientSidebar").classList.remove("open");$("#clientOverlay").classList.remove("show");};
-$("#clientLogout").onclick=async()=>{await signOut(auth);location.replace("client-login.html");};
+$("#clientLogout").onclick=async()=>{await signOut(auth);location.replace("/");};
 $("#notificationBtn").onclick=toggleNotificationPopover;
 document.addEventListener("click",e=>{
   if(!e.target.closest("#notificationWrap"))$("#notificationPopover")?.classList.remove("show");
