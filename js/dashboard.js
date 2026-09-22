@@ -1,4 +1,7 @@
 import { auth, db } from "./firebase.js";
+import { firebaseConfig } from "./firebase-config.js";
+import { initializeApp } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-app.js";
+import { getAuth, createUserWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-auth.js";
 import { calculateFinancialRecord } from "./finance.js";
 import { onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-auth.js";
 import {
@@ -27,6 +30,11 @@ let unitSearch = "", unitStatus = "", unitPaymentStatus = "";
 // TEMPORARY ADMIN FEATURE: keep true while client deletion is needed.
 // Set to false later to remove the Delete Client button without changing the rest of the system.
 const ENABLE_CLIENT_DELETE = true;
+const CLIENT_AUTH_DOMAIN="@client-login.pisowifi.local";
+const clientProvisionerApp=initializeApp(firebaseConfig,"clientProvisioner");
+const clientProvisionerAuth=getAuth(clientProvisionerApp);
+const clientAuthEmailFromUnitId=(unitCode)=>`${String(unitCode||"").trim().toLowerCase().replace(/[^a-z0-9]+/g,"-")}${CLIENT_AUTH_DOMAIN}`;
+
 
 function notify(msg, type="success") {
   toastEl.textContent = msg;
@@ -326,13 +334,14 @@ function openUnitModal(id=null){
       <div class="field"><label>Client ID *</label><input id="fClientCode" value="${esc(suggestedCode)}" placeholder="C-001"></div>
       <div class="field"><label>Unit Code *</label><input id="fCode" value="${esc(u?.unitCode||"")}" placeholder="UNIT-001"></div>
       <div class="field"><label>Client Name *</label><input id="fName" value="${esc(u?.name||"")}" placeholder="Juan Dela Cruz"></div>
-      <div class="field"><label>Client Email *</label><input id="fEmail" type="email" value="${esc(u?.email||"")}" placeholder="client@example.com"><small class="hint">Use the same email the client will use to sign in.</small></div>
+      <div class="field"><label>Client Email *</label><input id="fEmail" type="email" value="${esc(u?.email||"")}" placeholder="client@example.com"><small class="hint">Used for contact/recovery records. Client signs in with Unit ID.</small></div>
       <div class="field"><label>Contact Number</label><input id="fContact" value="${esc(u?.contact||"")}" placeholder="09171234567"></div>
       <div class="field"><label>Date Joined</label><input id="fDateJoined" type="date" value="${esc(suggestedDate)}"></div>
       <div class="field full"><label>Unit Location</label><input id="fLocation" value="${esc(u?.location||"")}" placeholder="Brgy. San Isidro, Antipolo"></div>
       <div class="field full"><label>Client Address</label><input id="fAddress" value="${esc(u?.address||u?.location||"")}" placeholder="Client residential/contact address"></div>
       <div class="field"><label>Status</label><select id="fStatus"><option value="active" ${u?.active!==false?"selected":""}>Active</option><option value="inactive" ${u?.active===false?"selected":""}>Inactive</option></select></div>
-      <div class="field"><label>Auth User ID</label><input id="fAuthUserId" value="${esc(u?.authUserId||"")}" placeholder="Auto-linked after client login"><small class="hint">Normally leave blank. The Client Portal can auto-link by email.</small></div>
+      <div class="field"><label>Client Login</label><input id="fAuthUserId" value="${esc(u?.authUserId||"")}" placeholder="Created automatically" disabled><small class="hint">Login ID is the Unit Code. Firebase Auth ID is created automatically for new clients.</small></div>
+      ${id?"":`<div class="field"><label>Temporary Password *</label><input id="fTempPassword" type="text" minlength="8" placeholder="Give client a temporary password"><small class="hint">Client must create a private password after first login.</small></div>`}
       <div class="field full"><label>Notes</label><textarea id="fNotes" rows="3">${esc(u?.notes||"")}</textarea></div>
     </div>`,`Save Client`,async()=>{
       const clientCode=$("#fClientCode").value.trim(), unitCode=$("#fCode").value.trim(), name=$("#fName").value.trim(), email=$("#fEmail").value.trim().toLowerCase();
@@ -357,9 +366,24 @@ function openUnitModal(id=null){
         await logActivity("Clients",`Edited ${unitCode} — ${name}`,id);
         await addNotification("client","Client profile updated.",`${name} (${clientCode}) was updated.`,id);
       }else{
+        const tempPassword=$("#fTempPassword")?.value||"";
+        if(tempPassword.length<8) throw new Error("Temporary password must be at least 8 characters.");
+        const authEmail=clientAuthEmailFromUnitId(unitCode);
+        let cred;
+        try{
+          cred=await createUserWithEmailAndPassword(clientProvisionerAuth,authEmail,tempPassword);
+        }catch(e){
+          if(e?.code==="auth/email-already-in-use") throw new Error("This Unit ID already has a client login account. Use a different Unit Code or edit the existing client.");
+          throw e;
+        }
+        data.authUserId=cred.user.uid;
+        data.forcePasswordChange=true;
+        data.loginId=unitCode;
+        data.authEmail=authEmail;
         const ref=await addDoc(collection(db,"units"),{...data,createdAt:serverTimestamp()});
-        await logActivity("Clients",`Added new client ${clientCode} — ${unitCode} — ${name}`,ref.id);
-        await addNotification("client","New client added.",`${name} (${clientCode}) was added.`,ref.id);
+        await setDoc(doc(db,"users",cred.user.uid),{role:"client",clientUnitId:ref.id,unitId:ref.id,clientCode,loginId:unitCode,email,createdAt:serverTimestamp(),updatedAt:serverTimestamp()});
+        await logActivity("Clients",`Added client account ${clientCode} — ${unitCode} — ${name}`,ref.id);
+        await addNotification("client","New client account created.",`${name} (${clientCode}) can now log in using ${unitCode}.`,ref.id);
       }
   });
 }

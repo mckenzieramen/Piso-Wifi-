@@ -44,7 +44,7 @@ service cloud.firestore {
         || (
           isClientUnit(resource.data)
           && request.resource.data.diff(resource.data).affectedKeys()
-              .hasOnly(["name", "contact", "address", "authUserId", "updatedAt"])
+              .hasOnly(["name", "contact", "address", "authUserId", "forcePasswordChange", "passwordChangedAt", "updatedAt"])
         );
     }
 

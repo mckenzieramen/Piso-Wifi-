@@ -1,6 +1,6 @@
 import { auth, db } from "./firebase.js";
 import {
-  onAuthStateChanged, signOut, sendPasswordResetEmail
+  onAuthStateChanged, signOut, updatePassword
 } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-auth.js";
 import {
   collection, doc, getDoc, getDocs, query, where, updateDoc,
@@ -114,33 +114,14 @@ function pageTitle(title,sub,actions=""){return `<div class="client-page-head"><
 function financialCard(icon,title,value,sub,cls=""){return `<article class="financial-card ${cls}"><div class="financial-icon">${icon}</div><span>${esc(title)}</span><strong>${money(value)}</strong><small>${esc(sub)}</small></article>`;}
 
 async function findClientUnits(user){
-  const email=(user.email||"").trim().toLowerCase();
-  const results=new Map();
+  const results=[];
   if(user.uid){
     try{
       const byUid=await getDocs(query(collection(db,"units"),where("authUserId","==",user.uid)));
-      byUid.docs.forEach(d=>results.set(d.id,{id:d.id,...d.data()}));
-    }catch(e){console.warn("authUserId lookup unavailable",e);}
+      byUid.docs.forEach(d=>results.push({id:d.id,...d.data()}));
+    }catch(e){ console.warn("authUserId lookup unavailable",e); }
   }
-  if(email){
-    const byEmail=await getDocs(query(collection(db,"units"),where("email","==",email)));
-    byEmail.docs.forEach(d=>results.set(d.id,{id:d.id,...d.data()}));
-  }
-  const units=[...results.values()];
-  if(!units.length) return [];
-  // Automatically establish the exact UID relationship for future secure reads.
-  const batch=writeBatch(db);
-  let changed=false;
-  units.forEach(u=>{
-    if(!u.authUserId){
-      batch.update(doc(db,"units",u.id),{authUserId:user.uid,updatedAt:serverTimestamp()});
-      u.authUserId=user.uid; changed=true;
-    }
-  });
-  if(changed){
-    try{await batch.commit();}catch(e){console.warn("Could not save client UID link; email-scoped access remains active.",e);}
-  }
-  return units;
+  return results;
 }
 async function getChunked(collectionName,field,ids){
   const out=new Map();
@@ -155,6 +136,7 @@ async function getChunked(collectionName,field,ids){
 async function loadClientData(){
   clientUnits=await findClientUnits(currentUser);
   if(!clientUnits.length) throw new Error("Your account is not linked to a client profile yet. Please contact the Admin.");
+  if(clientUnits.every(u=>u.active===false)) throw new Error("Your client account is inactive. Please contact the Admin.");
   const ids=clientUnits.map(u=>u.id);
   const [r,p,s]=await Promise.all([
     getChunked("monthlyRecords","unitId",ids),
@@ -404,6 +386,32 @@ function openAuthError(message){
   const loader=$("#clientAuthLoading");loader.innerHTML=`<div class="client-auth-error"><strong>Unable to open Client Portal</strong><span>${esc(message)}</span><a href="client-login.html">Return to Client Login</a></div>`;
   loader.classList.remove("hidden");
 }
+async function maybeShowFirstLoginPasswordSetup(){
+  const unit=clientUnits[0];
+  if(!unit || unit.forcePasswordChange!==true) return;
+  const modal=$("#clientPasswordSetup");
+  if(!modal) return;
+  modal.classList.remove("hidden"); modal.setAttribute("aria-hidden","false");
+  const form=$("#clientPasswordForm"), msg=$("#clientPasswordMessage");
+  form.onsubmit=async e=>{
+    e.preventDefault();
+    const a=$("#newClientPassword").value, b=$("#confirmClientPassword").value;
+    if(a.length<8){msg.textContent="Use at least 8 characters.";msg.className="client-login-message error";return;}
+    if(a!==b){msg.textContent="Passwords do not match.";msg.className="client-login-message error";return;}
+    const btn=form.querySelector("button"); btn.disabled=true; btn.textContent="Saving…";
+    try{
+      await updatePassword(currentUser,a);
+      await updateDoc(doc(db,"units",unit.id),{forcePasswordChange:false,passwordChangedAt:serverTimestamp(),updatedAt:serverTimestamp()});
+      unit.forcePasswordChange=false;
+      modal.classList.add("hidden"); modal.setAttribute("aria-hidden","true");
+      toast("Your new password has been saved.");
+    }catch(err){
+      console.error(err); msg.textContent="Unable to update your password. Please sign in again and try once more.";msg.className="client-login-message error";
+      btn.disabled=false;btn.textContent="Save My Password";
+    }
+  };
+}
+
 async function bootstrap(user){
   if(!user){location.replace("client-login.html");return;}
   currentUser=user;
@@ -415,6 +423,7 @@ async function bootstrap(user){
     $("#clientApp").classList.remove("hidden");
     setupShell();
     route=parseRoute();render();
+    await maybeShowFirstLoginPasswordSetup();
   }catch(e){console.error(e);openAuthError(e?.message||"Client profile or database access could not be loaded.");}
 }
 $("#clientMenuBtn").onclick=()=>{$("#clientSidebar").classList.add("open");$("#clientOverlay").classList.add("show");};
