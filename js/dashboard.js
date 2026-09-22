@@ -35,21 +35,6 @@ const clientProvisionerApp=initializeApp(firebaseConfig,"clientProvisioner");
 const clientProvisionerAuth=getAuth(clientProvisionerApp);
 const clientAuthEmailFromUnitId=(unitCode)=>`${String(unitCode||"").trim().toLowerCase().replace(/[^a-z0-9]+/g,"-")}${CLIENT_AUTH_DOMAIN}`;
 
-async function syncCustomerDirectory(){
-  const jobs=units.filter(u=>u.clientCode&&u.unitCode&&u.email).map(u=>
-    setDoc(doc(db,"customerLoginDirectory",String(u.clientCode).toUpperCase()),{
-      clientCode:String(u.clientCode).toUpperCase(),
-      unitCode:String(u.unitCode).toUpperCase(),
-      email:String(u.email).trim().toLowerCase(),
-      unitDocId:u.id,
-      authUserId:u.authUserId||"",
-      active:u.active!==false,
-      updatedAt:serverTimestamp()
-    },{merge:true})
-  );
-  if(jobs.length) await Promise.all(jobs);
-}
-
 
 function notify(msg, type="success") {
   toastEl.textContent = msg;
@@ -91,7 +76,6 @@ async function loadData(){
   ]);
 
   units=u.docs.map(d=>({id:d.id,...d.data()}));
-  try { await syncCustomerDirectory(); } catch(e) { console.warn("Customer directory sync skipped",e); }
   records=r.docs.map(d=>({id:d.id,...d.data()}));
   payments=p.docs.map(d=>({id:d.id,...d.data()}));
   if(s.exists()) settings={...settings,...s.data()};
@@ -147,11 +131,9 @@ async function addNotification(type,title,message,relatedId=""){
 }
 function unreadCount(){ return notifications.filter(n=>n.read!==true).length; }
 function updateNotificationBadge(){
-  const el=document.querySelector("#adminNotificationBadge");
-  if(!el)return;
-  const count=unreadCount();
-  el.textContent=count>99?"99+":String(count);
-  el.classList.toggle("hidden",count===0);
+  // Notification UI was intentionally removed from the dashboard header/sidebar.
+  // Keep notification data generation compatible without requiring visible badge elements.
+  return unreadCount();
 }
 function nav(){ document.querySelectorAll("#nav a").forEach(a=>a.classList.toggle("active",a.dataset.route===route)); }
 function closeMenu(){ $("#sidebar").classList.remove("open"); $("#overlay").classList.remove("show"); }
@@ -175,7 +157,7 @@ function renderDashboard(){
   const customerNet = Math.max(0, t.client - t.elec);
   const top=[...rows].sort((a,b)=>b.c.gross-a.c.gross).slice(0,5);
   const outstanding=rows.filter(x=>x.c.balance>0).sort((a,b)=>b.c.balance-a.c.balance).slice(0,5);
-  view.innerHTML=baseHead("Dashboard","Overview of your Piso WiFi business.",`<button class="primary-btn" id="addUnitTop">+ Add New Unit</button>`)+`
+  view.innerHTML=baseHead("Dashboard","Overview of your Piso WiFi business.","")+`
   <div class="dashboard-grid">
     <div class="kpis">
       ${kpi("▦","Total Units",units.length,"All registered units")}
@@ -195,7 +177,6 @@ function renderDashboard(){
     </div>
     <div class="panel"><div class="panel-head"><div><h3>Units / Clients</h3><p>Monthly computation for ${monthLabel(selectedMonth)}</p></div><div class="tools"><input class="search" id="dashSearch" placeholder="Search client or unit…"><select id="dashStatus" class="search"><option value="">All Payment Status</option><option>Paid</option><option>Partial</option><option>Unpaid</option></select></div></div><div class="table-wrap accumulating-table"><table><thead><tr><th>Unit Code</th><th>Client Name</th><th>Location</th><th>Status</th><th>This Month</th><th>Payment</th><th>Actions</th></tr></thead><tbody id="dashBody">${rows.length?rows.map(dashboardRow).join(""):emptyRow(7,"No clients or units found.")}</tbody></table></div></div>
   </div>`;
-  $("#addUnitTop").onclick=()=>openUnitModal();
   $("#dashSearch").oninput=e=>filterDashboard(e.target.value,$("#dashStatus").value);
   $("#dashStatus").onchange=e=>filterDashboard($("#dashSearch").value,e.target.value);
   $("#viewOutstanding").onclick=()=>{location.hash="#payments";};
@@ -239,7 +220,7 @@ function yearMonths(k){const y=Number(k.slice(0,4));return Array.from({length:12
 
 function renderUnits(){
   const rows=normalizeRows().filter(x=>(!unitSearch||`${x.u.name} ${x.u.unitCode} ${x.u.location} ${x.u.contact}`.toLowerCase().includes(unitSearch.toLowerCase()))&&(!unitStatus||String(x.u.active!==false?"Active":"Inactive")===unitStatus)&&(!unitPaymentStatus||x.c.status===unitPaymentStatus));
-  view.innerHTML=baseHead("Units / Clients","Manage your Piso WiFi units and clients.",`<button class="primary-btn" id="addUnitBtn">+ Add Client / Unit</button>`)+`<div class="panel"><div class="panel-head"><div><h3>Registered Units</h3><p>Showing ${rows.length} of ${units.length} units · ${monthLabel(selectedMonth)}</p></div><div class="tools"><input id="unitSearch" class="search" placeholder="Search client or unit…" value="${esc(unitSearch)}"><select id="unitStatus" class="search"><option value="">All Status</option><option ${unitStatus==="Active"?"selected":""}>Active</option><option ${unitStatus==="Inactive"?"selected":""}>Inactive</option></select><select id="unitPaymentStatus" class="search"><option value="">All Payment Status</option><option ${unitPaymentStatus==="Paid"?"selected":""}>Paid</option><option ${unitPaymentStatus==="Partial"?"selected":""}>Partial</option><option ${unitPaymentStatus==="Unpaid"?"selected":""}>Unpaid</option></select><button class="secondary-btn" id="exportUnits">Export Excel/CSV</button></div></div><div class="table-wrap accumulating-table"><table><thead><tr><th>Unit Code</th><th>Client Name</th><th>Location</th><th>Contact</th><th>Status</th><th>This Month</th><th>Payment</th><th>Actions</th></tr></thead><tbody>${rows.length?rows.map(x=>`<tr><td><b>${esc(x.u.unitCode||"—")}</b></td><td>${esc(x.u.name||"—")}</td><td>${esc(x.u.location||"—")}</td><td>${esc(x.u.contact||"—")}</td><td>${statusBadge(x.u.active!==false?"Active":"Inactive")}</td><td class="amount">${money(x.c.gross)}</td><td>${statusBadge(x.c.status)}</td><td><button class="action-btn" data-sale="${x.u.id}">Gross Sale</button><button class="action-btn" data-profile="${x.u.id}">View</button><button class="action-btn" data-edit-unit="${x.u.id}">Edit</button><button class="action-btn danger" data-toggle-unit="${x.u.id}">${x.u.active!==false?"Deactivate":"Activate"}</button>${ENABLE_CLIENT_DELETE?`<button class="action-btn danger solid-danger" data-delete-unit="${x.u.id}">Delete</button>`:""}</td></tr>`).join(""):emptyRow(8,"No clients or units found.")}</tbody></table></div></div>`;
+  view.innerHTML=baseHead("Units / Clients","Manage your Piso WiFi units and clients.",`<button class="primary-btn" id="addUnitBtn">+ Add New Client</button>`)+`<div class="panel"><div class="panel-head"><div><h3>Registered Units</h3><p>Showing ${rows.length} of ${units.length} units · ${monthLabel(selectedMonth)}</p></div><div class="tools"><input id="unitSearch" class="search" placeholder="Search client or unit…" value="${esc(unitSearch)}"><select id="unitStatus" class="search"><option value="">All Status</option><option ${unitStatus==="Active"?"selected":""}>Active</option><option ${unitStatus==="Inactive"?"selected":""}>Inactive</option></select><select id="unitPaymentStatus" class="search"><option value="">All Payment Status</option><option ${unitPaymentStatus==="Paid"?"selected":""}>Paid</option><option ${unitPaymentStatus==="Partial"?"selected":""}>Partial</option><option ${unitPaymentStatus==="Unpaid"?"selected":""}>Unpaid</option></select><button class="secondary-btn" id="exportUnits">Export Excel/CSV</button></div></div><div class="table-wrap accumulating-table"><table><thead><tr><th>Unit Code</th><th>Client Name</th><th>Location</th><th>Contact</th><th>Status</th><th>This Month</th><th>Payment</th><th>Actions</th></tr></thead><tbody>${rows.length?rows.map(x=>`<tr><td><b>${esc(x.u.unitCode||"—")}</b></td><td>${esc(x.u.name||"—")}</td><td>${esc(x.u.location||"—")}</td><td>${esc(x.u.contact||"—")}</td><td>${statusBadge(x.u.active!==false?"Active":"Inactive")}</td><td class="amount">${money(x.c.gross)}</td><td>${statusBadge(x.c.status)}</td><td><button class="action-btn" data-sale="${x.u.id}">Gross Sale</button><button class="action-btn" data-profile="${x.u.id}">View</button><button class="action-btn" data-edit-unit="${x.u.id}">Edit</button><button class="action-btn danger" data-toggle-unit="${x.u.id}">${x.u.active!==false?"Deactivate":"Activate"}</button>${ENABLE_CLIENT_DELETE?`<button class="action-btn danger solid-danger" data-delete-unit="${x.u.id}">Delete</button>`:""}</td></tr>`).join(""):emptyRow(8,"No clients or units found.")}</tbody></table></div></div>`;
   $("#addUnitBtn").onclick=()=>openUnitModal();
   $("#unitSearch").oninput=e=>{unitSearch=e.target.value;renderUnits()};
   $("#unitStatus").onchange=e=>{unitStatus=e.target.value;renderUnits()};
@@ -296,7 +277,7 @@ function downloadStatementPdf(id,month){
 function printStatement(id,month){const {u,c}=statementData(id,month);openPrintWindow(statementDocumentHtml(u,c,month));}
 
 function renderNotifications(){
-  view.innerHTML=baseHead("Notifications","Stay updated on payments, balances, reports and system changes.",`<button class="secondary-btn" id="markAllRead">Mark all as read</button>`)+`<div class="notification-list">${notifications.length?notifications.map(n=>`<button class="notification-card ${n.read===true?"read":"unread"}" data-notification="${n.id}"><span class="notification-icon">${n.type==="payment"?"₱":n.type==="balance"?"!":n.type==="report"?"▥":n.type==="password-reset"?"🔐":"●"}</span><span><b>${esc(n.title)}</b><small>${esc(n.message)}</small><time>${dateTimeLabel(n.createdAt)}</time></span>${n.read!==true?"<em>NEW</em>":""}</button>`).join(""):empty("You're all caught up.")}</div>`;
+  view.innerHTML=baseHead("Notifications","Stay updated on payments, balances, reports and system changes.",`<button class="secondary-btn" id="markAllRead">Mark all as read</button>`)+`<div class="notification-list">${notifications.length?notifications.map(n=>`<button class="notification-card ${n.read===true?"read":"unread"}" data-notification="${n.id}"><span class="notification-icon">${n.type==="payment"?"₱":n.type==="balance"?"!":n.type==="report"?"▥":"●"}</span><span><b>${esc(n.title)}</b><small>${esc(n.message)}</small><time>${dateTimeLabel(n.createdAt)}</time></span>${n.read!==true?"<em>NEW</em>":""}</button>`).join(""):empty("You're all caught up.")}</div>`;
   $("#markAllRead").onclick=markAllNotificationsRead; document.querySelectorAll("[data-notification]").forEach(b=>b.onclick=()=>openNotification(b.dataset.notification));
 }
 async function openNotification(id){const n=notifications.find(x=>x.id===id);if(!n)return;if(n.read!==true){await updateDoc(doc(db,"notifications",id),{read:true});await loadData();} if(n.relatedId && units.some(u=>u.id===n.relatedId)){openProfile(n.relatedId);}else{render();}}
@@ -348,69 +329,77 @@ function openModal(title,body,saveText,onSave,{danger=false}={}){
   setTimeout(()=>document.querySelector("#modalRoot input, #modalRoot select")?.focus(),50);
 }
 function closeModal(){ $("#modalRoot").innerHTML=""; }
+function nextClientCode(excludeId=null){
+  const activeCodes=new Set(units.filter(u=>u.active!==false && u.id!==excludeId).map(u=>String(u.clientCode||"").toUpperCase()));
+  let n=1;
+  while(activeCodes.has(`C-${String(n).padStart(3,"0")}`)) n++;
+  return `C-${String(n).padStart(3,"0")}`;
+}
+function availableUnitCodes(excludeId=null){
+  const used=new Set(units.filter(u=>u.active!==false && u.id!==excludeId).map(u=>String(u.unitCode||"").padStart(3,"0")));
+  return Array.from({length:50},(_,i)=>String(i+1).padStart(3,"0")).filter(c=>!used.has(c));
+}
 function openUnitModal(id=null){
   const u=id?units.find(x=>x.id===id):null;
-  const suggestedCode = u?.clientCode || `C-${String(units.length+1).padStart(3,"0")}`;
+  const suggestedCode = u?.clientCode || nextClientCode();
   const suggestedDate = u?.dateJoined || new Date().toISOString().slice(0,10);
-  openModal(id?"Edit Client / Unit":"Add New Client / Unit",`
+  const choices = availableUnitCodes(id);
+  const unitOptions = u?.unitCode && !choices.includes(String(u.unitCode).padStart(3,"0"))
+    ? [String(u.unitCode).padStart(3,"0"),...choices]
+    : choices;
+  openModal(id?"Edit Client":"Add New Client",`
+    <div class="notice"><b>Account setup:</b> Client ID is generated automatically. Unit Code is selected from the available 001–050 units.</div>
     <div class="form-grid">
-      <div class="field"><label>Client ID *</label><input id="fClientCode" value="${esc(suggestedCode)}" placeholder="C-001"></div>
-      <div class="field"><label>Unit Code *</label><input id="fCode" value="${esc(u?.unitCode||"")}" placeholder="UNIT-001"></div>
+      <div class="field"><label>Client ID</label><input id="fClientCode" value="${esc(suggestedCode)}" readonly style="background:#f3f6fa;color:#64748b;font-weight:700"><small class="hint">Automatically assigned. Used by the customer to log in.</small></div>
+      <div class="field"><label>Unit Code *</label><div style="display:flex;gap:8px"><input id="unitCodeSearch" placeholder="Search 001–050" inputmode="numeric" style="min-width:120px"><select id="fCode" required style="flex:1"><option value="">Select available unit</option>${unitOptions.map(c=>`<option value="${esc(c)}" ${String(u?.unitCode||"").padStart(3,"0")===c?"selected":""}>${esc(c)}${c===String(u?.unitCode||"").padStart(3,"0")?" — Current":""}</option>`).join("")}</select></div><small class="hint">Choose only from available units. Assigned units are disabled from reuse until deactivated.</small></div>
       <div class="field"><label>Client Name *</label><input id="fName" value="${esc(u?.name||"")}" placeholder="Juan Dela Cruz"></div>
-      <div class="field"><label>Client Email *</label><input id="fEmail" type="email" value="${esc(u?.email||"")}" placeholder="client@example.com"><small class="hint">Used for contact/recovery records. Client signs in with Unit ID.</small></div>
+      <div class="field"><label>Registered Gmail *</label><input id="fEmail" type="email" value="${esc(u?.email||"")}" placeholder="client@gmail.com"><small class="hint">Used to verify first-time password setup and password recovery.</small></div>
       <div class="field"><label>Contact Number</label><input id="fContact" value="${esc(u?.contact||"")}" placeholder="09171234567"></div>
       <div class="field"><label>Date Joined</label><input id="fDateJoined" type="date" value="${esc(suggestedDate)}"></div>
       <div class="field full"><label>Unit Location</label><input id="fLocation" value="${esc(u?.location||"")}" placeholder="Brgy. San Isidro, Antipolo"></div>
       <div class="field full"><label>Client Address</label><input id="fAddress" value="${esc(u?.address||u?.location||"")}" placeholder="Client residential/contact address"></div>
       <div class="field"><label>Status</label><select id="fStatus"><option value="active" ${u?.active!==false?"selected":""}>Active</option><option value="inactive" ${u?.active===false?"selected":""}>Inactive</option></select></div>
-      <div class="field"><label>Customer Account Login</label><input id="fAuthUserId" value="${esc(u?.authUserId||"")}" placeholder="Created automatically" disabled><small class="hint">Login ID is the Unit Code. Firebase Auth ID is created automatically for new clients.</small></div>
-      ${id?"":`<div class="field"><label>Temporary Password *</label><input id="fTempPassword" type="text" minlength="8" placeholder="Give client a temporary password"><small class="hint">Client must create a private password after first login.</small></div>`}
+      <div class="field"><label>Temporary Password</label><input value="${esc(u?.unitCode||"Selected Unit Code")}" disabled style="background:#f3f6fa"><small class="hint">For a new customer, the temporary password is the selected Unit Code.</small></div>
       <div class="field full"><label>Notes</label><textarea id="fNotes" rows="3">${esc(u?.notes||"")}</textarea></div>
     </div>`,`Save Client`,async()=>{
-      const clientCode=$("#fClientCode").value.trim(), unitCode=$("#fCode").value.trim(), name=$("#fName").value.trim(), email=$("#fEmail").value.trim().toLowerCase();
-      if(!clientCode||!unitCode||!name||!email) throw new Error("Client ID, Unit Code, Client Name and Client Email are required.");
-      if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new Error("Enter a valid client email address.");
-      const data={
-        clientCode,
-        unitCode,
-        name,
-        email,
-        location:$("#fLocation").value.trim(),
-        address:$("#fAddress").value.trim(),
-        contact:$("#fContact").value.trim(),
-        dateJoined:$("#fDateJoined").value||suggestedDate,
-        authUserId:$("#fAuthUserId").value.trim(),
-        notes:$("#fNotes").value.trim(),
-        active:$("#fStatus").value==="active",
-        updatedAt:serverTimestamp()
-      };
+      const clientCode=$("#fClientCode").value.trim().toUpperCase(), unitCode=$("#fCode").value.trim(), name=$("#fName").value.trim(), email=$("#fEmail").value.trim().toLowerCase();
+      if(!clientCode||!unitCode||!name||!email) throw new Error("Client ID, Unit Code, Client Name and Registered Gmail are required.");
+      if(!/^C-\d{3,}$/.test(clientCode)) throw new Error("Invalid Client ID.");
+      if(!/^(0[0-4]\d|050)$/.test(unitCode)) throw new Error("Choose a Unit Code from 001 to 050.");
+      if(!/^[^\s@]+@gmail\.com$/i.test(email)) throw new Error("Please use the customer's registered Gmail address.");
+      const duplicateClient=units.find(x=>x.id!==id && x.active!==false && String(x.clientCode||"").toUpperCase()===clientCode);
+      if(duplicateClient) throw new Error(`${clientCode} is already assigned to an active customer.`);
+      const duplicateUnit=units.find(x=>x.id!==id && x.active!==false && String(x.unitCode||"").padStart(3,"0")===unitCode);
+      if(duplicateUnit) throw new Error(`Unit ${unitCode} is already assigned. Deactivate the current customer first before reusing it.`);
+      const data={clientCode,unitCode,name,email,location:$("#fLocation").value.trim(),address:$("#fAddress").value.trim(),contact:$("#fContact").value.trim(),dateJoined:$("#fDateJoined").value||suggestedDate,authUserId:u?.authUserId||"",notes:$("#fNotes").value.trim(),active:$("#fStatus").value==="active",updatedAt:serverTimestamp()};
       if(id){
         await updateDoc(doc(db,"units",id),data);
-        await logActivity("Clients",`Edited ${unitCode} — ${name}`,id);
+        await logActivity("Clients",`Edited ${clientCode} — ${unitCode} — ${name}`,id);
         await addNotification("client","Client profile updated.",`${name} (${clientCode}) was updated.`,id);
       }else{
-        const tempPassword=$("#fTempPassword")?.value||"";
-        if(tempPassword.length<8) throw new Error("Temporary password must be at least 8 characters.");
-        const authEmail=clientAuthEmailFromUnitId(unitCode);
+        const tempPassword=`PISO-${unitCode}-TEMP`;
+        const authEmail=`${clientCode.toLowerCase()}-${uid()}@client-login.pisowifi.local`;
         let cred;
-        try{
-          cred=await createUserWithEmailAndPassword(clientProvisionerAuth,authEmail,tempPassword);
-        }catch(e){
-          if(e?.code==="auth/email-already-in-use") throw new Error("This Unit ID already has a client login account. Use a different Unit Code or edit the existing client.");
-          throw e;
-        }
+        try{ cred=await createUserWithEmailAndPassword(clientProvisionerAuth,authEmail,tempPassword); }
+        catch(e){ throw new Error(e?.message||"Unable to create the customer login account."); }
         data.authUserId=cred.user.uid;
         data.forcePasswordChange=true;
-        data.loginId=unitCode;
+        data.loginId=clientCode;
         data.authEmail=authEmail;
         const ref=await addDoc(collection(db,"units"),{...data,createdAt:serverTimestamp()});
-        await setDoc(doc(db,"users",cred.user.uid),{role:"client",clientUnitId:ref.id,unitId:ref.id,clientCode,loginId:unitCode,email,createdAt:serverTimestamp(),updatedAt:serverTimestamp()});
-        await logActivity("Clients",`Added client account ${clientCode} — ${unitCode} — ${name}`,ref.id);
-        await addNotification("client","New client account created.",`${name} (${clientCode}) can now log in using ${unitCode}.`,ref.id);
+        await setDoc(doc(db,"users",cred.user.uid),{role:"client",clientUnitId:ref.id,unitId:ref.id,clientCode,loginId:clientCode,unitCode,email,authEmail,createdAt:serverTimestamp(),updatedAt:serverTimestamp()});
+        // Directory is only the non-sensitive login routing key. It contains no customer password or Gmail.
+        await setDoc(doc(db,"clientLoginDirectory",clientCode),{authEmail,unitId:ref.id,unitCode,active:true,updatedAt:serverTimestamp()});
+        await logActivity("Clients",`Added client account ${clientCode} — Unit ${unitCode} — ${name}`,ref.id);
+        await addNotification("client","New client account created.",`${name} (${clientCode}) can log in with Client ID ${clientCode}. Temporary password: Unit Code ${unitCode}.`,ref.id);
+        notify(`Client ${clientCode} created. Temporary password: ${unitCode}.`);
       }
-  });
+      await loadData(); render();
+    });
+  const search=$("#unitCodeSearch"), select=$("#fCode");
+  if(search&&select){search.oninput=()=>{const q=search.value.replace(/\D/g,"").slice(0,3);[...select.options].forEach(o=>{if(!o.value)return; o.hidden=!!q&&!o.value.includes(q);});};}
 }
-async function toggleUnit(id){const u=units.find(x=>x.id===id);if(!u)return;const next=u.active===false; if(!confirm(`${next?"Activate":"Deactivate"} ${u.unitCode}? Historical sales and payments will remain.`))return;await updateDoc(doc(db,"units",id),{active:next,updatedAt:serverTimestamp()});await logActivity("Units",`${next?"Activated":"Deactivated"} ${u.unitCode}`,id);await addNotification("unit",`${u.unitCode} is ${next?"active":"inactive"}.`,`Unit status was changed.`,id);await loadData();render();notify(`Unit ${next?"activated":"deactivated"}.`);}
+async function toggleUnit(id){const u=units.find(x=>x.id===id);if(!u)return;const next=u.active===false; if(!confirm(`${next?"Activate":"Deactivate"} ${u.unitCode}? Historical sales and payments will remain.`))return;await updateDoc(doc(db,"units",id),{active:next,updatedAt:serverTimestamp()}); if(u.clientCode){try{await setDoc(doc(db,"clientLoginDirectory",String(u.clientCode).toUpperCase()),{active:next,unitId:id,authEmail:u.authEmail||"",updatedAt:serverTimestamp()},{merge:true});}catch(e){console.warn("Login directory update failed",e);}} await logActivity("Units",`${next?"Activated":"Deactivated"} ${u.unitCode}`,id);await addNotification("unit",`${u.unitCode} is ${next?"active":"inactive"}.`,`Unit status was changed.`,id);await loadData();render();notify(`Unit ${next?"activated":"deactivated"}.`);}
 
 async function confirmDeleteUnit(id){
   if(!ENABLE_CLIENT_DELETE)return;

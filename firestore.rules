@@ -9,7 +9,9 @@ service cloud.firestore {
 
     function isAdmin() {
       return isSignedIn()
-        && request.auth.uid == "u3Vjej0CrFgDSekt3NpXuHERpJM2";
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == "admin"
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.active != false;
     }
 
     function isClientUnit(data) {
@@ -37,21 +39,7 @@ service cloud.firestore {
       allow read: if isAdmin() || isClientUnit(resource.data);
 
       // Admin owns all client/unit administration.
-      allow create: if isAdmin()
-        || (
-          request.resource.data.type == "password-reset"
-          && request.resource.data.read == false
-          && request.resource.data.title == "Customer password reset requested"
-          && request.resource.data.clientCode is string
-          && request.resource.data.unitCode is string
-          && request.resource.data.email is string
-          && exists(/databases/$(database)/documents/customerLoginDirectory/$(request.resource.data.clientCode))
-          && get(/databases/$(database)/documents/customerLoginDirectory/$(request.resource.data.clientCode)).data.unitCode == request.resource.data.unitCode
-          && get(/databases/$(database)/documents/customerLoginDirectory/$(request.resource.data.clientCode)).data.email == request.resource.data.email
-          && get(/databases/$(database)/documents/customerLoginDirectory/$(request.resource.data.clientCode)).data.active == true
-        );
-
-      allow delete: if isAdmin();
+      allow create, delete: if isAdmin();
 
       // Clients may update only their own profile fields or establish the UID link.
       allow update: if isAdmin()
@@ -77,29 +65,6 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
-    match /customerLoginDirectory/{clientCode} {
-      // Public read is intentionally disabled. This directory is only used by security rules
-      // to verify a password-reset request. Admin is the only writer.
-      allow read, write: if isAdmin();
-    }
-
-    match /passwordResetRequests/{requestId} {
-      // Customer can submit a recovery request only when the supplied Client ID, Unit ID
-      // and registered email exactly match the Admin-created directory record.
-      allow create: if
-        request.resource.data.status == "pending"
-        && request.resource.data.clientCode is string
-        && request.resource.data.unitCode is string
-        && request.resource.data.email is string
-        && request.resource.data.createdAt == request.time
-        && exists(/databases/$(database)/documents/customerLoginDirectory/$(request.resource.data.clientCode))
-        && get(/databases/$(database)/documents/customerLoginDirectory/$(request.resource.data.clientCode)).data.unitCode == request.resource.data.unitCode
-        && get(/databases/$(database)/documents/customerLoginDirectory/$(request.resource.data.clientCode)).data.email == request.resource.data.email
-        && get(/databases/$(database)/documents/customerLoginDirectory/$(request.resource.data.clientCode)).data.active == true;
-
-      allow read, update, delete: if isAdmin();
-    }
-
     match /notifications/{document} {
       allow read: if isAdmin() || (
         resource.data.relatedId != null
@@ -114,6 +79,14 @@ service cloud.firestore {
           && isOwnUnitDocument(resource.data.relatedId)
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["read"])
         );
+    }
+
+
+    // Login routing directory contains only synthetic Firebase auth routing data.
+    // It contains no customer password and no registered Gmail.
+    match /clientLoginDirectory/{clientId} {
+      allow read: if true;
+      allow write: if isAdmin();
     }
 
     match /activities/{document} {

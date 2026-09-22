@@ -395,7 +395,10 @@ async function maybeShowFirstLoginPasswordSetup(){
   const form=$("#clientPasswordForm"), msg=$("#clientPasswordMessage");
   form.onsubmit=async e=>{
     e.preventDefault();
+    const verifyId=$("#verifyClientId").value.trim().toUpperCase();
+    const verifyEmail=$("#verifyClientEmail").value.trim().toLowerCase();
     const a=$("#newClientPassword").value, b=$("#confirmClientPassword").value;
+    if(verifyId !== String(unit.clientCode||"").toUpperCase() || verifyEmail !== String(unit.email||"").toLowerCase()){msg.textContent="Client ID and registered Gmail do not match our records.";msg.className="client-login-message error";return;}
     if(a.length<8){msg.textContent="Use at least 8 characters.";msg.className="client-login-message error";return;}
     if(a!==b){msg.textContent="Passwords do not match.";msg.className="client-login-message error";return;}
     const btn=form.querySelector("button"); btn.disabled=true; btn.textContent="Saving…";

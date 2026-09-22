@@ -61,13 +61,6 @@ input,select,textarea{font-size:16px}
 
 
 </style>
-
-<style>
-.client-reset-modal{position:fixed;inset:0;z-index:1000;display:grid;place-items:center;padding:20px}.client-reset-backdrop{position:absolute;inset:0;background:rgba(4,18,35,.58);backdrop-filter:blur(3px)}.client-reset-card{position:relative;width:min(470px,100%);background:#fff;border:1px solid #e3eaf2;border-radius:18px;box-shadow:0 28px 70px rgba(5,25,50,.24);padding:32px}.client-reset-card h2{margin:8px 0 8px;font-size:25px}.client-reset-card p{margin:0 0 20px;color:#718096;font-size:13px;line-height:1.55}.client-reset-card input{width:100%;height:50px;border:1px solid #dbe4ee;border-radius:10px;padding:0 13px;outline:0;background:#fff;color:#142742}.client-reset-card input:focus{border-color:#3b9af1;box-shadow:0 0 0 4px rgba(8,119,232,.09)}.client-reset-close{position:absolute;right:14px;top:12px;width:34px;height:34px;border:0;border-radius:9px;background:#f3f6fa;color:#52667f;font-size:22px;line-height:1}.client-reset-close:hover{background:#eaf0f6}.client-reset-card .client-field{margin:14px 0}
-
-.login-options-spread{align-items:center;justify-content:space-between;gap:14px}.remember-option{display:inline-flex;align-items:center;gap:8px;color:#5f7188;font-size:12px;font-weight:600;cursor:pointer}.remember-option input{width:16px;height:16px;accent-color:#0877e8}.login-help{margin-top:18px;padding:13px 14px;border:1px solid #e2ebf4;background:#f7faff;border-radius:10px;color:#6b7d93;font-size:11px;line-height:1.5;display:flex;flex-direction:column;gap:3px}.login-help strong{color:#304761;font-size:12px}
-@media (max-width:760px){.client-login-shell{display:block}.client-brand-panel{display:none}.client-login-area{min-height:100vh;padding:22px 16px;display:flex;align-items:center}.client-login-card{padding:28px 22px;border-radius:16px}.mobile-brand{display:flex;align-items:center;gap:9px;margin-bottom:24px;color:#09213f}.mobile-brand .client-logo-mark{width:38px;height:38px;background:#eef6ff;color:#0877e8}.login-heading h2{font-size:25px}.login-options-spread{flex-wrap:wrap}.remember-option{font-size:12px}}
-</style>
 </head>
 <body class="client-login-page">
   <noscript><div style="padding:16px;background:#fff3cd;color:#664d03;text-align:center;font-family:Arial,sans-serif">JavaScript is required for the PISO WIFI Customer Account.</div></noscript>
@@ -91,15 +84,15 @@ input,select,textarea{font-size:16px}
     <section class="client-login-area">
       <div class="client-login-card">
         <div class="mobile-brand"><span class="client-logo-mark"><svg viewBox="0 0 48 48"><path d="M7 20c10-9 24-9 34 0M12 26c7-6 17-6 24 0M18 32c3.5-3 8.5-3 12 0" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round"/><circle cx="24" cy="38" r="2.6" fill="currentColor"/></svg></span><b>PISO WIFI</b></div>
-        <div class="login-heading"><span class="eyebrow">CUSTOMER SIGN IN</span><h2>Welcome back!</h2><p>Sign in to view your units, sales, payments, and statements.</p></div>
+        <div class="login-heading"><span class="eyebrow">CLIENT ACCESS</span><h2>Welcome to Your Customer Account!</h2><p>Log in to your account to view your Piso WiFi records.</p></div>
         <form id="clientLoginForm" novalidate>
-          <label class="client-field"><span>Unit ID / Login ID</span><div class="input-with-icon"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m4 7 8 6 8-6"/></svg><input id="clientEmail" type="text" autocomplete="username" autocapitalize="characters" spellcheck="false" placeholder="Example: UNIT-001" required></div></label>
+          <label class="client-field"><span>Unit ID / Login ID</span><div class="input-with-icon"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m4 7 8 6 8-6"/></svg><input id="clientEmail" type="text" autocomplete="username" placeholder="C-001" required></div></label>
           <label class="client-field"><span>Password</span><div class="input-with-icon"><svg viewBox="0 0 24 24"><rect x="5" y="10" width="14" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg><input id="clientPassword" type="password" autocomplete="current-password" placeholder="Enter your password" required><button type="button" id="clientTogglePassword">Show</button></div></label>
-          <div class="login-options login-options-spread"><label class="remember-option"><input id="clientRememberMe" type="checkbox"> <span>Remember my Unit ID</span></label><button type="button" id="clientForgotPassword" class="text-link">Forgot password?</button></div>
+          <div class="login-options" style="justify-content:space-between;align-items:center"><label style="display:flex;align-items:center;gap:8px;font-size:12px;color:#64748b;font-weight:600"><input id="clientRemember" type="checkbox"> Remember my Client ID</label><button type="button" id="clientForgotPassword" class="text-link">Forgot Password?</button></div>
           <button class="client-primary login-submit" id="clientLoginButton" type="submit">Login</button>
           <div id="clientLoginMessage" class="client-login-message" role="status" aria-live="polite"></div>
         </form>
-        <div class="login-help"><strong>First time here?</strong><span>Use the Unit ID and temporary password provided by Admin. You will be asked to create your own private password after your first login.</span></div>
+        <p class="login-contact">Your Admin will provide your Client ID. On first login, use your Unit Code as the temporary password, then create your own private password.</p>
 
       </div>
     </section>
