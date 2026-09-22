@@ -6,22 +6,20 @@ const form=document.querySelector("#clientLoginForm");
 const msg=document.querySelector("#clientLoginMessage");
 const submit=document.querySelector("#clientLoginButton");
 const UNIT_AUTH_DOMAIN="@client-login.pisowifi.local";
-
 function message(text,type=""){ msg.textContent=text; msg.className=`client-login-message ${type}`; }
 function normalizeUnitId(v){ return String(v||"").trim().toUpperCase(); }
-function authEmailFromUnitId(unitId){ return `${unitId.toLowerCase().replace(/[^a-z0-9]+/g,"-")}@client-login.pisowifi.local`; }
-
-async function routeUser(user){
-  if(!user)return;
+function authEmailFromUnitId(unitId){ return `${unitId.toLowerCase().replace(/[^a-z0-9]+/g,"-")}${UNIT_AUTH_DOMAIN}`; }
+async function roleOf(user){ const snap=await getDoc(doc(db,"users",user.uid)); return snap.exists()?snap.data():null; }
+let routing=false;
+async function handleExistingSession(user){
+  if(!user||routing)return;
   try{
-    const snap=await getDoc(doc(db,"users",user.uid));
-    if(snap.exists() && snap.data().role==="admin"){ await signOut(auth); message("Access denied. This is an Admin account. Please use the Admin Portal.","error"); return; }
-    location.replace("/client");
-  }catch(e){ location.replace("/client"); }
+    const data=await roleOf(user);
+    if(data?.role==="client" && data?.active!==false){ routing=true; location.replace("/client"); return; }
+    await signOut(auth);
+  }catch(e){ console.error("Customer authorization failed:",e); await signOut(auth).catch(()=>{}); }
 }
-
-onAuthStateChanged(auth,user=>{ if(user)routeUser(user); });
-
+onAuthStateChanged(auth,handleExistingSession);
 form.addEventListener("submit",async e=>{
   e.preventDefault();
   const unitId=normalizeUnitId(document.querySelector("#clientEmail").value);
@@ -30,25 +28,13 @@ form.addEventListener("submit",async e=>{
   submit.disabled=true; submit.textContent="Signing in…"; message("Authenticating…");
   try{
     const cred=await signInWithEmailAndPassword(auth,authEmailFromUnitId(unitId),password);
-    const userSnap=await getDoc(doc(db,"users",cred.user.uid));
-    if(userSnap.exists() && userSnap.data().role==="admin"){
-      await signOut(auth);
-      message("Access denied. This is an Admin account. Please use the Admin Portal.","error");
+    const data=await roleOf(cred.user);
+    if(!data || data.role!=="client" || data.active===false){
+      await signOut(auth); message("This account is not a Customer Account. Please use the correct login.","error");
       submit.disabled=false; submit.textContent="Login"; return;
     }
-    location.replace("/client");
-  }catch(err){
-    console.error(err);
-    message("Invalid Unit ID or password. If this is your first login, use the temporary password provided by Admin.","error");
-    submit.disabled=false; submit.textContent="Login";
-  }
+    routing=true; location.replace("/client");
+  }catch(err){ console.error(err); message("Invalid Unit ID or password. If this is your first login, use the temporary password provided by Admin.","error"); submit.disabled=false; submit.textContent="Login"; }
 });
-
-document.querySelector("#clientTogglePassword").onclick=()=>{
-  const p=document.querySelector("#clientPassword"); p.type=p.type==="password"?"text":"password";
-  document.querySelector("#clientTogglePassword").textContent=p.type==="password"?"Show":"Hide";
-};
-
-document.querySelector("#clientForgotPassword").onclick=()=>{
-  message("For security, password recovery is handled by Admin. Please contact Admin to reset your access.","success");
-};
+document.querySelector("#clientTogglePassword").onclick=()=>{ const p=document.querySelector("#clientPassword"); p.type=p.type==="password"?"text":"password"; document.querySelector("#clientTogglePassword").textContent=p.type==="password"?"Show":"Hide"; };
+document.querySelector("#clientForgotPassword").onclick=()=>{ message("For security, password recovery is handled by Admin. Please contact Admin to reset your access.","success"); };

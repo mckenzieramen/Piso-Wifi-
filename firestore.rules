@@ -2,88 +2,37 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
-
-    function isSignedIn() {
-      return request.auth != null;
+    function signedIn() { return request.auth != null; }
+    function userData() {
+      return signedIn() && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        ? get(/databases/$(database)/documents/users/$(request.auth.uid)).data : {};
     }
-
-    function isAdmin() {
-      return isSignedIn()
-        && exists(/databases/$(database)/documents/users/$(request.auth.uid))
-        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == "admin"
-        && (!('active' in get(/databases/$(database)/documents/users/$(request.auth.uid)).data)
-            || get(/databases/$(database)/documents/users/$(request.auth.uid)).data.active != false);
+    function isAdmin() { return signedIn() && userData().role == "admin" && userData().active != false; }
+    function isClient() { return signedIn() && userData().role == "client" && userData().active != false; }
+    function ownsUnit(data) {
+      return isClient() && ((data.authUserId != null && data.authUserId == request.auth.uid) ||
+        (data.email != null && data.email != "" && request.auth.token.email != null && data.email == request.auth.token.email));
     }
-
-    function isClientUnit(data) {
-      return isSignedIn()
-        && (
-          (data.authUserId != null && data.authUserId == request.auth.uid)
-          || (data.email != null
-              && data.email != ""
-              && data.email == request.auth.token.email)
-        );
+    function ownsUnitId(unitId) {
+      return exists(/databases/$(database)/documents/units/$(unitId)) && ownsUnit(get(/databases/$(database)/documents/units/$(unitId)).data);
     }
-
-    function isOwnUnitDocument(unitId) {
-      return exists(/databases/$(database)/documents/units/$(unitId))
-        && isClientUnit(get(/databases/$(database)/documents/units/$(unitId)).data);
-    }
-
     match /users/{uid} {
-      // Admin can manage role records; a signed-in user may read only their own role.
-      allow read: if isAdmin() || (isSignedIn() && uid == request.auth.uid);
+      allow read: if isAdmin() || (signedIn() && uid == request.auth.uid);
       allow write: if isAdmin();
     }
-
-    match /units/{document} {
-      allow read: if isAdmin() || isClientUnit(resource.data);
-
-      // Admin owns all client/unit administration.
+    match /units/{unitId} {
+      allow read: if isAdmin() || ownsUnit(resource.data);
       allow create, delete: if isAdmin();
-
-      // Clients may update only their own profile fields or establish the UID link.
-      allow update: if isAdmin()
-        || (
-          isClientUnit(resource.data)
-          && request.resource.data.diff(resource.data).affectedKeys()
-              .hasOnly(["name", "contact", "address", "authUserId", "forcePasswordChange", "passwordChangedAt", "updatedAt"])
-        );
+      allow update: if isAdmin() || (ownsUnit(resource.data) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["name","contact","address","authUserId","forcePasswordChange","passwordChangedAt","updatedAt"]));
     }
-
-    match /monthlyRecords/{document} {
-      allow read: if isAdmin() || isOwnUnitDocument(resource.data.unitId);
-      allow write: if isAdmin();
-    }
-
-    match /payments/{document} {
-      allow read: if isAdmin() || isOwnUnitDocument(resource.data.unitId);
-      allow write: if isAdmin();
-    }
-
-    match /settings/{document} {
-      allow read: if isAdmin() || isSignedIn();
-      allow write: if isAdmin();
-    }
-
-    match /notifications/{document} {
-      allow read: if isAdmin() || (
-        resource.data.relatedId != null
-        && isOwnUnitDocument(resource.data.relatedId)
-      );
-
+    match /monthlyRecords/{id} { allow read: if isAdmin() || (signedIn() && ownsUnitId(resource.data.unitId)); allow write: if isAdmin(); }
+    match /payments/{id} { allow read: if isAdmin() || (signedIn() && ownsUnitId(resource.data.unitId)); allow write: if isAdmin(); }
+    match /settings/{id} { allow read: if signedIn(); allow write: if isAdmin(); }
+    match /notifications/{id} {
+      allow read: if isAdmin() || (signedIn() && resource.data.relatedId != null && ownsUnitId(resource.data.relatedId));
       allow create, delete: if isAdmin();
-
-      allow update: if isAdmin()
-        || (
-          resource.data.relatedId != null
-          && isOwnUnitDocument(resource.data.relatedId)
-          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["read"])
-        );
+      allow update: if isAdmin() || (signedIn() && resource.data.relatedId != null && ownsUnitId(resource.data.relatedId) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["read"]));
     }
-
-    match /activities/{document} {
-      allow read, write: if isAdmin();
-    }
+    match /activities/{id} { allow read, write: if isAdmin(); }
   }
 }

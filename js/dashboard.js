@@ -105,7 +105,8 @@ async function authorize(user){
   const snap=await getDoc(doc(db,"users",user.uid));
   if(!snap.exists()) throw new Error("Your Firebase account is not authorized as an admin.");
   const d=snap.data();
-  if(d.role!=="admin" || d.active===false) throw new Error("Your Firebase account is not authorized as an admin.");
+  if(d.role!=="admin") throw new Error("Your Firebase account is not authorized as an admin.");
+  if(d.active===false) throw new Error("Your Admin account is inactive.");
 }
 async function logActivity(type,description,relatedId=""){
   try {
