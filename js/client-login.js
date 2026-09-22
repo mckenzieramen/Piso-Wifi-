@@ -5,22 +5,32 @@ import { doc, getDoc } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-
 const form=document.querySelector("#clientLoginForm");
 const msg=document.querySelector("#clientLoginMessage");
 const submit=document.querySelector("#clientLoginButton");
-const UNIT_AUTH_DOMAIN="@client-login.pisowifi.local";
 
 function message(text,type=""){ msg.textContent=text; msg.className=`client-login-message ${type}`; }
 function normalizeUnitId(v){ return String(v||"").trim().toUpperCase(); }
 function authEmailFromUnitId(unitId){ return `${unitId.toLowerCase().replace(/[^a-z0-9]+/g,"-")}@client-login.pisowifi.local`; }
 
-async function routeUser(user){
-  if(!user)return;
-  try{
-    const snap=await getDoc(doc(db,"users",user.uid));
-    if(snap.exists() && snap.data().role==="admin"){ location.replace("dashboard.html"); return; }
-    location.replace("/client");
-  }catch(e){ location.replace("/client"); }
+async function checkClient(user){
+  if(!user) return false;
+  const snap=await getDoc(doc(db,"users",user.uid));
+  return snap.exists() && snap.data().role === "client" && snap.data().active !== false;
 }
 
-onAuthStateChanged(auth,user=>{ if(user)routeUser(user); });
+async function routeSignedInClient(user){
+  if(!user) return;
+  try{
+    const isClient=await checkClient(user);
+    if(isClient){ location.replace("/client"); return; }
+    await signOut(auth);
+    message("This account is not authorized for the Customer Account.","error");
+  }catch(e){
+    console.error(e);
+    try{ await signOut(auth); }catch{}
+    message("Unable to verify Customer Account access. Please try again.","error");
+  }
+}
+
+onAuthStateChanged(auth,user=>{ if(user) routeSignedInClient(user); });
 
 form.addEventListener("submit",async e=>{
   e.preventDefault();
@@ -30,8 +40,8 @@ form.addEventListener("submit",async e=>{
   submit.disabled=true; submit.textContent="Signing in…"; message("Authenticating…");
   try{
     const cred=await signInWithEmailAndPassword(auth,authEmailFromUnitId(unitId),password);
-    const userSnap=await getDoc(doc(db,"users",cred.user.uid));
-    if(userSnap.exists() && userSnap.data().role==="admin"){
+    const isClient=await checkClient(cred.user);
+    if(!isClient){
       await signOut(auth);
       message("This is an Admin account. Please use the Admin Portal login.","error");
       submit.disabled=false; submit.textContent="Login"; return;
