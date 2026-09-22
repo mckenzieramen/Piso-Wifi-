@@ -1,6 +1,6 @@
 /**
  * Shared PISO WIFI financial business rules.
- * Both Admin and Client portals use this function so the calculation model
+ * Both Admin and Customer accounts use this function so the calculation model
  * lives in one place.
  */
 export function calculateFinancialRecord(record = {}, settings = {}, payments = []) {

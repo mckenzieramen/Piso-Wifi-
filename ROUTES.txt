@@ -2,7 +2,7 @@ PISO WIFI OFFICIAL ROUTES
 
 CUSTOMER / CLIENT WEBSITE (OFFICIAL)
 https://piso-wifi.pages.dev/
--> Client Login
+-> Customer Account Login
 
 ADMIN WEBSITE
 https://piso-wifi.pages.dev/admin
@@ -14,7 +14,7 @@ https://piso-wifi.pages.dev/client
 
 OPTIONAL ALIAS
 https://piso-wifi.pages.dev/client-login
--> same Client Login as the official root
+-> same Customer Account Login as the official root
 
 Do not add redirect rules that bounce between slash/no-slash variants.
 All rules above are Cloudflare Pages internal rewrites (status 200).

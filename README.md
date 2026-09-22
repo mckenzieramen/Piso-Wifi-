@@ -12,5 +12,18 @@ https://piso-wifi.pages.dev/client
 Deploy the contents of this package to the ROOT of the Cloudflare Pages project.
 Do not nest the whole package inside another folder.
 
-The client portal remains client-only and uses the existing Firebase authentication/data layer.
+The customer account remains client-only and uses the existing Firebase authentication/data layer.
 Each authenticated client must be authorized server-side to access only their own units, sales, payments, statements and notifications.
+
+
+CUSTOMER ACCOUNT NAMING — V11
+=============================
+Customer-facing branding now uses "Customer Account" instead of "Client Portal".
+Official customer login:
+https://piso-wifi.pages.dev/
+
+Admin:
+https://piso-wifi.pages.dev/admin
+
+The internal data/auth architecture may still use client/clientId terminology
+where required by the existing backend; only the customer-facing wording was changed.

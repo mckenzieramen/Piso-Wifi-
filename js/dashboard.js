@@ -340,7 +340,7 @@ function openUnitModal(id=null){
       <div class="field full"><label>Unit Location</label><input id="fLocation" value="${esc(u?.location||"")}" placeholder="Brgy. San Isidro, Antipolo"></div>
       <div class="field full"><label>Client Address</label><input id="fAddress" value="${esc(u?.address||u?.location||"")}" placeholder="Client residential/contact address"></div>
       <div class="field"><label>Status</label><select id="fStatus"><option value="active" ${u?.active!==false?"selected":""}>Active</option><option value="inactive" ${u?.active===false?"selected":""}>Inactive</option></select></div>
-      <div class="field"><label>Client Login</label><input id="fAuthUserId" value="${esc(u?.authUserId||"")}" placeholder="Created automatically" disabled><small class="hint">Login ID is the Unit Code. Firebase Auth ID is created automatically for new clients.</small></div>
+      <div class="field"><label>Customer Account Login</label><input id="fAuthUserId" value="${esc(u?.authUserId||"")}" placeholder="Created automatically" disabled><small class="hint">Login ID is the Unit Code. Firebase Auth ID is created automatically for new clients.</small></div>
       ${id?"":`<div class="field"><label>Temporary Password *</label><input id="fTempPassword" type="text" minlength="8" placeholder="Give client a temporary password"><small class="hint">Client must create a private password after first login.</small></div>`}
       <div class="field full"><label>Notes</label><textarea id="fNotes" rows="3">${esc(u?.notes||"")}</textarea></div>
     </div>`,`Save Client`,async()=>{

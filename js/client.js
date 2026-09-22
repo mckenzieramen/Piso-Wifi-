@@ -383,7 +383,7 @@ function render(){
 function parseRoute(){return location.hash.replace("#","").split("?")[0]||"dashboard";}
 
 function openAuthError(message){
-  const loader=$("#clientAuthLoading");loader.innerHTML=`<div class="client-auth-error"><strong>Unable to open Client Portal</strong><span>${esc(message)}</span><a href="client-login.html">Return to Client Login</a></div>`;
+  const loader=$("#clientAuthLoading");loader.innerHTML=`<div class="client-auth-error"><strong>Unable to open Customer Account</strong><span>${esc(message)}</span><a href="client-login.html">Return to Customer Account Login</a></div>`;
   loader.classList.remove("hidden");
 }
 async function maybeShowFirstLoginPasswordSetup(){
@@ -416,7 +416,7 @@ let bootstrapFinished=false;
 const BOOT_TIMEOUT_MS=10000;
 const bootTimer=setTimeout(()=>{
   if(!bootstrapFinished){
-    openAuthError("The Client Portal is taking too long to connect to Firebase. Check your internet connection and make sure this site is authorized in Firebase, then try again.");
+    openAuthError("The Customer Account is taking too long to connect to Firebase. Check your internet connection and make sure this site is authorized in Firebase, then try again.");
   }
 },BOOT_TIMEOUT_MS);
 
