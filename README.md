@@ -38,3 +38,9 @@ Normal unit management should use **Deactivate**, which preserves historical fin
 
 ## Firebase
 Use the Firebase config already present in `js/firebase-config.js`. Publish `firestore.rules` in the Firebase Console.
+
+
+## Client Portal v4 deployment note
+The client portal pages now contain the full client CSS inline so the visual layout does not depend on a separate CSS asset loading correctly.
+Replace the deployed `client.html` and `client-login.html` with these files and deploy the entire `piso_work` folder. Do not open an old cached URL/file.
+Client authentication remains handled by `js/client-login.js` and `js/client.js`.
