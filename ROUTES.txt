@@ -1,20 +1,8 @@
 PISO WIFI OFFICIAL ROUTES
 
-CUSTOMER / CLIENT WEBSITE (OFFICIAL)
-https://piso-wifi.pages.dev/
--> Customer Account Login
+Customer Account (official): /
+Customer Dashboard (authenticated): /client
+Admin Portal: /admin
+Admin Dashboard (authenticated): /admin/dashboard.html
 
-ADMIN WEBSITE
-https://piso-wifi.pages.dev/admin
--> Admin Login
-
-CLIENT DASHBOARD AFTER LOGIN
-https://piso-wifi.pages.dev/client
--> Client Dashboard
-
-OPTIONAL ALIAS
-https://piso-wifi.pages.dev/client-login
--> same Customer Account Login as the official root
-
-Do not add redirect rules that bounce between slash/no-slash variants.
-All rules above are Cloudflare Pages internal rewrites (status 200).
+Customer and Admin use separate login entry points but share the same Firebase Authentication and Firestore backend.
