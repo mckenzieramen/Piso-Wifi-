@@ -3,7 +3,7 @@ import {
   onAuthStateChanged, signOut, updatePassword
 } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-auth.js";
 import {
-  collection, doc, getDoc, getDocs, query, where, updateDoc,
+  collection, doc, getDoc, getDocs, query, where, updateDoc, onSnapshot,
   serverTimestamp, writeBatch
 } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-firestore.js";
 import { calculateFinancialRecord } from "./finance.js";
@@ -114,59 +114,14 @@ function pageTitle(title,sub,actions=""){return `<div class="client-page-head"><
 function financialCard(icon,title,value,sub,cls=""){return `<article class="financial-card ${cls}"><div class="financial-icon">${icon}</div><span>${esc(title)}</span><strong>${money(value)}</strong><small>${esc(sub)}</small></article>`;}
 
 async function findClientUnits(user){
-  const results=new Map();
-
-  // Fastest/most reliable path: the unit is linked directly to the Firebase UID.
-  try{
-    if(user?.uid){
-      const byUid=await withTimeout(
-        getDocs(query(collection(db,"units"),where("authUserId","==",user.uid))),
-        3500,
-        "Client unit lookup timed out."
-      );
-      byUid.docs.forEach(d=>results.set(d.id,{id:d.id,...d.data()}));
-    }
-  }catch(e){
-    console.warn("authUserId unit lookup unavailable",e);
-  }
-
-  // Compatibility path for older customer records created before authUserId
-  // was written to the unit document. Firebase Auth email is already verified
-  // by the login flow, so this can safely recover the customer's unit.
-  if(!results.size && user?.email){
+  const results=[];
+  if(user.uid){
     try{
-      const byEmail=await withTimeout(
-        getDocs(query(collection(db,"units"),where("email","==",String(user.email).trim().toLowerCase()))),
-        3500,
-        "Client email lookup timed out."
-      );
-      byEmail.docs.forEach(d=>{
-        const data=d.data();
-        if(data.active!==false) results.set(d.id,{id:d.id,...data});
-      });
-    }catch(e){
-      console.warn("email unit lookup unavailable",e);
-    }
+      const byUid=await getDocs(query(collection(db,"units"),where("authUserId","==",user.uid)));
+      byUid.docs.forEach(d=>results.push({id:d.id,...d.data()}));
+    }catch(e){ console.warn("authUserId lookup unavailable",e); }
   }
-
-  // Final compatibility path: use the user's own role document to locate the
-  // assigned unit directly. This avoids requiring a collection query.
-  if(!results.size && user?.uid){
-    try{
-      const profile=await withTimeout(getDoc(doc(db,"users",user.uid)),3500,"Client profile lookup timed out.");
-      const unitId=profile.exists() ? (profile.data().clientUnitId || profile.data().unitId) : null;
-      if(unitId){
-        const unitSnap=await withTimeout(getDoc(doc(db,"units",unitId)),3500,"Assigned unit lookup timed out.");
-        if(unitSnap.exists() && unitSnap.data().active!==false){
-          results.set(unitSnap.id,{id:unitSnap.id,...unitSnap.data()});
-        }
-      }
-    }catch(e){
-      console.warn("profile-to-unit lookup unavailable",e);
-    }
-  }
-
-  return [...results.values()];
+  return results;
 }
 async function getChunked(collectionName,field,ids){
   const out=new Map();
@@ -428,10 +383,8 @@ function render(){
 function parseRoute(){return location.hash.replace("#","").split("?")[0]||"dashboard";}
 
 function openAuthError(message){
-  const loader=$("#clientAuthLoading");
-  loader.innerHTML=`<div class="client-auth-error"><strong>Unable to open Customer Account</strong><span>${esc(message)}</span><div class="client-auth-error-actions"><button type="button" id="clientRetryButton">Try Again</button><a href="client-login.html">Return to Customer Account Login</a></div></div>`;
+  const loader=$("#clientAuthLoading");loader.innerHTML=`<div class="client-auth-error"><strong>Unable to open Customer Account</strong><span>${esc(message)}</span><a href="client-login.html">Return to Customer Account Login</a></div>`;
   loader.classList.remove("hidden");
-  $("#clientRetryButton")?.addEventListener("click",()=>location.reload());
 }
 async function maybeShowFirstLoginPasswordSetup(){
   const unit=clientUnits[0];
@@ -440,12 +393,13 @@ async function maybeShowFirstLoginPasswordSetup(){
   if(!modal) return;
   modal.classList.remove("hidden"); modal.setAttribute("aria-hidden","false");
   const form=$("#clientPasswordForm"), msg=$("#clientPasswordMessage");
+  $("#verifyClientId").value=clientCode();
+  $("#verifyClientEmail").value=clientEmail() === "—" ? "" : clientEmail();
   form.onsubmit=async e=>{
     e.preventDefault();
-    const verifyId=$("#verifyClientId").value.trim().toUpperCase();
-    const verifyEmail=$("#verifyClientEmail").value.trim().toLowerCase();
+    const verifyId=$("#verifyClientId").value.trim().toUpperCase(), verifyEmail=$("#verifyClientEmail").value.trim().toLowerCase();
     const a=$("#newClientPassword").value, b=$("#confirmClientPassword").value;
-    if(verifyId !== String(unit.clientCode||"").toUpperCase() || verifyEmail !== String(unit.email||"").toLowerCase()){msg.textContent="Client ID and registered Gmail do not match our records.";msg.className="client-login-message error";return;}
+    if(verifyId!==clientCode() || verifyEmail!==String(clientEmail()).trim().toLowerCase()){msg.textContent="Client ID and registered Gmail do not match your account.";msg.className="client-login-message error";return;}
     if(a.length<8){msg.textContent="Use at least 8 characters.";msg.className="client-login-message error";return;}
     if(a!==b){msg.textContent="Passwords do not match.";msg.className="client-login-message error";return;}
     const btn=form.querySelector("button"); btn.disabled=true; btn.textContent="Saving…";
@@ -463,7 +417,7 @@ async function maybeShowFirstLoginPasswordSetup(){
 }
 
 let bootstrapFinished=false;
-const BOOT_TIMEOUT_MS=7000;
+const BOOT_TIMEOUT_MS=10000;
 const bootTimer=setTimeout(()=>{
   if(!bootstrapFinished){
     openAuthError("The Customer Account is taking too long to connect to Firebase. Check your internet connection and make sure this site is authorized in Firebase, then try again.");
@@ -485,10 +439,13 @@ async function bootstrap(user){
   }
   currentUser=user;
   try{
-    // Do not block the customer portal on the optional users/{uid} profile.
-    // The assigned unit is the source of truth for customer access. This also
-    // prevents the portal from hanging when an older account has no user doc.
-    await withTimeout(loadClientData(),9000,"Customer data request timed out. Please refresh and try again.");
+    const userSnap=await withTimeout(getDoc(doc(db,"users",user.uid)),8000,"Firebase user profile request timed out.");
+    if(userSnap.exists() && userSnap.data().role==="admin"){
+      bootstrapFinished=true; clearTimeout(bootTimer);
+      location.replace("/admin/dashboard.html");
+      return;
+    }
+    await withTimeout(loadClientData(),8000,"Client records request timed out. Please check Firebase rules and your connection.");
     $("#clientAuthLoading").classList.add("hidden");
     $("#clientApp").classList.remove("hidden");
     setupShell();
@@ -498,7 +455,7 @@ async function bootstrap(user){
   }catch(e){
     console.error("Client bootstrap failed:",e);
     bootstrapFinished=true; clearTimeout(bootTimer);
-    openAuthError(e?.message||"Your Customer Account could not be loaded.");
+    openAuthError(e?.message||"Client profile or database access could not be loaded.");
   }
 }
 $("#clientMenuBtn").onclick=()=>{$("#clientSidebar").classList.add("open");$("#clientOverlay").classList.add("show");};
@@ -509,4 +466,6 @@ document.addEventListener("click",e=>{
   if(!e.target.closest("#notificationWrap"))$("#notificationPopover")?.classList.remove("show");
 });
 window.addEventListener("hashchange",()=>{route=parseRoute();render();});
-onAuthStateChanged(auth,bootstrap);
+let sessionUnsub=null;
+function watchClientSession(user){ if(sessionUnsub)sessionUnsub(); sessionUnsub=onSnapshot(doc(db,"users",user.uid),snap=>{ const sid=snap.data()?.sessionId; const current=sessionStorage.getItem("pisoClientSession"); if(sid && current && sid!==current){ sessionUnsub?.(); signOut(auth).finally(()=>location.replace("/")); }}); }
+onAuthStateChanged(auth,user=>{if(user){watchClientSession(user);bootstrap(user);}else{bootstrap(null);}});

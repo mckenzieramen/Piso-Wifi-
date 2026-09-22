@@ -3,94 +3,53 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    function isSignedIn() {
-      return request.auth != null;
-    }
-
+    function signedIn() { return request.auth != null; }
     function isAdmin() {
-      return isSignedIn()
+      return signedIn()
         && exists(/databases/$(database)/documents/users/$(request.auth.uid))
         && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == "admin"
         && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.active != false;
     }
-
     function isClientUnit(data) {
-      return isSignedIn()
-        && (
-          (data.authUserId != null && data.authUserId == request.auth.uid)
-          || (data.email != null
-              && data.email != ""
-              && data.email == request.auth.token.email)
-        );
+      return signedIn() && (data.authUserId == request.auth.uid || (data.email != null && data.email == request.auth.token.email));
     }
-
-    function isOwnUnitDocument(unitId) {
-      return exists(/databases/$(database)/documents/units/$(unitId))
-        && isClientUnit(get(/databases/$(database)/documents/units/$(unitId)).data);
-    }
+    function ownsUnit(id) { return exists(/databases/$(database)/documents/units/$(id)) && isClientUnit(get(/databases/$(database)/documents/units/$(id)).data); }
 
     match /users/{uid} {
-      // Admin can manage role records; a signed-in user may read only their own role.
-      allow read: if isAdmin() || (isSignedIn() && uid == request.auth.uid);
-      allow write: if isAdmin();
+      allow read: if isAdmin() || (signedIn() && uid == request.auth.uid);
+      allow create: if isAdmin();
+      allow update: if isAdmin() || (signedIn() && uid == request.auth.uid && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["sessionId","updatedAt"]));
+      allow delete: if isAdmin();
     }
 
-    match /units/{document} {
+    match /clientLoginMap/{clientCode} {
+      allow get: if true;
+      allow list: if false;
+      allow create, update, delete: if isAdmin();
+    }
+
+    match /passwordResetRequests/{requestId} {
+      allow create: if request.resource.data.clientCode is string
+        && request.resource.data.email is string
+        && exists(/databases/$(database)/documents/clientLoginMap/$(request.resource.data.clientCode))
+        && get(/databases/$(database)/documents/clientLoginMap/$(request.resource.data.clientCode)).data.active == true
+        && request.resource.data.email == get(/databases/$(database)/documents/units/$(get(/databases/$(database)/documents/clientLoginMap/$(request.resource.data.clientCode)).data.unitId)).data.email;
+      allow read, update, delete: if isAdmin();
+    }
+
+    match /units/{id} {
       allow read: if isAdmin() || isClientUnit(resource.data);
-
-      // Admin owns all client/unit administration.
       allow create, delete: if isAdmin();
-
-      // Clients may update only their own profile fields or establish the UID link.
-      allow update: if isAdmin()
-        || (
-          isClientUnit(resource.data)
-          && request.resource.data.diff(resource.data).affectedKeys()
-              .hasOnly(["name", "contact", "address", "authUserId", "forcePasswordChange", "passwordChangedAt", "updatedAt"])
-        );
+      allow update: if isAdmin() || (isClientUnit(resource.data) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["name","contact","address","forcePasswordChange","passwordChangedAt","updatedAt"]));
     }
-
-    match /monthlyRecords/{document} {
-      allow read: if isAdmin() || isOwnUnitDocument(resource.data.unitId);
-      allow write: if isAdmin();
-    }
-
-    match /payments/{document} {
-      allow read: if isAdmin() || isOwnUnitDocument(resource.data.unitId);
-      allow write: if isAdmin();
-    }
-
-    match /settings/{document} {
-      allow read: if isAdmin() || isSignedIn();
-      allow write: if isAdmin();
-    }
-
-    match /notifications/{document} {
-      allow read: if isAdmin() || (
-        resource.data.relatedId != null
-        && isOwnUnitDocument(resource.data.relatedId)
-      );
-
+    match /monthlyRecords/{id} { allow read: if isAdmin() || ownsUnit(resource.data.unitId); allow write: if isAdmin(); }
+    match /payments/{id} { allow read: if isAdmin() || ownsUnit(resource.data.unitId); allow write: if isAdmin(); }
+    match /settings/{id} { allow read: if signedIn(); allow write: if isAdmin(); }
+    match /notifications/{id} {
+      allow read: if isAdmin() || (resource.data.relatedId != null && ownsUnit(resource.data.relatedId));
       allow create, delete: if isAdmin();
-
-      allow update: if isAdmin()
-        || (
-          resource.data.relatedId != null
-          && isOwnUnitDocument(resource.data.relatedId)
-          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["read"])
-        );
+      allow update: if isAdmin() || (resource.data.relatedId != null && ownsUnit(resource.data.relatedId) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["read"]));
     }
-
-
-    // Login routing directory contains only synthetic Firebase auth routing data.
-    // It contains no customer password and no registered Gmail.
-    match /clientLoginDirectory/{clientId} {
-      allow read: if true;
-      allow write: if isAdmin();
-    }
-
-    match /activities/{document} {
-      allow read, write: if isAdmin();
-    }
+    match /activities/{id} { allow read, write: if isAdmin(); }
   }
 }

@@ -1,115 +1,14 @@
 import { auth, db } from "./firebase.js";
-import {
-  signInWithEmailAndPassword,
-  onAuthStateChanged,
-  signOut,
-  setPersistence,
-  browserSessionPersistence
-} from "https://www.gstatic.com/firebasejs/12.2.1/firebase-auth.js";
-import { doc, getDoc } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-firestore.js";
-
-const form = document.querySelector("#clientLoginForm");
-const msg = document.querySelector("#clientLoginMessage");
-const submit = document.querySelector("#clientLoginButton");
-const CLIENT_REMEMBER_KEY = "pisoWifiRememberedClientId";
-const INTERNAL_DOMAIN = "@client-login.pisowifi.local";
-
-function message(text, type = "") {
-  msg.textContent = text;
-  msg.className = `client-login-message ${type}`.trim();
-}
-function normalizeClientId(value) { return String(value || "").trim().toUpperCase(); }
-function internalTempPassword(unitCode) { return `PISO-${String(unitCode || "").padStart(3,"0")}-TEMP`; }
-async function getRole(user) {
-  const snap = await getDoc(doc(db, "users", user.uid));
-  return snap.exists() ? snap.data() : null;
-}
-async function getLoginDirectory(clientId) {
-  const snap = await getDoc(doc(db, "clientLoginDirectory", clientId));
-  return snap.exists() ? snap.data() : null;
-}
-async function routeUser(user) {
-  if (!user) return;
-  try {
-    const profile = await getRole(user);
-    if (profile?.role === "client" && profile?.active !== false) {
-      window.location.replace("/client");
-      return;
-    }
-    await signOut(auth);
-    message("This account is not a Customer Account.", "error");
-  } catch (e) {
-    console.error("[PISO WIFI CUSTOMER AUTH]", e);
-    try { await signOut(auth); } catch {}
-  }
-}
-
-const savedClientId = localStorage.getItem(CLIENT_REMEMBER_KEY);
-if (savedClientId) {
-  document.querySelector("#clientEmail").value = savedClientId;
-  const remember = document.querySelector("#clientRemember");
-  if (remember) remember.checked = true;
-}
-
-onAuthStateChanged(auth, user => { if (user) routeUser(user); });
-
-form.addEventListener("submit", async e => {
-  e.preventDefault();
-  const clientId = normalizeClientId(document.querySelector("#clientEmail").value);
-  const enteredPassword = document.querySelector("#clientPassword").value;
-  const remember = document.querySelector("#clientRemember")?.checked === true;
-
-  if (!/^C-\d{3,}$/.test(clientId) || !enteredPassword) {
-    message("Enter your Client ID (for example C-001) and password.", "error");
-    return;
-  }
-
-  if (remember) localStorage.setItem(CLIENT_REMEMBER_KEY, clientId);
-  else localStorage.removeItem(CLIENT_REMEMBER_KEY);
-
-  submit.disabled = true;
-  submit.textContent = "Signing in…";
-  message("Authenticating…");
-
-  try {
-    const directory = await getLoginDirectory(clientId);
-    if (!directory?.authEmail || directory.active === false) {
-      throw new Error("Invalid Client ID or inactive account.");
-    }
-
-    await setPersistence(auth, browserSessionPersistence);
-    let cred;
-    try {
-      cred = await signInWithEmailAndPassword(auth, directory.authEmail, enteredPassword);
-    } catch (firstError) {
-      // On first login only, the customer types the Unit Code (001–050).
-      // Firebase requires a longer password internally, so the website maps
-      // that temporary value to the private internal credential.
-      const unitCode = directory.unitCode || "";
-      if (!unitCode || enteredPassword !== String(unitCode).padStart(3,"0")) throw firstError;
-      cred = await signInWithEmailAndPassword(auth, directory.authEmail, internalTempPassword(unitCode));
-    }
-
-    const profile = await getRole(cred.user);
-    if (profile?.role !== "client" || profile?.active === false) {
-      await signOut(auth);
-      throw new Error("This account is not a Customer Account.");
-    }
-    window.location.replace("/client");
-  } catch (err) {
-    console.error("[PISO WIFI CUSTOMER LOGIN]", err);
-    message("Invalid Client ID or password. If this is your first login, use your Unit Code as the temporary password.", "error");
-    submit.disabled = false;
-    submit.textContent = "Login";
-  }
-});
-
-document.querySelector("#clientTogglePassword").onclick = () => {
-  const p = document.querySelector("#clientPassword");
-  p.type = p.type === "password" ? "text" : "password";
-  document.querySelector("#clientTogglePassword").textContent = p.type === "password" ? "Show" : "Hide";
-};
-
-document.querySelector("#clientForgotPassword").onclick = () => {
-  message("Enter your Client ID and registered Gmail, then contact Admin to approve the password reset request.", "success");
-};
+import { signInWithEmailAndPassword, onAuthStateChanged, signOut, setPersistence, browserLocalPersistence, browserSessionPersistence } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-auth.js";
+import { doc, getDoc, addDoc, collection, serverTimestamp } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-firestore.js";
+const form=document.querySelector("#clientLoginForm"),msg=document.querySelector("#clientLoginMessage"),submit=document.querySelector("#clientLoginButton");
+const remembered=localStorage.getItem("pisoRememberClientId")||"";
+const idInput=document.querySelector("#clientEmail"); if(idInput&&remembered)idInput.value=remembered;
+function message(t,type=""){msg.textContent=t;msg.className=`client-login-message ${type}`.trim();}
+function cleanId(v){return String(v||"").trim().toUpperCase();}
+async function routeUser(user){if(!user)return;try{const s=await getDoc(doc(db,"users",user.uid));const p=s.exists()?s.data():null;if(p?.role==="client"&&p?.active!==false){location.replace("/client");return;}await signOut(auth);message("This account is not a Customer Account. Please use the correct portal.","error");}catch(e){console.error(e);await signOut(auth).catch(()=>{});message("We could not verify this account. Please try again.","error");}}
+onAuthStateChanged(auth,user=>{if(user)routeUser(user);});
+form.addEventListener("submit",async e=>{e.preventDefault();const clientId=cleanId(idInput.value),password=document.querySelector("#clientPassword").value,remember=document.querySelector("#rememberClient").checked;if(!/^C-\d{3,}$/.test(clientId)){message("Enter your Client ID, for example C-001.","error");return;}if(!password){message("Enter your password.","error");return;}submit.disabled=true;submit.textContent="Signing in…";message("Verifying your account…");try{const mapSnap=await getDoc(doc(db,"clientLoginMap",clientId));if(!mapSnap.exists()||mapSnap.data()?.active===false)throw new Error("CLIENT_NOT_FOUND");const map=mapSnap.data();await setPersistence(auth,remember?browserLocalPersistence:browserSessionPersistence);const cred=await signInWithEmailAndPassword(auth,map.authEmail,password);const profile=await getDoc(doc(db,"users",cred.user.uid));if(!profile.exists()||profile.data()?.role!=="client"||profile.data()?.clientCode!==clientId||profile.data()?.active===false){await signOut(auth);throw new Error("NOT_CLIENT");}const sessionId=crypto.randomUUID();sessionStorage.setItem("pisoClientSession",sessionId);if(remember)localStorage.setItem("pisoRememberClientId",clientId);else localStorage.removeItem("pisoRememberClientId");await import("https://www.gstatic.com/firebasejs/12.2.1/firebase-firestore.js").then(({updateDoc})=>updateDoc(doc(db,"users",cred.user.uid),{sessionId,updatedAt:serverTimestamp()}));location.replace("/client");}catch(err){console.error("[CUSTOMER LOGIN]",err);message(err.message==="CLIENT_NOT_FOUND"?"Client ID not found or inactive. Please check your Client ID.":"Invalid Client ID or password. Please try again.","error");submit.disabled=false;submit.textContent="Login";}});
+document.querySelector("#clientTogglePassword").onclick=()=>{const p=document.querySelector("#clientPassword");p.type=p.type==="password"?"text":"password";document.querySelector("#clientTogglePassword").textContent=p.type==="password"?"Show":"Hide";};
+document.querySelector("#rememberClient").onchange=e=>{if(!e.target.checked)localStorage.removeItem("pisoRememberClientId");};
+document.querySelector("#clientForgotPassword").onclick=async()=>{const clientId=cleanId(idInput.value);const email=prompt("Enter the Gmail address registered by Admin for this Client ID:");if(!email)return;try{const mapSnap=await getDoc(doc(db,"clientLoginMap",clientId));if(!mapSnap.exists()||mapSnap.data()?.active===false)throw new Error();await addDoc(collection(db,"passwordResetRequests"),{clientCode:clientId,email:email.trim().toLowerCase(),unitId:mapSnap.data().unitId,status:"pending",createdAt:serverTimestamp()});message("Reset request sent to Admin. Admin will review your account and provide the next reset step.","success");}catch{message("We could not verify that Client ID. Please check your details and try again.","error");}};

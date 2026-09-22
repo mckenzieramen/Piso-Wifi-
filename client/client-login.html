@@ -60,7 +60,7 @@ input,select,textarea{font-size:16px}
 .login-contact{text-align:center;font-size:12px;color:#718096;margin:24px 0 15px}.login-contact a{color:var(--blue);font-weight:700}.back-admin{display:block;text-align:center;color:#60748b}
 
 
-</style>
+.login-options{display:flex;align-items:center;justify-content:space-between;gap:12px}.remember-option{display:flex;align-items:center;gap:8px;font-size:12px;color:#64748b;cursor:pointer}.remember-option input{width:16px;height:16px;accent-color:#0877e8}.credential-tip{padding:12px 14px;border:1px solid #dbeafe;background:#f5f9ff;border-radius:12px;color:#45617e;font-size:12px;line-height:1.5;margin-top:18px}.credential-tip b{color:#173d66}</style>
 </head>
 <body class="client-login-page">
   <noscript><div style="padding:16px;background:#fff3cd;color:#664d03;text-align:center;font-family:Arial,sans-serif">JavaScript is required for the PISO WIFI Customer Account.</div></noscript>
@@ -86,13 +86,13 @@ input,select,textarea{font-size:16px}
         <div class="mobile-brand"><span class="client-logo-mark"><svg viewBox="0 0 48 48"><path d="M7 20c10-9 24-9 34 0M12 26c7-6 17-6 24 0M18 32c3.5-3 8.5-3 12 0" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round"/><circle cx="24" cy="38" r="2.6" fill="currentColor"/></svg></span><b>PISO WIFI</b></div>
         <div class="login-heading"><span class="eyebrow">CLIENT ACCESS</span><h2>Welcome to Your Customer Account!</h2><p>Log in to your account to view your Piso WiFi records.</p></div>
         <form id="clientLoginForm" novalidate>
-          <label class="client-field"><span>Unit ID / Login ID</span><div class="input-with-icon"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m4 7 8 6 8-6"/></svg><input id="clientEmail" type="text" autocomplete="username" placeholder="C-001" required></div></label>
+          <label class="client-field"><span>Client ID / Login ID</span><div class="input-with-icon"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m4 7 8 6 8-6"/></svg><input id="clientEmail" type="text" autocomplete="username" placeholder="C-001" required></div></label>
           <label class="client-field"><span>Password</span><div class="input-with-icon"><svg viewBox="0 0 24 24"><rect x="5" y="10" width="14" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg><input id="clientPassword" type="password" autocomplete="current-password" placeholder="Enter your password" required><button type="button" id="clientTogglePassword">Show</button></div></label>
-          <div class="login-options" style="justify-content:space-between;align-items:center"><label style="display:flex;align-items:center;gap:8px;font-size:12px;color:#64748b;font-weight:600"><input id="clientRemember" type="checkbox"> Remember my Client ID</label><button type="button" id="clientForgotPassword" class="text-link">Forgot Password?</button></div>
+          <div class="login-options"><label class="remember-option"><input id="rememberClient" type="checkbox"> <span>Remember my Client ID</span></label><button type="button" id="clientForgotPassword" class="text-link">Forgot password?</button></div>
           <button class="client-primary login-submit" id="clientLoginButton" type="submit">Login</button>
           <div id="clientLoginMessage" class="client-login-message" role="status" aria-live="polite"></div>
         </form>
-        <p class="login-contact">Your Admin will provide your Client ID. On first login, use your Unit Code as the temporary password, then create your own private password.</p>
+        <p class="login-contact">Use the Client ID provided by your Admin. Your temporary password is provided with your account and must be changed after your first login.</p>
 
       </div>
     </section>
