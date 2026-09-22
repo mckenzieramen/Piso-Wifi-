@@ -21,12 +21,12 @@
     </div>
 
     <h1 id="loginTitle">PISO WIFI</h1>
-    <p>Management System</p>
+    <p>Secure Admin Management System</p>
 
     <form id="loginForm" novalidate>
       <div class="login-form-group">
         <label for="email">Email Address</label>
-        <input id="email" type="email" autocomplete="email" required placeholder="admin@example.com">
+        <input id="email" type="email" autocomplete="username" required placeholder="Enter your admin email">
       </div>
 
       <div class="login-form-group">
@@ -37,10 +37,13 @@
         </div>
       </div>
 
-      <button class="primary-btn" type="submit">Log In</button>
+      <label class="admin-remember"><input id="rememberAdmin" type="checkbox"> <span>Remember my email on this device</span></label>
+      <button class="primary-btn" type="submit">Sign in to Admin</button>
       <button class="link-btn login-forgot" type="button" id="resetPassword">Forgot password?</button>
       <div id="loginMessage" class="login-message" role="status" aria-live="polite"></div>
     </form>
+
+    <div class="admin-login-help"><strong>Admin access only</strong><span>Use your authorized Admin email and password. Customer accounts cannot sign in here.</span></div>
 
     <div class="login-footer">
       <strong>Connect · Earn · Grow Together</strong><br>

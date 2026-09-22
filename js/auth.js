@@ -14,6 +14,15 @@ import {
 
 const form = document.querySelector("#loginForm");
 const msg = document.querySelector("#loginMessage");
+const REMEMBER_ADMIN_KEY = "pisoWifi.rememberedAdminEmail";
+const rememberAdmin = document.querySelector("#rememberAdmin");
+try {
+  const savedAdminEmail = localStorage.getItem(REMEMBER_ADMIN_KEY);
+  if (savedAdminEmail && document.querySelector("#email")) {
+    document.querySelector("#email").value = savedAdminEmail;
+    if (rememberAdmin) rememberAdmin.checked = true;
+  }
+} catch {}
 
 function showMessage(text, type = "") {
   msg.textContent = text;
@@ -33,7 +42,11 @@ async function routeSignedInUser(user) {
 
     // ADMIN PORTAL IS STRICTLY ADMIN-ONLY.
     if (profile?.role === "admin" && profile?.active !== false) {
-      window.location.replace("/admin/dashboard.html");
+      try {
+      if (rememberAdmin?.checked) localStorage.setItem(REMEMBER_ADMIN_KEY, email);
+      else localStorage.removeItem(REMEMBER_ADMIN_KEY);
+    } catch {}
+    window.location.replace("/admin/dashboard.html");
       return;
     }
 

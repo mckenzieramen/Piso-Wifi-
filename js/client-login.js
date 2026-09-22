@@ -11,7 +11,9 @@ import { doc, getDoc, addDoc, collection, serverTimestamp } from "https://www.gs
 const form = document.querySelector("#clientLoginForm");
 const msg = document.querySelector("#clientLoginMessage");
 const submit = document.querySelector("#clientLoginButton");
+const remember = document.querySelector("#clientRememberMe");
 const UNIT_AUTH_DOMAIN = "@client-login.pisowifi.local";
+const CLIENT_REMEMBER_KEY = "pisoWifi.rememberedUnitId";
 
 function message(text, type = "") {
   msg.textContent = text;
@@ -21,6 +23,14 @@ function message(text, type = "") {
 function normalizeUnitId(value) {
   return String(value || "").trim();
 }
+
+try {
+  const savedUnit = localStorage.getItem(CLIENT_REMEMBER_KEY);
+  if (savedUnit && document.querySelector("#clientEmail")) {
+    document.querySelector("#clientEmail").value = savedUnit;
+    if (remember) remember.checked = true;
+  }
+} catch {}
 
 function authEmailFromUnitId(unitId) {
   return `${unitId.toLowerCase().replace(/[^a-z0-9]+/g, "-")}${UNIT_AUTH_DOMAIN}`;
@@ -38,7 +48,12 @@ async function routeUser(user) {
     const profile = await getRole(user);
 
     if (profile?.role === "client" && profile?.active !== false) {
-      window.location.replace("/client");
+      try {
+      if (remember?.checked) localStorage.setItem(CLIENT_REMEMBER_KEY, unitId);
+      else localStorage.removeItem(CLIENT_REMEMBER_KEY);
+    } catch {}
+
+    window.location.replace("/client");
       return;
     }
 
