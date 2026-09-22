@@ -30,18 +30,28 @@ service cloud.firestore {
     match /users/{uid} {
       // Admin can manage role records; a signed-in user may read only their own role.
       allow read: if isAdmin() || (isSignedIn() && uid == request.auth.uid);
-      allow create, delete: if isAdmin();
-      allow update: if isAdmin()
-        || (isSignedIn() && uid == request.auth.uid
-            && request.resource.data.diff(resource.data).affectedKeys()
-              .hasOnly(["sessionId", "sessionUpdatedAt"]));
+      allow write: if isAdmin();
     }
 
     match /units/{document} {
       allow read: if isAdmin() || isClientUnit(resource.data);
 
       // Admin owns all client/unit administration.
-      allow create, delete: if isAdmin();
+      allow create: if isAdmin()
+        || (
+          request.resource.data.type == "password-reset"
+          && request.resource.data.read == false
+          && request.resource.data.title == "Customer password reset requested"
+          && request.resource.data.clientCode is string
+          && request.resource.data.unitCode is string
+          && request.resource.data.email is string
+          && exists(/databases/$(database)/documents/customerLoginDirectory/$(request.resource.data.clientCode))
+          && get(/databases/$(database)/documents/customerLoginDirectory/$(request.resource.data.clientCode)).data.unitCode == request.resource.data.unitCode
+          && get(/databases/$(database)/documents/customerLoginDirectory/$(request.resource.data.clientCode)).data.email == request.resource.data.email
+          && get(/databases/$(database)/documents/customerLoginDirectory/$(request.resource.data.clientCode)).data.active == true
+        );
+
+      allow delete: if isAdmin();
 
       // Clients may update only their own profile fields or establish the UID link.
       allow update: if isAdmin()
@@ -65,6 +75,29 @@ service cloud.firestore {
     match /settings/{document} {
       allow read: if isAdmin() || isSignedIn();
       allow write: if isAdmin();
+    }
+
+    match /customerLoginDirectory/{clientCode} {
+      // Public read is intentionally disabled. This directory is only used by security rules
+      // to verify a password-reset request. Admin is the only writer.
+      allow read, write: if isAdmin();
+    }
+
+    match /passwordResetRequests/{requestId} {
+      // Customer can submit a recovery request only when the supplied Client ID, Unit ID
+      // and registered email exactly match the Admin-created directory record.
+      allow create: if
+        request.resource.data.status == "pending"
+        && request.resource.data.clientCode is string
+        && request.resource.data.unitCode is string
+        && request.resource.data.email is string
+        && request.resource.data.createdAt == request.time
+        && exists(/databases/$(database)/documents/customerLoginDirectory/$(request.resource.data.clientCode))
+        && get(/databases/$(database)/documents/customerLoginDirectory/$(request.resource.data.clientCode)).data.unitCode == request.resource.data.unitCode
+        && get(/databases/$(database)/documents/customerLoginDirectory/$(request.resource.data.clientCode)).data.email == request.resource.data.email
+        && get(/databases/$(database)/documents/customerLoginDirectory/$(request.resource.data.clientCode)).data.active == true;
+
+      allow read, update, delete: if isAdmin();
     }
 
     match /notifications/{document} {

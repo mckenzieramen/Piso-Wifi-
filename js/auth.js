@@ -5,55 +5,15 @@ import {
   sendPasswordResetEmail,
   signOut,
   setPersistence,
-  browserSessionPersistence,
-  browserLocalPersistence
+  browserSessionPersistence
 } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-auth.js";
 import {
   doc,
-  getDoc,
-  updateDoc,
-  serverTimestamp,
-  onSnapshot
+  getDoc
 } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-firestore.js";
 
 const form = document.querySelector("#loginForm");
 const msg = document.querySelector("#loginMessage");
-const REMEMBER_KEY = "pisoAdminRememberEmail";
-const SESSION_KEY = "pisoAdminSessionId";
-
-function newSessionId() {
-  if (crypto?.randomUUID) return crypto.randomUUID();
-  return `${Date.now()}-${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`;
-}
-
-function getRememberedEmail() {
-  try { return localStorage.getItem(REMEMBER_KEY) || ""; } catch { return ""; }
-}
-
-function setRememberedEmail(email, remember) {
-  try {
-    if (remember) localStorage.setItem(REMEMBER_KEY, email);
-    else localStorage.removeItem(REMEMBER_KEY);
-  } catch {}
-}
-
-function sessionPersistence(remember) {
-  return remember ? browserLocalPersistence : browserSessionPersistence;
-}
-
-async function startSingleDeviceSession(user) {
-  const sessionId = newSessionId();
-  try { sessionStorage.setItem(SESSION_KEY, sessionId); } catch {}
-  await updateDoc(doc(db, "users", user.uid), { sessionId, sessionUpdatedAt: serverTimestamp() });
-  return sessionId;
-}
-
-
-const rememberedEmail = getRememberedEmail();
-const emailInput = document.querySelector("#email");
-const passwordInput = document.querySelector("#password");
-if (emailInput && rememberedEmail) emailInput.value = rememberedEmail;
-if (passwordInput) passwordInput.value = "";
 
 function showMessage(text, type = "") {
   msg.textContent = text;
@@ -112,9 +72,7 @@ form.addEventListener("submit", async e => {
   showMessage("Signing in…");
 
   try {
-    const remember = !!document.querySelector("#rememberMe")?.checked;
-    await setPersistence(auth, sessionPersistence(remember));
-    setRememberedEmail(email, remember);
+    await setPersistence(auth, browserSessionPersistence);
 
     const cred = await signInWithEmailAndPassword(auth, email, password);
     const profile = await getRole(cred.user);
@@ -128,7 +86,6 @@ form.addEventListener("submit", async e => {
       return;
     }
 
-    await startSingleDeviceSession(cred.user);
     window.location.replace("/admin/dashboard.html");
   } catch (err) {
     console.error("[PISO WIFI ADMIN LOGIN]", err);

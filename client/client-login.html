@@ -60,7 +60,10 @@ input,select,textarea{font-size:16px}
 .login-contact{text-align:center;font-size:12px;color:#718096;margin:24px 0 15px}.login-contact a{color:var(--blue);font-weight:700}.back-admin{display:block;text-align:center;color:#60748b}
 
 
-.remember-row{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:6px 0 20px;font-size:12px;color:#64748b}.remember-row label{display:flex;align-items:center;gap:8px;cursor:pointer}.remember-row input{width:16px;height:16px;accent-color:#0877e8}.remember-row .text-link{margin-left:auto}
+</style>
+
+<style>
+.client-reset-modal{position:fixed;inset:0;z-index:1000;display:grid;place-items:center;padding:20px}.client-reset-backdrop{position:absolute;inset:0;background:rgba(4,18,35,.58);backdrop-filter:blur(3px)}.client-reset-card{position:relative;width:min(470px,100%);background:#fff;border:1px solid #e3eaf2;border-radius:18px;box-shadow:0 28px 70px rgba(5,25,50,.24);padding:32px}.client-reset-card h2{margin:8px 0 8px;font-size:25px}.client-reset-card p{margin:0 0 20px;color:#718096;font-size:13px;line-height:1.55}.client-reset-card input{width:100%;height:50px;border:1px solid #dbe4ee;border-radius:10px;padding:0 13px;outline:0;background:#fff;color:#142742}.client-reset-card input:focus{border-color:#3b9af1;box-shadow:0 0 0 4px rgba(8,119,232,.09)}.client-reset-close{position:absolute;right:14px;top:12px;width:34px;height:34px;border:0;border-radius:9px;background:#f3f6fa;color:#52667f;font-size:22px;line-height:1}.client-reset-close:hover{background:#eaf0f6}.client-reset-card .client-field{margin:14px 0}
 </style>
 </head>
 <body class="client-login-page">
@@ -88,8 +91,8 @@ input,select,textarea{font-size:16px}
         <div class="login-heading"><span class="eyebrow">CLIENT ACCESS</span><h2>Welcome to Your Customer Account!</h2><p>Log in to your account to view your Piso WiFi records.</p></div>
         <form id="clientLoginForm" novalidate>
           <label class="client-field"><span>Unit ID / Login ID</span><div class="input-with-icon"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m4 7 8 6 8-6"/></svg><input id="clientEmail" type="text" autocomplete="username" placeholder="UNIT-001" required></div></label>
-          <label class="client-field"><span>Password</span><div class="input-with-icon"><svg viewBox="0 0 24 24"><rect x="5" y="10" width="14" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg><input id="clientPassword" type="password" autocomplete="off" placeholder="Enter your password" required><button type="button" id="clientTogglePassword">Show</button></div></label>
-          <div class="remember-row"><label><input id="clientRememberMe" type="checkbox"> <span>Remember me</span></label><button type="button" id="clientForgotPassword" class="text-link">Forgot Password?</button></div>
+          <label class="client-field"><span>Password</span><div class="input-with-icon"><svg viewBox="0 0 24 24"><rect x="5" y="10" width="14" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg><input id="clientPassword" type="password" autocomplete="current-password" placeholder="Enter your password" required><button type="button" id="clientTogglePassword">Show</button></div></label>
+          <div class="login-options"><button type="button" id="clientForgotPassword" class="text-link">Forgot Password?</button></div>
           <button class="client-primary login-submit" id="clientLoginButton" type="submit">Login</button>
           <div id="clientLoginMessage" class="client-login-message" role="status" aria-live="polite"></div>
         </form>
@@ -98,6 +101,6 @@ input,select,textarea{font-size:16px}
       </div>
     </section>
   </main>
-  <script type="module" src="../js/client-login.js?v=9"></script>
+  <script type="module" src="../js/client-login.js?v=8"></script>
 </body>
 </html>

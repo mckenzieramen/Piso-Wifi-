@@ -3,7 +3,7 @@ import {
   onAuthStateChanged, signOut, updatePassword
 } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-auth.js";
 import {
-  collection, doc, getDoc, getDocs, query, where, updateDoc, onSnapshot,
+  collection, doc, getDoc, getDocs, query, where, updateDoc,
   serverTimestamp, writeBatch
 } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-firestore.js";
 import { calculateFinancialRecord } from "./finance.js";
@@ -412,22 +412,6 @@ async function maybeShowFirstLoginPasswordSetup(){
   };
 }
 
-let activeSessionId = null;
-let stopSessionWatch = null;
-function startSessionWatch(user){
-  try { activeSessionId = sessionStorage.getItem("pisoCustomerSessionId") || null; } catch {}
-  if(!activeSessionId) return;
-  if(stopSessionWatch) stopSessionWatch();
-  stopSessionWatch = onSnapshot(doc(db,"users",user.uid), async snap=>{
-    const data=snap.exists()?snap.data():null;
-    if(!data || (data.sessionId && data.sessionId !== activeSessionId)){
-      if(stopSessionWatch){stopSessionWatch();stopSessionWatch=null;}
-      try{await signOut(auth);}catch{}
-      location.replace("/");
-    }
-  }, err=>console.warn("Customer session watcher:",err));
-}
-
 let bootstrapFinished=false;
 const BOOT_TIMEOUT_MS=10000;
 const bootTimer=setTimeout(()=>{
@@ -451,7 +435,6 @@ async function bootstrap(user){
   }
   currentUser=user;
   try{
-    startSessionWatch(user);
     const userSnap=await withTimeout(getDoc(doc(db,"users",user.uid)),8000,"Firebase user profile request timed out.");
     if(userSnap.exists() && userSnap.data().role==="admin"){
       bootstrapFinished=true; clearTimeout(bootTimer);

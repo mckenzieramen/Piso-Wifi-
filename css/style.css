@@ -329,3 +329,5 @@ body{background:radial-gradient(circle at 80% -10%,#e9f3ff 0,transparent 35%),va
 .accumulating-table thead th{position:sticky;top:0;z-index:2}
 @media(max-width:900px){.accumulating-list{max-height:240px}.accumulating-table{max-height:360px}}
 @media print{.accumulating-list,.accumulating-table{max-height:none;overflow:visible}}
+
+.nav-badge{margin-left:auto;min-width:18px;height:18px;padding:0 5px;border-radius:10px;background:#e84959;color:#fff;font-size:9px;font-weight:800;display:inline-grid;place-items:center}.nav-badge.hidden{display:none!important}

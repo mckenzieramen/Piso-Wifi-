@@ -4,42 +4,14 @@ import {
   onAuthStateChanged,
   signOut,
   setPersistence,
-  browserSessionPersistence,
-  browserLocalPersistence
+  browserSessionPersistence
 } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-auth.js";
-import { doc, getDoc, updateDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-firestore.js";
+import { doc, getDoc, addDoc, collection, serverTimestamp } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-firestore.js";
 
 const form = document.querySelector("#clientLoginForm");
 const msg = document.querySelector("#clientLoginMessage");
 const submit = document.querySelector("#clientLoginButton");
 const UNIT_AUTH_DOMAIN = "@client-login.pisowifi.local";
-const REMEMBER_KEY = "pisoCustomerRememberUnitId";
-const SESSION_KEY = "pisoCustomerSessionId";
-
-function newSessionId() {
-  if (crypto?.randomUUID) return crypto.randomUUID();
-  return `${Date.now()}-${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`;
-}
-function sessionPersistence(remember) {
-  return remember ? browserLocalPersistence : browserSessionPersistence;
-}
-function authEmailFromUnitId(unitId) {
-  return `${unitId.toLowerCase().replace(/[^a-z0-9]+/g, "-")}${UNIT_AUTH_DOMAIN}`;
-}
-function rememberedUnitId() {
-  try { return localStorage.getItem(REMEMBER_KEY) || ""; } catch { return ""; }
-}
-function saveRememberedUnitId(unitId, remember) {
-  try {
-    if (remember) localStorage.setItem(REMEMBER_KEY, unitId);
-    else localStorage.removeItem(REMEMBER_KEY);
-  } catch {}
-}
-
-const unitInput = document.querySelector("#clientEmail");
-const passwordInput = document.querySelector("#clientPassword");
-if (unitInput) unitInput.value = rememberedUnitId();
-if (passwordInput) passwordInput.value = "";
 
 function message(text, type = "") {
   msg.textContent = text;
@@ -50,6 +22,9 @@ function normalizeUnitId(value) {
   return String(value || "").trim();
 }
 
+function authEmailFromUnitId(unitId) {
+  return `${unitId.toLowerCase().replace(/[^a-z0-9]+/g, "-")}${UNIT_AUTH_DOMAIN}`;
+}
 
 async function getRole(user) {
   const snap = await getDoc(doc(db, "users", user.uid));
@@ -103,9 +78,7 @@ form.addEventListener("submit", async e => {
   message("Authenticating…");
 
   try {
-    const remember = !!document.querySelector("#clientRememberMe")?.checked;
-    await setPersistence(auth, sessionPersistence(remember));
-    saveRememberedUnitId(unitId, remember);
+    await setPersistence(auth, browserSessionPersistence);
 
     const cred = await signInWithEmailAndPassword(
       auth,
@@ -125,10 +98,6 @@ form.addEventListener("submit", async e => {
       submit.textContent = "Login";
       return;
     }
-
-    const sessionId = newSessionId();
-    try { sessionStorage.setItem(SESSION_KEY, sessionId); } catch {}
-    await updateDoc(doc(db, "users", cred.user.uid), { sessionId, sessionUpdatedAt: serverTimestamp() });
 
     window.location.replace("/client");
   } catch (err) {
@@ -150,8 +119,72 @@ document.querySelector("#clientTogglePassword").onclick = () => {
 };
 
 document.querySelector("#clientForgotPassword").onclick = () => {
-  message(
-    "For security, password recovery is handled by Admin. Please contact Admin to reset your access.",
-    "success"
-  );
+  openForgotPasswordModal();
 };
+
+function openForgotPasswordModal(){
+  const existing=document.querySelector("#forgotPasswordModal");
+  if(existing){ existing.classList.remove("hidden"); existing.querySelector("input")?.focus(); return; }
+  const wrap=document.createElement("div");
+  wrap.id="forgotPasswordModal";
+  wrap.className="client-reset-modal";
+  wrap.innerHTML=`
+    <div class="client-reset-backdrop" data-close-reset></div>
+    <section class="client-reset-card" role="dialog" aria-modal="true" aria-labelledby="forgotTitle">
+      <button type="button" class="client-reset-close" data-close-reset aria-label="Close">×</button>
+      <span class="eyebrow">ACCOUNT RECOVERY</span>
+      <h2 id="forgotTitle">Forgot your password?</h2>
+      <p>Verify your Client ID, Unit ID and registered Gmail. We will notify Admin to process the reset.</p>
+      <form id="forgotPasswordForm">
+        <label class="client-field"><span>Client ID</span><input id="resetClientId" autocomplete="off" placeholder="C-001" required></label>
+        <label class="client-field"><span>Unit ID</span><input id="resetUnitId" autocomplete="off" placeholder="001" required></label>
+        <label class="client-field"><span>Registered Gmail</span><input id="resetEmail" type="email" autocomplete="email" placeholder="yourname@gmail.com" required></label>
+        <div id="resetMessage" class="client-login-message" role="status" aria-live="polite"></div>
+        <button class="client-primary login-submit" id="resetSubmit" type="submit">Send Reset Request</button>
+      </form>
+    </section>`;
+  document.body.appendChild(wrap);
+  wrap.querySelectorAll("[data-close-reset]").forEach(el=>el.onclick=()=>wrap.remove());
+  wrap.querySelector("#forgotPasswordForm").onsubmit=submitResetRequest;
+  wrap.querySelector("#resetClientId").focus();
+}
+
+async function submitResetRequest(e){
+  e.preventDefault();
+  const clientId=document.querySelector("#resetClientId").value.trim().toUpperCase();
+  const unitId=document.querySelector("#resetUnitId").value.trim().toUpperCase();
+  const email=document.querySelector("#resetEmail").value.trim().toLowerCase();
+  const msgEl=document.querySelector("#resetMessage");
+  const btn=document.querySelector("#resetSubmit");
+  if(!clientId||!unitId||!email){msgEl.textContent="Complete all fields.";msgEl.className="client-login-message error";return;}
+  btn.disabled=true; btn.textContent="Sending…"; msgEl.textContent="Verifying your account details…"; msgEl.className="client-login-message";
+  try{
+    // The security rules verify these details against the admin-created customer directory.
+    await addDoc(collection(db,"passwordResetRequests"),{
+      clientCode:clientId,
+      unitCode:unitId,
+      email,
+      status:"pending",
+      createdAt:serverTimestamp()
+    });
+    await addDoc(collection(db,"notifications"),{
+      type:"password-reset",
+      title:"Customer password reset requested",
+      message:`Reset requested for ${clientId} / Unit ${unitId} (${email}). Review the customer record and provide a temporary password.`,
+      relatedId:"",
+      clientCode:clientId,
+      unitCode:unitId,
+      email,
+      read:false,
+      createdAt:serverTimestamp()
+    });
+    msgEl.textContent="Request sent. Admin has been notified. Once Admin provides a temporary password, log in and create your new private password.";
+    msgEl.className="client-login-message success";
+    setTimeout(()=>document.querySelector("#forgotPasswordModal")?.remove(),2200);
+  }catch(err){
+    console.error("[PISO WIFI PASSWORD RESET]",err);
+    msgEl.textContent="We could not verify those details. Check your Client ID, Unit ID and registered Gmail, then try again.";
+    msgEl.className="client-login-message error";
+    btn.disabled=false; btn.textContent="Send Reset Request";
+  }
+}

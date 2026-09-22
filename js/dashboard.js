@@ -5,7 +5,7 @@ import { getAuth, createUserWithEmailAndPassword } from "https://www.gstatic.com
 import { calculateFinancialRecord } from "./finance.js";
 import { onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-auth.js";
 import {
-  collection, doc, getDoc, getDocs, setDoc, addDoc, updateDoc, deleteDoc, writeBatch, onSnapshot,
+  collection, doc, getDoc, getDocs, setDoc, addDoc, updateDoc, deleteDoc, writeBatch,
   serverTimestamp, Timestamp
 } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-firestore.js";
 
@@ -21,22 +21,6 @@ const esc = (v) => String(v ?? "").replace(/[&<>"']/g, m => ({"&":"&amp;","<":"&
 const uid = () => `${Date.now()}-${Math.random().toString(36).slice(2,8)}`;
 
 let currentUser = null;
-let adminSessionId = null;
-let stopAdminSessionWatch = null;
-function startAdminSessionWatch(user){
-  try { adminSessionId = sessionStorage.getItem("pisoAdminSessionId") || null; } catch {}
-  if(!adminSessionId) return;
-  if(stopAdminSessionWatch) stopAdminSessionWatch();
-  stopAdminSessionWatch = onSnapshot(doc(db,"users",user.uid), async snap=>{
-    const data=snap.exists()?snap.data():null;
-    if(!data || (data.sessionId && data.sessionId !== adminSessionId)){
-      if(stopAdminSessionWatch){stopAdminSessionWatch();stopAdminSessionWatch=null;}
-      try{await signOut(auth);}catch{}
-      location.replace("/admin");
-    }
-  }, err=>console.warn("Admin session watcher:",err));
-}
-
 let units = [], records = [], payments = [], notifications = [], activities = [];
 let settings = { internetCost:1000, ownerPercent:70, clientPercent:30, electricity:100, electricityRule:"ADD_TO_CLIENT" };
 let route = "dashboard";
@@ -50,6 +34,21 @@ const CLIENT_AUTH_DOMAIN="@client-login.pisowifi.local";
 const clientProvisionerApp=initializeApp(firebaseConfig,"clientProvisioner");
 const clientProvisionerAuth=getAuth(clientProvisionerApp);
 const clientAuthEmailFromUnitId=(unitCode)=>`${String(unitCode||"").trim().toLowerCase().replace(/[^a-z0-9]+/g,"-")}${CLIENT_AUTH_DOMAIN}`;
+
+async function syncCustomerDirectory(){
+  const jobs=units.filter(u=>u.clientCode&&u.unitCode&&u.email).map(u=>
+    setDoc(doc(db,"customerLoginDirectory",String(u.clientCode).toUpperCase()),{
+      clientCode:String(u.clientCode).toUpperCase(),
+      unitCode:String(u.unitCode).toUpperCase(),
+      email:String(u.email).trim().toLowerCase(),
+      unitDocId:u.id,
+      authUserId:u.authUserId||"",
+      active:u.active!==false,
+      updatedAt:serverTimestamp()
+    },{merge:true})
+  );
+  if(jobs.length) await Promise.all(jobs);
+}
 
 
 function notify(msg, type="success") {
@@ -92,6 +91,7 @@ async function loadData(){
   ]);
 
   units=u.docs.map(d=>({id:d.id,...d.data()}));
+  try { await syncCustomerDirectory(); } catch(e) { console.warn("Customer directory sync skipped",e); }
   records=r.docs.map(d=>({id:d.id,...d.data()}));
   payments=p.docs.map(d=>({id:d.id,...d.data()}));
   if(s.exists()) settings={...settings,...s.data()};
@@ -147,9 +147,11 @@ async function addNotification(type,title,message,relatedId=""){
 }
 function unreadCount(){ return notifications.filter(n=>n.read!==true).length; }
 function updateNotificationBadge(){
-  // Notification UI was intentionally removed from the dashboard header/sidebar.
-  // Keep notification data generation compatible without requiring visible badge elements.
-  return unreadCount();
+  const el=document.querySelector("#adminNotificationBadge");
+  if(!el)return;
+  const count=unreadCount();
+  el.textContent=count>99?"99+":String(count);
+  el.classList.toggle("hidden",count===0);
 }
 function nav(){ document.querySelectorAll("#nav a").forEach(a=>a.classList.toggle("active",a.dataset.route===route)); }
 function closeMenu(){ $("#sidebar").classList.remove("open"); $("#overlay").classList.remove("show"); }
@@ -294,7 +296,7 @@ function downloadStatementPdf(id,month){
 function printStatement(id,month){const {u,c}=statementData(id,month);openPrintWindow(statementDocumentHtml(u,c,month));}
 
 function renderNotifications(){
-  view.innerHTML=baseHead("Notifications","Stay updated on payments, balances, reports and system changes.",`<button class="secondary-btn" id="markAllRead">Mark all as read</button>`)+`<div class="notification-list">${notifications.length?notifications.map(n=>`<button class="notification-card ${n.read===true?"read":"unread"}" data-notification="${n.id}"><span class="notification-icon">${n.type==="payment"?"₱":n.type==="balance"?"!":n.type==="report"?"▥":"●"}</span><span><b>${esc(n.title)}</b><small>${esc(n.message)}</small><time>${dateTimeLabel(n.createdAt)}</time></span>${n.read!==true?"<em>NEW</em>":""}</button>`).join(""):empty("You're all caught up.")}</div>`;
+  view.innerHTML=baseHead("Notifications","Stay updated on payments, balances, reports and system changes.",`<button class="secondary-btn" id="markAllRead">Mark all as read</button>`)+`<div class="notification-list">${notifications.length?notifications.map(n=>`<button class="notification-card ${n.read===true?"read":"unread"}" data-notification="${n.id}"><span class="notification-icon">${n.type==="payment"?"₱":n.type==="balance"?"!":n.type==="report"?"▥":n.type==="password-reset"?"🔐":"●"}</span><span><b>${esc(n.title)}</b><small>${esc(n.message)}</small><time>${dateTimeLabel(n.createdAt)}</time></span>${n.read!==true?"<em>NEW</em>":""}</button>`).join(""):empty("You're all caught up.")}</div>`;
   $("#markAllRead").onclick=markAllNotificationsRead; document.querySelectorAll("[data-notification]").forEach(b=>b.onclick=()=>openNotification(b.dataset.notification));
 }
 async function openNotification(id){const n=notifications.find(x=>x.id===id);if(!n)return;if(n.read!==true){await updateDoc(doc(db,"notifications",id),{read:true});await loadData();} if(n.relatedId && units.some(u=>u.id===n.relatedId)){openProfile(n.relatedId);}else{render();}}

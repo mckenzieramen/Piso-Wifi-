@@ -6,9 +6,6 @@
   <meta name="theme-color" content="#0b1730">
   <title>PISO WIFI — Management System</title>
   <link rel="stylesheet" href="../css/style.css">
-<style>
-.remember-row{display:flex;align-items:center;justify-content:flex-start;margin:10px 0 18px;font-size:13px;color:#64748b}.remember-row label{display:flex;align-items:center;gap:8px;cursor:pointer}.remember-row input{width:16px;height:16px;accent-color:#1677ff}.remember-row .text-link{margin-left:auto}.remember-row button{border:0;background:transparent;color:#1677ff;font-weight:700;cursor:pointer}
-</style>
 </head>
 <body class="login-page">
   <main class="login-card" aria-labelledby="loginTitle">
@@ -35,12 +32,10 @@
       <div class="login-form-group">
         <label for="password">Password</label>
         <div class="password-wrap">
-          <input id="password" type="password" autocomplete="off" required placeholder="Enter your password">
+          <input id="password" type="password" autocomplete="current-password" required placeholder="Enter your password">
           <button type="button" id="togglePassword" aria-label="Show password">Show</button>
         </div>
       </div>
-
-      <div class="remember-row"><label><input id="rememberMe" type="checkbox"> <span>Remember me</span></label></div>
 
       <button class="primary-btn" type="submit">Log In</button>
       <button class="link-btn login-forgot" type="button" id="resetPassword">Forgot password?</button>
