@@ -3,7 +3,7 @@ import {
   onAuthStateChanged, signOut, updatePassword
 } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-auth.js";
 import {
-  collection, doc, getDoc, getDocs, query, where, updateDoc,
+  collection, doc, getDoc, getDocs, query, where, updateDoc, onSnapshot,
   serverTimestamp, writeBatch
 } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-firestore.js";
 import { calculateFinancialRecord } from "./finance.js";
@@ -353,16 +353,7 @@ async function markAllNotifications(){
 }
 function updateBell(){
   const count=unread();
-  const badge=$("#notificationCount");
-  if(badge){
-    badge.textContent=count>99?"99+":String(count);
-    badge.classList.toggle("hidden",count===0);
-  }
-  const navBadge=$("#clientNavNotificationCount");
-  if(navBadge){
-    navBadge.textContent=count>99?"99+":String(count);
-    navBadge.classList.toggle("hidden",count===0);
-  }
+  const badge=$("#notificationCount");if(badge){badge.textContent=count>99?"99+":String(count);badge.classList.toggle("hidden",count===0);}
   renderNotificationsPopover();
 }
 function renderNotificationsPopover(){
@@ -376,20 +367,7 @@ function toggleNotificationPopover(){
 }
 
 function bindRouteButtons(){
-  document.querySelectorAll("[data-route]").forEach(el=>{
-    if(el.dataset.routeBound==="1") return;
-    el.dataset.routeBound="1";
-    el.addEventListener("click",e=>{
-      e.preventDefault();
-      const target=el.dataset.route;
-      if(location.hash.replace("#","")===target){
-        route=target;
-        render();
-      }else{
-        location.hash="#"+target;
-      }
-    });
-  });
+  document.querySelectorAll("[data-route]").forEach(el=>el.onclick=e=>{e.preventDefault();location.hash="#"+el.dataset.route;});
 }
 function renderNav(){
   document.querySelectorAll("#clientNav a[data-route]").forEach(a=>a.classList.toggle("active",a.dataset.route===route));
@@ -434,6 +412,22 @@ async function maybeShowFirstLoginPasswordSetup(){
   };
 }
 
+let activeSessionId = null;
+let stopSessionWatch = null;
+function startSessionWatch(user){
+  try { activeSessionId = sessionStorage.getItem("pisoCustomerSessionId") || null; } catch {}
+  if(!activeSessionId) return;
+  if(stopSessionWatch) stopSessionWatch();
+  stopSessionWatch = onSnapshot(doc(db,"users",user.uid), async snap=>{
+    const data=snap.exists()?snap.data():null;
+    if(!data || (data.sessionId && data.sessionId !== activeSessionId)){
+      if(stopSessionWatch){stopSessionWatch();stopSessionWatch=null;}
+      try{await signOut(auth);}catch{}
+      location.replace("/");
+    }
+  }, err=>console.warn("Customer session watcher:",err));
+}
+
 let bootstrapFinished=false;
 const BOOT_TIMEOUT_MS=10000;
 const bootTimer=setTimeout(()=>{
@@ -457,6 +451,7 @@ async function bootstrap(user){
   }
   currentUser=user;
   try{
+    startSessionWatch(user);
     const userSnap=await withTimeout(getDoc(doc(db,"users",user.uid)),8000,"Firebase user profile request timed out.");
     if(userSnap.exists() && userSnap.data().role==="admin"){
       bootstrapFinished=true; clearTimeout(bootTimer);

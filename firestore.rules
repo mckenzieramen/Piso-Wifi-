@@ -30,7 +30,11 @@ service cloud.firestore {
     match /users/{uid} {
       // Admin can manage role records; a signed-in user may read only their own role.
       allow read: if isAdmin() || (isSignedIn() && uid == request.auth.uid);
-      allow write: if isAdmin();
+      allow create, delete: if isAdmin();
+      allow update: if isAdmin()
+        || (isSignedIn() && uid == request.auth.uid
+            && request.resource.data.diff(resource.data).affectedKeys()
+              .hasOnly(["sessionId", "sessionUpdatedAt"]));
     }
 
     match /units/{document} {

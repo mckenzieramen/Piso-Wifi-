@@ -5,7 +5,7 @@ import { getAuth, createUserWithEmailAndPassword } from "https://www.gstatic.com
 import { calculateFinancialRecord } from "./finance.js";
 import { onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-auth.js";
 import {
-  collection, doc, getDoc, getDocs, setDoc, addDoc, updateDoc, deleteDoc, writeBatch,
+  collection, doc, getDoc, getDocs, setDoc, addDoc, updateDoc, deleteDoc, writeBatch, onSnapshot,
   serverTimestamp, Timestamp
 } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-firestore.js";
 
@@ -21,6 +21,22 @@ const esc = (v) => String(v ?? "").replace(/[&<>"']/g, m => ({"&":"&amp;","<":"&
 const uid = () => `${Date.now()}-${Math.random().toString(36).slice(2,8)}`;
 
 let currentUser = null;
+let adminSessionId = null;
+let stopAdminSessionWatch = null;
+function startAdminSessionWatch(user){
+  try { adminSessionId = sessionStorage.getItem("pisoAdminSessionId") || null; } catch {}
+  if(!adminSessionId) return;
+  if(stopAdminSessionWatch) stopAdminSessionWatch();
+  stopAdminSessionWatch = onSnapshot(doc(db,"users",user.uid), async snap=>{
+    const data=snap.exists()?snap.data():null;
+    if(!data || (data.sessionId && data.sessionId !== adminSessionId)){
+      if(stopAdminSessionWatch){stopAdminSessionWatch();stopAdminSessionWatch=null;}
+      try{await signOut(auth);}catch{}
+      location.replace("/admin");
+    }
+  }, err=>console.warn("Admin session watcher:",err));
+}
+
 let units = [], records = [], payments = [], notifications = [], activities = [];
 let settings = { internetCost:1000, ownerPercent:70, clientPercent:30, electricity:100, electricityRule:"ADD_TO_CLIENT" };
 let route = "dashboard";
