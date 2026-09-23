@@ -387,13 +387,13 @@ function openUnitModal(id=null){
     <div class="form-grid">
       <div class="field"><label>Client ID *</label><input id="fClientCode" value="${esc(u?.clientCode||"")}" placeholder="CID-0001" ${id?"disabled":"disabled"}><small class="hint">Automatically generated in sequence. This ID is never reused.</small></div>
       <div class="field"><label>Unit Code *</label><div class="unit-combobox"><input id="fCodeSearch" value="${esc(currentCode)}" placeholder="Search or select 1–50" autocomplete="off" aria-autocomplete="list"><input id="fCode" type="hidden" value="${esc(currentCode)}"><div id="unitCodeOptions" class="unit-options">${codeOptions}</div></div><small class="hint">Active unit codes cannot be selected. Deactivated unit codes become available again.</small></div>
-      <div class="field"><label>First Name *</label><input id="fFirstName" value="${esc(u?.firstName||firstNameFromFullName(u?.name||""))}" placeholder="Juan"></div>
-      <div class="field"><label>Last Name *</label><input id="fLastName" value="${esc(u?.lastName||String(u?.name||"").trim().split(/\s+/).slice(1).join(" "))}" placeholder="Dela Cruz"></div>
-      <div class="field full"><label>Registered Gmail *</label><input id="fEmail" type="email" value="${esc(u?.email||"")}" placeholder="customer@gmail.com"><small class="hint">Used for account recovery and customer records.</small></div>
-      <div class="field"><label>Contact Number</label><input id="fContact" value="${esc(u?.contact||"")}" placeholder="09171234567"></div>
+      <div class="field"><label>First Name *</label><input id="fFirstName" value="${esc(u?.firstName||"")}" placeholder="First Name" autocomplete="off"></div>
+      <div class="field"><label>Last Name *</label><input id="fLastName" value="${esc(u?.lastName||String(u?.name||"").trim().split(/\s+/).slice(1).join(" "))}" placeholder="Last Name" autocomplete="off"></div>
+      <div class="field full"><label>Registered Gmail *</label><input id="fEmail" type="email" value="${esc(u?.email||"")}" placeholder="customer@gmail.com" autocomplete="off"><small class="hint">Used for account recovery and customer records.</small></div>
+      <div class="field"><label>Contact Number</label><input id="fContact" value="${esc(u?.contact||"")}" placeholder="09171234567" autocomplete="off"></div>
       <div class="field"><label>Date Joined</label><input id="fDateJoined" type="date" value="${esc(suggestedDate)}"></div>
-      <div class="field full"><label>Unit Location</label><input id="fLocation" value="${esc(u?.location||"")}" placeholder="Brgy. San Isidro, Antipolo"></div>
-      <div class="field full"><label>Client Address</label><input id="fAddress" value="${esc(u?.address||u?.location||"")}" placeholder="Client residential/contact address"></div>
+      <div class="field full"><label>Unit Location</label><input id="fLocation" value="${esc(u?.location||"")}" placeholder="Brgy. San Isidro, Antipolo" autocomplete="off"></div>
+      <div class="field full"><label>Client Address</label><input id="fAddress" value="${esc(u?.address||u?.location||"")}" placeholder="Client residential/contact address" autocomplete="off"></div>
       <div class="field"><label>Status</label><select id="fStatus"><option value="active" ${u?.active!==false?"selected":""}>Active</option><option value="inactive" ${u?.active===false?"selected":""}>Inactive</option></select></div>
       <div class="field"><label>Username</label><input id="fUsername" value="${esc(u?.username||"")}" placeholder="Generated automatically" disabled><small class="hint">Generated as FirstName + Client ID, e.g. JuanCID-0001.</small></div>
       <div class="field full"><label>Notes</label><textarea id="fNotes" rows="3">${esc(u?.notes||"")}</textarea></div>
