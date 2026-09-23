@@ -103,6 +103,84 @@ input,select,textarea{font-size:16px}
 
 .client-password-modal{position:fixed;inset:0;z-index:3000;display:flex;align-items:center;justify-content:center;padding:20px}.client-password-modal.hidden{display:none}.client-password-backdrop{position:absolute;inset:0;background:rgba(5,20,40,.68);backdrop-filter:blur(5px)}.client-password-card{position:relative;width:min(480px,100%);background:#fff;border-radius:24px;padding:32px;box-shadow:0 30px 80px rgba(0,0,0,.25)}.client-password-card h2{margin:8px 0 8px;color:#102a4c;font-size:28px}.client-password-card p{margin:0 0 22px;color:#64748b;line-height:1.6}.client-password-icon{width:52px;height:52px;border-radius:16px;background:#eaf4ff;display:grid;place-items:center;font-size:24px;margin-bottom:14px}.client-password-card .client-primary{width:100%;margin-top:8px}@media(max-width:600px){.client-password-card{padding:24px;border-radius:20px}.client-password-card h2{font-size:24px}}
 
+
+
+/* ============================================================
+   PREMIUM CUSTOMER ACCOUNT POLISH — V10
+   Visual-only enhancement. Existing markup/data/functionality kept.
+   ============================================================ */
+:root{
+  --premium-blue:#0b78e8;
+  --premium-blue-2:#19a0ff;
+  --premium-navy:#071d37;
+  --premium-ink:#102746;
+  --premium-soft:#f6f9fd;
+  --premium-line:#e5ecf4;
+  --premium-shadow:0 12px 34px rgba(13,42,73,.07);
+}
+.client-app-page{background:linear-gradient(180deg,#f7faff 0,#f3f7fc 100%)}
+.client-sidebar{
+  width:246px;
+  padding:20px 14px 16px;
+  background:
+    radial-gradient(circle at 80% 10%,rgba(33,151,255,.15),transparent 28%),
+    linear-gradient(180deg,#061a32 0%,#082746 55%,#092f52 100%);
+  box-shadow:12px 0 36px rgba(3,22,42,.10);
+  border-right:1px solid rgba(255,255,255,.055);
+}
+.client-sidebar:before{content:"";position:absolute;inset:0;pointer-events:none;background:linear-gradient(180deg,rgba(255,255,255,.035),transparent 25%,transparent 75%,rgba(24,154,255,.04))}
+.client-sidebar-brand{position:relative;padding:4px 9px 23px;margin-bottom:8px;border-bottom:1px solid rgba(255,255,255,.075)}
+.client-sidebar-brand .client-logo-mark{width:40px;height:40px;border-radius:12px;background:linear-gradient(145deg,rgba(32,163,255,.18),rgba(255,255,255,.06));box-shadow:inset 0 0 0 1px rgba(96,190,255,.18),0 8px 20px rgba(0,0,0,.12)}
+.client-sidebar-brand b{font-size:17px;letter-spacing:.07em}.client-sidebar-brand small{font-size:9px;color:#8eb1d3;letter-spacing:.02em}
+.client-nav{gap:5px}
+.client-nav a,.client-logout{min-height:46px;border-radius:11px;padding:0 13px;font-size:12px;color:#bcd0e5;transition:transform .18s ease,background .18s ease,box-shadow .18s ease,color .18s ease}
+.client-nav a:hover,.client-logout:hover{transform:translateX(2px);background:rgba(38,145,235,.12);color:#fff}
+.client-nav a.active{background:linear-gradient(135deg,#1286ed,#0868c9);box-shadow:0 9px 22px rgba(0,101,201,.25),inset 0 1px 0 rgba(255,255,255,.13);transform:none}
+.nav-icon{font-size:12px;color:#8fb9dc}.client-nav a.active .nav-icon{color:#fff}
+.client-logout{margin-top:auto;border:1px solid rgba(255,255,255,.06);background:rgba(255,255,255,.025)}
+.client-main{margin-left:246px}
+.client-topbar{height:70px;padding:0 34px;background:rgba(255,255,255,.94);backdrop-filter:blur(16px);border-bottom:1px solid rgba(220,230,241,.9);box-shadow:0 3px 18px rgba(20,53,88,.035)}
+.client-top-actions{gap:14px}
+.notification-btn{width:42px;height:42px;border-radius:12px;background:#f6f9fd;border:1px solid #e6edf5;box-shadow:0 4px 12px rgba(17,48,81,.04);transition:.18s}
+.notification-btn:hover{background:#edf6ff;border-color:#cfe4f9;color:#0877e8;transform:translateY(-1px)}
+.client-identity{gap:10px;padding:5px 7px 5px 5px;border:1px solid #e6edf4;border-radius:14px;background:#fff;box-shadow:0 4px 13px rgba(18,48,82,.035)}
+.client-avatar{width:38px;height:38px;background:linear-gradient(145deg,#168ef2,#075fbe);box-shadow:0 5px 13px rgba(8,119,232,.22)}
+.client-identity b{font-size:11px}.client-identity small{font-size:9px;color:#8493a6}
+.client-content{padding:31px 34px 48px;max-width:1540px}
+.client-welcome{
+  position:relative;overflow:hidden;min-height:112px;margin-bottom:20px;padding:22px 24px;border:1px solid #e2eaf3;border-radius:18px;
+  background:linear-gradient(120deg,#ffffff 0%,#f7fbff 65%,#edf7ff 100%);box-shadow:var(--premium-shadow);align-items:center;
+}
+.client-welcome:before{content:"";position:absolute;right:-60px;top:-85px;width:230px;height:230px;border-radius:50%;background:radial-gradient(circle,rgba(20,143,239,.13),rgba(20,143,239,0) 68%)}
+.client-welcome:after{content:"";position:absolute;right:92px;bottom:-72px;width:150px;height:150px;border-radius:50%;border:1px solid rgba(18,137,231,.09)}
+.client-welcome>div{position:relative;z-index:1}.client-welcome h1{font-size:27px;margin-bottom:7px;color:#102b4a}.client-welcome p{font-size:12px;color:#71839a}
+.dashboard-filters{position:relative;z-index:2}.client-select-wrap{height:43px;min-width:176px;border-radius:11px;border-color:#dce7f2;box-shadow:0 4px 12px rgba(19,52,86,.035)}
+.financial-grid{gap:15px;margin-bottom:19px}
+.financial-card{min-height:151px;padding:19px;border-radius:15px;border:1px solid #e2eaf3;box-shadow:0 8px 23px rgba(16,46,78,.055);transition:transform .18s ease,box-shadow .18s ease,border-color .18s ease}
+.financial-card:hover{transform:translateY(-2px);box-shadow:0 15px 30px rgba(16,46,78,.09);border-color:#d4e3f1}
+.financial-card:before{content:"";position:absolute;left:0;top:0;right:0;height:3px;background:linear-gradient(90deg,#0b78e8,#26a6ff);opacity:.8}
+.financial-card.gross:before{background:linear-gradient(90deg,#12a66d,#38d39a)}
+.financial-card.share:before{background:linear-gradient(90deg,#0b78e8,#4bb8ff)}
+.financial-card.deductions:before{background:linear-gradient(90deg,#e54b5c,#ff8a97)}
+.financial-card.due:before{background:linear-gradient(90deg,#7954d8,#aa88ff)}
+.financial-icon{width:38px;height:38px;border-radius:11px;margin-bottom:13px;box-shadow:inset 0 0 0 1px rgba(255,255,255,.45)}
+.financial-card>span{font-size:10px;letter-spacing:.035em;text-transform:uppercase}.financial-card>strong{font-size:25px;margin-top:6px}.financial-card>small{font-size:10px;color:#8493a5}
+.client-two-col{gap:19px}.client-panel{border-radius:16px;border-color:#e1e9f2;box-shadow:var(--premium-shadow);padding:20px}
+.client-panel-head{margin-bottom:18px}.client-panel-head h3{font-size:14px;color:#142f4e}.client-panel-head p{font-size:10px;color:#8292a6}
+.text-btn{border-radius:8px;padding:7px 9px;background:#f2f8ff}.text-btn:hover{background:#e8f3ff}
+.unit-card{border-radius:13px;background:linear-gradient(145deg,#fbfdff,#f7faff);border-color:#dce7f1;padding:15px;box-shadow:0 4px 13px rgba(18,48,82,.025);transition:.18s}
+.unit-card:hover{border-color:#cbddec;box-shadow:0 9px 20px rgba(18,48,82,.06);transform:translateY(-1px)}
+.unit-symbol,.unit-detail-icon{box-shadow:inset 0 0 0 1px rgba(8,119,232,.05)}
+.client-badge{border-radius:7px;min-height:23px;padding:0 9px;letter-spacing:.02em}
+.breakdown-list>div{padding:12px 0}.breakdown-list .highlight{border:1px solid #e1ecfa;background:linear-gradient(90deg,#f2f7ff,#f8fbff);border-radius:10px;padding:13px 12px}
+.recent-panel{margin-top:19px}.payment-mini{border-radius:11px;background:#fbfdff;border-color:#e1e9f1;transition:.18s}.payment-mini:hover{background:#fff;border-color:#cfddea;box-shadow:0 5px 14px rgba(18,48,82,.045)}
+/* Premium page transitions / scrollbars */
+.client-content,.client-sidebar{scrollbar-width:thin;scrollbar-color:#c7d6e6 transparent}
+.client-table tbody tr{transition:background .15s ease}
+.client-toast{border:1px solid rgba(255,255,255,.08);box-shadow:0 18px 42px rgba(0,0,0,.22)}
+@media(max-width:1050px){.client-sidebar{width:275px}.client-main{margin-left:0}.client-content{padding:24px 22px 40px}}
+@media(max-width:600px){.client-content{padding:18px 15px 34px}.client-welcome{padding:18px;min-height:0}.client-welcome h1{font-size:22px}.financial-card{min-height:126px}.client-panel{padding:16px}}
+
 </style>
 </head>
 <body class="client-app-page">
@@ -155,6 +233,6 @@ input,select,textarea{font-size:16px}
 
   <div id="clientToast" class="client-toast"></div>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-  <script type="module" src="js/client.js"></script>
+  <script type="module" src="/js/client.js"></script>
 </body>
 </html>
