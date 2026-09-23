@@ -23,6 +23,8 @@ const uid = () => `${Date.now()}-${Math.random().toString(36).slice(2,8)}`;
 let currentUser = null;
 let units = [], records = [], payments = [], notifications = [], activities = [], supportChats = [];
 let supportUnsub=null, selectedSupportChatId="";
+let coreRealtimeUnsubs=[];
+let dashboardRealtimeTimer=null;
 let settings = { internetCost:1000, ownerPercent:70, clientPercent:30, electricity:100, electricityRule:"ADD_TO_CLIENT" };
 let route = "dashboard";
 let selectedMonth = localStorage.getItem("pisoSelectedMonth") || todayKey();
@@ -99,7 +101,7 @@ function normalizeRows(month=selectedMonth){
 function calc(r){
   return calculateFinancialRecord(r, settings, payments);
 }
-function totals(rows){ return rows.reduce((a,x)=>{a.gross+=x.c.gross;a.internet+=x.c.internet;a.net+=x.c.net;a.owner+=x.c.owner;a.client+=x.c.client;a.elec+=x.c.elec;a.due+=x.c.clientTotal;a.paid+=x.c.paid;a.balance+=x.c.balance;return a},{gross:0,internet:0,net:0,owner:0,client:0,elec:0,due:0,paid:0,balance:0}); }
+function totals(rows){ return rows.reduce((a,x)=>{a.gross+=x.c.gross;a.internet+=x.c.internet;a.net+=x.c.net;a.owner+=x.c.owner;a.client+=x.c.client;a.elec+=x.c.elec;a.misc+=x.c.miscellaneous||0;a.due+=x.c.clientTotal;a.paid+=x.c.paid;a.balance+=x.c.balance;return a},{gross:0,internet:0,net:0,owner:0,client:0,elec:0,due:0,paid:0,balance:0}); }
 
 async function loadData(){
   // Core financial collections are required for the dashboard.
@@ -183,7 +185,7 @@ function updateNotificationBadge(){
   el.textContent=count>99?"99+":String(count);
   el.classList.toggle("hidden",count===0);
 }
-function nav(){ document.querySelectorAll("#nav a").forEach(a=>a.classList.toggle("active",a.dataset.route===route)); }
+function nav(){ document.querySelectorAll("#nav [data-route]").forEach(a=>a.classList.toggle("active",a.dataset.route===route)); }
 function closeMenu(){ $("#sidebar").classList.remove("open"); $("#overlay").classList.remove("show"); }
 function baseHead(title,sub,button=""){ return `<div class="page-head"><div><h1>${title}</h1><p>${sub}</p></div>${button}</div>`; }
 function statusBadge(s){ return `<span class="badge ${String(s).toLowerCase()}">${esc(s)}</span>`; }
@@ -200,39 +202,71 @@ function render(){
 
 function renderDashboard(){
   const rows=normalizeRows(), t=totals(rows), active=units.filter(u=>u.active!==false).length;
-  // Dashboard-only metric: Client Net = Customer 30% share less electricity.
-  // This is intentionally display-only and does NOT change the existing financial calculation flow.
-  const customerNet = Math.max(0, t.client - t.elec);
+  const customerEarnings=t.client;
   const top=[...rows].sort((a,b)=>b.c.gross-a.c.gross).slice(0,5);
   const outstanding=rows.filter(x=>x.c.balance>0).sort((a,b)=>b.c.balance-a.c.balance).slice(0,5);
-  view.innerHTML=baseHead("Dashboard","Overview of your Piso WiFi business.")+`
+  const openTickets=supportChats.filter(c=>String(c.status||"Open")==="Open").length;
+  const solvedTickets=supportChats.filter(c=>String(c.status||"")==="Solved").length;
+  const closedTickets=supportChats.filter(c=>String(c.status||"")==="Closed").length;
+  const recent=[...activities].sort((a,b)=>timeValue(b.createdAt)-timeValue(a.createdAt)).slice(0,6);
+  const supportRecent=[...supportChats].sort((a,b)=>timeValue(b.updatedAt||b.createdAt)-timeValue(a.updatedAt||a.createdAt)).slice(0,4);
+
+  view.innerHTML=baseHead("Dashboard","Overview of your Piso WiFi business.",`<div class="dashboard-head-actions"><button class="secondary-btn" data-route="reports">Monthly Report</button><button class="primary-btn" data-route="support">Support Tickets <span class="inline-count">${openTickets}</span></button></div>`)+`
   <div class="dashboard-grid">
-    <div class="kpis">
-      ${kpi(metricIcons.units,"Total Units",units.length,"All registered units")}
-      ${kpi(metricIcons.active,"Active Units",active,"Currently active","green")}
-      ${kpi(metricIcons.money,"Gross Sales",money(t.gross),"This month","orange")}
-      ${kpi(metricIcons.money,"Internet Cost",money(t.internet),"Monthly internet cost","red")}
-      ${kpi(metricIcons.net,"Net Sales",money(t.net),"Gross sales − internet","net-sales")}
-      ${kpi(metricIcons.owner,"Owner Share",money(t.owner),settings.ownerPercent+"% share","gold")}
-      ${kpi(metricIcons.client,"Client Net",money(customerNet),"Client share less electricity","customer-net")}
-      ${kpi(metricIcons.due,"Total Due",money(t.due),"Client amount due","red")}
+    <div class="kpis dashboard-kpis">
+      ${kpi(metricIcons.money,"Gross Sales",money(t.gross),monthLabel(selectedMonth),"orange", "#reports")}
+      ${kpi(metricIcons.client,"Customer Earnings",money(customerEarnings),settings.clientPercent+"% customer share","customer-net", "#reports")}
+      ${kpi(metricIcons.money,"Amount Collected",money(t.paid),"Recorded payments","green", "#payments")}
+      ${kpi(metricIcons.due,"Outstanding",money(t.balance),"Remaining customer balance","red", "#payments")}
+      ${kpi(metricIcons.tag,"Miscellaneous Fees",money(t.misc||0),"Custom admin fees","purple", "#reports")}
+      ${kpi(metricIcons.bolt,"Electricity",money(t.elec),"Electricity share","gold", "#reports")}
+      ${kpi(metricIcons.units,"Total Units",units.length,active+" active","", "#units")}
+      ${kpi(metricIcons.ticket,"Open Tickets",openTickets,solvedTickets+" solved · "+closedTickets+" closed","", "#support")}
     </div>
-    <div class="analytics-grid">
-      <div class="panel chart-panel"><div class="panel-head"><div><h3>Sales Trend (Last 6 Months)</h3><p>Gross sales from actual monthly records</p></div><select class="compact-select" id="chartMetric"><option>Gross Sales</option><option>Owner Share</option><option>Client Share</option><option>Payments</option></select></div><div class="chart-wrap" id="salesChart">${salesChart()}</div></div>
-      <div class="panel"><div class="panel-head"><div><h3>Top Performing Units</h3><p>Ranked by gross sales</p></div><select class="compact-select" id="topPeriod"><option value="month">This Month</option><option value="last">Last Month</option><option value="3">Last 3 Months</option><option value="year">This Year</option></select></div><div class="rank-list accumulating-list" id="topUnits">${topUnitsHtml(top)}</div></div>
-      <div class="panel"><div class="panel-head"><div><h3>Outstanding Payments</h3><p>Clients with balances greater than zero</p></div><button class="link-btn" id="viewOutstanding">View All</button></div><div class="outstanding-list accumulating-list">${outstanding.length?outstanding.map(x=>`<button class="outstanding-row" data-pay-unit="${x.u.id}"><span><b>${esc(x.u.unitCode)}</b><small>${esc(x.u.name)}</small></span><strong>${money(x.c.balance)}</strong></button>`).join(""):empty("No outstanding payments.")}</div></div>
+
+    <div class="analytics-grid dashboard-main-grid">
+      <div class="panel chart-panel dashboard-chart-card">
+        <div class="panel-head"><div><h3>Sales Overview</h3><p>Gross sales and customer earnings for the last 6 months.</p></div><div class="tools"><select class="compact-select" id="chartMetric"><option>Gross Sales</option><option>Customer Earnings</option><option>Owner Share</option><option>Payments</option></select></div></div>
+        <div class="chart-legend"><span><i class="legend-dot gross"></i>Gross Sales</span><span><i class="legend-dot earnings"></i>Customer Earnings</span></div>
+        <div class="chart-wrap" id="salesChart">${salesChart("Gross Sales")}</div>
+      </div>
+      <div class="panel">
+        <div class="panel-head"><div><h3>Top Performing Units</h3><p>Ranked by gross sales.</p></div><select class="compact-select" id="topPeriod"><option value="month">This Month</option><option value="last">Last Month</option><option value="3">Last 3 Months</option><option value="year">This Year</option></select></div>
+        <div class="rank-list accumulating-list" id="topUnits">${topUnitsHtml(top)}</div>
+        <button class="dashboard-link" data-route="units">View all units →</button>
+      </div>
+      <div class="panel">
+        <div class="panel-head"><div><h3>Recent Activities</h3><p>Latest system actions.</p></div><button class="link-btn" data-route="activity">View All</button></div>
+        <div class="dashboard-activity-list">${recent.length?recent.map(a=>`<button class="dashboard-activity-row" data-route="activity"><span class="activity-dot"></span><span><b>${esc(a.description||a.activityType||"Activity")}</b><small>${dateTimeLabel(a.createdAt)}</small></span></button>`).join(""):empty("No recent activity yet.")}</div>
+      </div>
     </div>
-    <div class="panel"><div class="panel-head"><div><h3>Units / Clients</h3><p>Monthly computation for ${monthLabel(selectedMonth)}</p></div><div class="tools"><input class="search" id="dashSearch" placeholder="Search client or unit…"><select id="dashStatus" class="search"><option value="">All Payment Status</option><option>Paid</option><option>Partial</option><option>Unpaid</option></select></div></div><div class="table-wrap accumulating-table"><table><thead><tr><th>Unit Code</th><th>Client Name</th><th>Location</th><th>Status</th><th>This Month</th><th>Payment</th><th>Actions</th></tr></thead><tbody id="dashBody">${rows.length?rows.map(dashboardRow).join(""):emptyRow(7,"No clients or units found.")}</tbody></table></div></div>
+
+    <div class="dashboard-lower-grid">
+      <div class="panel">
+        <div class="panel-head"><div><h3>Outstanding Payments</h3><p>Customers with an unpaid balance.</p></div><button class="link-btn" data-route="payments">View All</button></div>
+        <div class="outstanding-list accumulating-list">${outstanding.length?outstanding.map(x=>`<button class="outstanding-row" data-pay-unit="${x.u.id}"><span><b>${esc(x.u.unitCode)}</b><small>${esc(x.u.name)}</small></span><strong>${money(x.c.balance)}</strong></button>`).join(""):empty("No outstanding payments.")}</div>
+      </div>
+      <div class="panel dashboard-support-card">
+        <div class="panel-head"><div><h3>Support Tickets</h3><p>Customer support activity.</p></div><button class="link-btn" data-route="support">Open Support</button></div>
+        <div class="support-summary-grid"><button data-route="support" data-support-filter-link="Open"><b>${openTickets}</b><span>Open</span></button><button data-route="support" data-support-filter-link="Solved"><b>${solvedTickets}</b><span>Solved</span></button><button data-route="support" data-support-filter-link="Closed"><b>${closedTickets}</b><span>Closed</span></button></div>
+        <div class="dashboard-support-list">${supportRecent.length?supportRecent.map(c=>`<button data-route="support"><span class="support-mini-avatar">${esc(String(c.customerName||"CU").trim().split(/\s+/).slice(0,2).map(x=>x[0]).join("").toUpperCase())}</span><span><b>${esc(c.customerName||"Customer")}</b><small>${esc((Array.isArray(c.messages)&&c.messages.length?c.messages[c.messages.length-1].text:"No messages yet").slice(0,48))}</small></span><i class="${supportStatusClass(c.status)}">${esc(c.status||"Open")}</i></button>`).join(""):empty("No support tickets yet.")}</div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-head"><div><h3>Units / Clients</h3><p>Monthly computation for ${monthLabel(selectedMonth)}.</p></div><div class="tools"><input class="search" id="dashSearch" placeholder="Search client or unit…"><select id="dashStatus" class="search"><option value="">All Payment Status</option><option>Paid</option><option>Partial</option><option>Unpaid</option></select><button class="secondary-btn" data-route="units">Manage Clients</button></div></div>
+      <div class="table-wrap accumulating-table"><table><thead><tr><th>Unit Code</th><th>Client Name</th><th>Location</th><th>Status</th><th>Gross Sales</th><th>Customer Earnings</th><th>Payment</th><th>Actions</th></tr></thead><tbody id="dashBody">${rows.length?rows.map(dashboardRow).join(""):emptyRow(8,"No clients or units found.")}</tbody></table></div>
+    </div>
   </div>`;
+
   $("#dashSearch").oninput=e=>filterDashboard(e.target.value,$("#dashStatus").value);
   $("#dashStatus").onchange=e=>filterDashboard($("#dashSearch").value,e.target.value);
-  $("#viewOutstanding").onclick=()=>{location.hash="#payments";};
-  $("#chartMetric").onchange=e=>$("#salesChart").innerHTML=salesChart(e.target.value);
+  $("#chartMetric").onchange=e=>{$("#salesChart").innerHTML=salesChart(e.target.value);};
   $("#topPeriod").onchange=e=>renderTopUnits(e.target.value);
-  bindDynamicButtons();
   document.querySelectorAll("[data-pay-unit]").forEach(b=>b.onclick=()=>openPaymentModal(b.dataset.payUnit));
+  bindDynamicButtons();
 }
-function kpi(icon,title,value,sub,cls=""){ return `<article class="kpi ${cls}"><div class="kpi-icon">${icon}</div><span>${title}</span><b>${value}</b><small>${sub}</small></article>`; }
+function kpi(icon,title,value,sub,cls="",routeTarget=""){ return `<article class="kpi ${cls} ${routeTarget?"is-clickable":""}" ${routeTarget?`data-route="${routeTarget.replace("#","")}" tabindex="0" role="button"`:""}><div class="kpi-icon">${icon}</div><span>${title}</span><b>${value}</b><small>${sub}</small></article>`; }
 const metricIcons={
   units:`<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20V8l8-4 8 4v12M8 20v-5h8v5M9 9h.01M15 9h.01" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
   active:`<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="m8.5 12 2.3 2.3 4.8-5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
@@ -240,12 +274,15 @@ const metricIcons={
   net:`<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 18 10 13l3 3 6-7" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M15 9h4v4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
   owner:`<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M12 7v10M15 9.5c-.8-1-4-1.3-4.6.2-.7 1.8 4.7 1.4 4.7 3.4 0 1.8-3.7 2-4.9.6" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>`,
   client:`<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="3" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M5.5 20a6.5 6.5 0 0 1 13 0" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>`,
-  due:`<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 6h14v12H5z" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M8 10h8M8 14h5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>`
+  due:`<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 6h14v12H5z" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M8 10h8M8 14h5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>`,
+  tag:`<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 11V5h6l9 9-5 5-10-8z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><circle cx="8" cy="8" r="1.2" fill="currentColor"/></svg>`,
+  bolt:`<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m13 2-8 12h6l-1 8 8-12h-6z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>`,
+  ticket:`<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5h14v5a2 2 0 0 0 0 4v5H5v-5a2 2 0 0 0 0-4z" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M10 8h4M10 12h4M10 16h4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>`
 };
 function empty(msg){ return `<div class="empty">${esc(msg)}</div>`; }
 function emptyRow(cols,msg){ return `<tr><td colspan="${cols}" class="empty">${esc(msg)}</td></tr>`; }
-function dashboardRow(x){ return `<tr><td><span class="unit-logo" aria-hidden="true">⌁</span><b>${esc(x.u.unitCode||"—")}</b></td><td><b>${esc(x.u.name||"—")}</b></td><td>${esc(x.u.location||"—")}</td><td>${statusBadge(x.u.active!==false?"Active":"Inactive")}</td><td class="amount">${money(x.c.gross)}</td><td>${statusBadge(x.c.status)}</td><td><button class="action-btn" data-profile="${x.u.id}">View</button><button class="action-btn" data-sale="${x.u.id}">Gross Sale</button></td></tr>`; }
-function filterDashboard(q,status){ const rows=normalizeRows().filter(x=>(!q||`${x.u.name} ${x.u.unitCode} ${x.u.location} ${x.u.contact}`.toLowerCase().includes(q.toLowerCase()))&&(!status||x.c.status===status)); $("#dashBody").innerHTML=rows.length?rows.map(dashboardRow).join(""):emptyRow(7,"No matching units."); bindDynamicButtons(); }
+function dashboardRow(x){ return `<tr><td><span class="unit-logo" aria-hidden="true">⌁</span><b>${esc(x.u.unitCode||"—")}</b></td><td><b>${esc(x.u.name||"—")}</b></td><td>${esc(x.u.location||"—")}</td><td>${statusBadge(x.u.active!==false?"Active":"Inactive")}</td><td class="amount">${money(x.c.gross)}</td><td class="amount customer-earnings-cell">${money(x.c.clientTotal)}</td><td>${statusBadge(x.c.status)}</td><td><button class="action-btn" data-profile="${x.u.id}">View</button><button class="action-btn" data-sale="${x.u.id}">Gross Sale</button></td></tr>`; }
+function filterDashboard(q,status){ const rows=normalizeRows().filter(x=>(!q||`${x.u.name} ${x.u.unitCode} ${x.u.location} ${x.u.contact}`.toLowerCase().includes(q.toLowerCase()))&&(!status||x.c.status===status)); $("#dashBody").innerHTML=rows.length?rows.map(dashboardRow).join(""):emptyRow(8,"No matching units."); bindDynamicButtons(); }
 function bindDynamicButtons(){
   document.querySelectorAll("[data-profile]").forEach(b=>b.onclick=()=>openProfile(b.dataset.profile));
   document.querySelectorAll("[data-sale]").forEach(b=>b.onclick=()=>openSalesModal(b.dataset.sale));
@@ -259,7 +296,7 @@ function bindDynamicButtons(){
 }
 
 function sixMonths(){ const out=[]; const [y,m]=selectedMonth.split("-").map(Number); for(let i=5;i>=0;i--){const d=new Date(y,m-1-i,1);out.push(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`);} return out; }
-function metricTotal(month,metric){ const rs=records.filter(r=>r.month===month); return rs.reduce((sum,r)=>{const c=calc(r); return sum+(metric==="Owner Share"?c.owner:metric==="Client Share"?c.client:metric==="Payments"?c.paid:c.gross)},0); }
+function metricTotal(month,metric){ const rs=records.filter(r=>r.month===month); return rs.reduce((sum,r)=>{const c=calc(r); return sum+(metric==="Owner Share"?c.owner:metric==="Client Share"||metric==="Customer Earnings"?c.clientTotal:metric==="Payments"?c.paid:c.gross)},0); }
 function salesChart(metric="Gross Sales"){
   const ms=sixMonths(), vals=ms.map(m=>metricTotal(m,metric)), max=Math.max(...vals,1);
   return `<div class="bars">${vals.map((v,i)=>`<div class="bar-col"><div class="bar-value">${money(v)}</div><div class="bar" style="height:${Math.max(8,(v/max)*150)}px"></div><small>${new Date(ms[i]+"-01").toLocaleString("en-US",{month:"short"})}</small></div>`).join("")}</div>`;
@@ -648,8 +685,36 @@ function updatePaymentDue(){const uid=$("#pUnit").value,month=$("#pMonth").value
 function printCss(){return `body{font-family:Arial,sans-serif;color:#17243a;padding:30px}h1{margin-bottom:4px}p{color:#64748b}table{width:100%;border-collapse:collapse;margin-top:22px}th,td{border:1px solid #dbe3ee;padding:8px;text-align:left;font-size:12px}th{background:#f5f8fc}.print-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:20px 0}.print-grid div{border:1px solid #dbe3ee;padding:12px}.print-grid b,.print-grid strong{display:block}.print-grid strong{font-size:18px;margin-top:5px}`;}
 function openPrintWindow(html){const w=window.open("","_blank","width=1200,height=800");if(!w){notify("Please allow pop-ups to print.","error");return;}w.document.open();w.document.write(html);w.document.close();w.focus();setTimeout(()=>w.print(),350);}
 
+function stopCoreRealtime(){coreRealtimeUnsubs.forEach(fn=>{try{fn()}catch(e){}});coreRealtimeUnsubs=[];}
+function scheduleDashboardRealtime(){
+  if(route!=="dashboard")return;
+  clearTimeout(dashboardRealtimeTimer);
+  const scrollY=window.scrollY;
+  const active=document.activeElement;
+  const activeId=active?.id||"";
+  const activeValue=active && "value" in active ? active.value : "";
+  dashboardRealtimeTimer=setTimeout(()=>{
+    if(route!=="dashboard")return;
+    renderDashboard();
+    window.scrollTo(0,scrollY);
+    if(activeId){const next=document.getElementById(activeId);if(next){next.focus({preventScroll:true});if("value" in next)next.value=activeValue;}}
+  },120);
+}
+function startCoreRealtime(){
+  stopCoreRealtime();
+  const bind=(path,apply)=>{
+    const unsub=onSnapshot(collection(db,path),snap=>{apply(snap.docs.map(d=>({id:d.id,...d.data()})));scheduleDashboardRealtime();},err=>{console.warn(`PISO WIFI realtime ${path} unavailable`,err);});
+    coreRealtimeUnsubs.push(unsub);
+  };
+  bind("units",rows=>{units=rows;});
+  bind("monthlyRecords",rows=>{records=rows;});
+  bind("payments",rows=>{payments=rows;});
+  coreRealtimeUnsubs.push(onSnapshot(doc(db,"settings","business"),snap=>{if(snap.exists())settings={...settings,...snap.data()};scheduleDashboardRealtime();},err=>console.warn("PISO WIFI realtime settings unavailable",err)));
+  coreRealtimeUnsubs.push(onSnapshot(collection(db,"activities"),snap=>{activities=snap.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>timeValue(b.createdAt)-timeValue(a.createdAt));scheduleDashboardRealtime();},err=>console.warn("PISO WIFI realtime activities unavailable",err)));
+}
+
 function showAuthError(message){console.error("[PISO WIFI]",message);const loader=$("#authLoading");if(loader){loader.innerHTML=`<div class="auth-error"><strong>Unable to open the dashboard</strong><span>${esc(message)}</span><button onclick="location.href='index.html'">Return to Login</button></div>`;loader.classList.remove("hidden");}}
-async function bootstrap(user){if(!user){location.replace("index.html");return;}currentUser=user;try{await authorize(user);await loadData();await logActivity("System",`Admin login — ${user.email||"Admin"}`);setupMonthSelector();startSupportRealtime();$("#authLoading").classList.add("hidden");$("#app").classList.remove("hidden");$("#userEmail").textContent=user.email||"Owner";route=location.hash.replace("#","").split("?")[0]||"dashboard";render();}catch(e){showAuthError(e?.message||"Firebase authorization or database access failed.");}}
+async function bootstrap(user){if(!user){location.replace("index.html");return;}currentUser=user;try{await authorize(user);await loadData();await logActivity("System",`Admin login — ${user.email||"Admin"}`);setupMonthSelector();startSupportRealtime();startCoreRealtime();$("#authLoading").classList.add("hidden");$("#app").classList.remove("hidden");$("#userEmail").textContent=user.email||"Owner";route=location.hash.replace("#","").split("?")[0]||"dashboard";render();}catch(e){showAuthError(e?.message||"Firebase authorization or database access failed.");}}
 
 function parseRoute(){const raw=location.hash.replace("#","");return raw.split("?")[0]||"dashboard";}
 document.addEventListener("click",e=>{const a=e.target.closest("[data-route]");if(a){e.preventDefault();location.hash="#"+a.dataset.route;} const p=e.target.closest("[data-print-inline]");if(p){const id=$("#statementUnit")?.value;if(id)printStatement(id,$("#statementMonth").value);} const pdf=e.target.closest("[data-pdf-inline]");if(pdf){const id=$("#statementUnit")?.value;if(id)downloadStatementPdf(id,$("#statementMonth").value);} const html=e.target.closest("[data-html-inline]");if(html){const id=$("#statementUnit")?.value;if(id)downloadStatementHtml(id,$("#statementMonth").value);}});
