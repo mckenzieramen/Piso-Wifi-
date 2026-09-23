@@ -390,6 +390,22 @@ function openAuthError(message){
   const loader=$("#clientAuthLoading");loader.innerHTML=`<div class="client-auth-error"><strong>Unable to open Customer Account</strong><span>${esc(message)}</span><a href="client-login.html">Return to Customer Account Login</a></div>`;
   loader.classList.remove("hidden");
 }
+function setupPasswordVisibilityToggles(){
+  document.querySelectorAll("[data-password-target]").forEach(toggle=>{
+    if(toggle.dataset.bound==="1") return;
+    toggle.dataset.bound="1";
+    toggle.addEventListener("click",()=>{
+      const input=document.getElementById(toggle.dataset.passwordTarget);
+      if(!input) return;
+      const showing=input.type==="text";
+      input.type=showing?"password":"text";
+      toggle.textContent=showing?"Show":"Hide";
+      toggle.setAttribute("aria-label",showing?"Show password":"Hide password");
+      toggle.setAttribute("aria-pressed",showing?"false":"true");
+    });
+  });
+}
+
 async function maybeShowFirstLoginPasswordSetup(){
   const unit=clientUnits[0];
   if(!unit || unit.forcePasswordChange!==true) return;
@@ -397,6 +413,7 @@ async function maybeShowFirstLoginPasswordSetup(){
   if(!modal) return;
   modal.classList.remove("hidden"); modal.setAttribute("aria-hidden","false");
   const form=$("#clientPasswordForm"), msg=$("#clientPasswordMessage");
+  setupPasswordVisibilityToggles();
   form.onsubmit=async e=>{
     e.preventDefault();
     const a=$("#newClientPassword").value, b=$("#confirmClientPassword").value;

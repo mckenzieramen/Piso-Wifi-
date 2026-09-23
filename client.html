@@ -145,8 +145,8 @@ input,select,textarea{font-size:16px}
       <h2 id="clientPasswordTitle">Create your password</h2>
       <p>Your Admin provided your Client ID and temporary password. Create a private password now; Admin will not see it.</p>
       <form id="clientPasswordForm">
-        <label class="client-field"><span>New Password</span><div class="input-with-icon"><input id="newClientPassword" type="password" minlength="8" autocomplete="new-password" placeholder="At least 8 characters" required></div></label>
-        <label class="client-field"><span>Confirm Password</span><div class="input-with-icon"><input id="confirmClientPassword" type="password" minlength="8" autocomplete="new-password" placeholder="Re-enter your password" required></div></label>
+        <label class="client-field"><span>New Password</span><div class="input-with-icon"><input id="newClientPassword" type="password" minlength="8" autocomplete="new-password" placeholder="At least 8 characters" required><button type="button" class="password-toggle" data-password-target="newClientPassword" aria-label="Show password" aria-pressed="false">Show</button></div></label>
+        <label class="client-field"><span>Confirm Password</span><div class="input-with-icon"><input id="confirmClientPassword" type="password" minlength="8" autocomplete="new-password" placeholder="Re-enter your password" required><button type="button" class="password-toggle" data-password-target="confirmClientPassword" aria-label="Show confirm password" aria-pressed="false">Show</button></div></label>
         <div id="clientPasswordMessage" class="client-login-message" role="status" aria-live="polite"></div>
         <button class="client-primary" type="submit">Save My Password</button>
       </form>
