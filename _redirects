@@ -10,6 +10,6 @@
 /client-login /index.html 200
 /client-login/ /index.html 200
 
-# Authenticated client dashboard
+# Authenticated client dashboard — stable public route.
 /client /client.html 200
 /client/ /client.html 200
