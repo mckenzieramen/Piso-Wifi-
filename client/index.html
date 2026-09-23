@@ -249,14 +249,14 @@ input,select,textarea{font-size:16px}
     <aside id="clientSidebar" class="client-sidebar">
       <div class="client-sidebar-brand"><img class="client-official-logo" src="/assets/piso-wifi-logo-transparent.png" alt="PISO WIFI"><span class="client-brand-caption">Customer Account</span></div>
       <nav id="clientNav" class="client-nav" aria-label="Client navigation">
-        <a href="#dashboard" data-route="dashboard"><span class="nav-icon">⌂</span>Dashboard</a>
-        <a href="#units" data-route="units"><span class="nav-icon">⌁</span>My Units</a>
-        <a href="#sales" data-route="sales"><span class="nav-icon">▤</span>Sales History</a>
-        <a href="#payments" data-route="payments"><span class="nav-icon">₱</span>Payments</a>
-        <a href="#statement" data-route="statement"><span class="nav-icon">▥</span>Statement</a>
-        <a href="#profile" data-route="profile"><span class="nav-icon">●</span>Profile</a>
+        <a href="#dashboard" data-route="dashboard"><span class="nav-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 10.8 12 4l8.5 6.8v8.7a1.5 1.5 0 0 1-1.5 1.5h-14a1.5 1.5 0 0 1-1.5-1.5z"/><path d="M9 21v-6h6v6"/></svg></span><span>Dashboard</span></a>
+        <a href="#units" data-route="units"><span class="nav-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="3.5" width="16" height="17" rx="2.5"/><path d="M8 8h8M8 12h8M8 16h5"/></svg></span><span>My Units</span></a>
+        <a href="#sales" data-route="sales"><span class="nav-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 20V10M12 20V4M19 20v-7"/><path d="M3.5 20.5h17"/></svg></span><span>Sales History</span></a>
+        <a href="#payments" data-route="payments"><span class="nav-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="5.5" width="17" height="13" rx="2.5"/><path d="M3.5 10h17M7.5 14h3"/></svg></span><span>Payments</span></a>
+        <a href="#statement" data-route="statement"><span class="nav-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3.5h7l4 4V20a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4.5a1 1 0 0 1 1-1z"/><path d="M14 3.5V8h4M9 12h6M9 15h6M9 18h4"/></svg></span><span>Statement</span></a>
+        <a href="#profile" data-route="profile"><span class="nav-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="3.5"/><path d="M5.5 20a6.5 6.5 0 0 1 13 0"/></svg></span><span>Profile</span></a>
       </nav>
-      <button id="clientLogout" class="client-logout"><span class="nav-icon">↪</span>Logout</button>
+      <button id="clientLogout" class="client-logout"><span class="nav-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 4H5.5A1.5 1.5 0 0 0 4 5.5v13A1.5 1.5 0 0 0 5.5 20H10"/><path d="M13 8l4 4-4 4M17 12H8"/></svg></span><span>Logout</span></button>
     </aside>
     <div id="clientOverlay" class="client-overlay"></div>
     <main class="client-main">
@@ -264,15 +264,50 @@ input,select,textarea{font-size:16px}
         <button id="clientMenuBtn" class="client-menu-btn" aria-label="Open menu">☰</button>
         <div class="client-mobile-context"><b>PISO WIFI</b><span>Customer Account</span></div>
         <div class="client-top-actions">
+          <div class="client-search" id="clientSearchWrap">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.8"/><path d="m16 16 5 5"/></svg>
+            <input id="clientQuickSearch" type="search" autocomplete="off" placeholder="Search account..." aria-label="Search account">
+            <div id="clientSearchSuggestions" class="client-search-suggestions hidden"></div>
+          </div>
+          <button id="clientSupportBtn" class="header-icon-btn" type="button" aria-label="Customer support" title="Customer support">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 13a8 8 0 0 1 16 0"/><path d="M4 13v4a2 2 0 0 0 2 2h1.5v-6H6a2 2 0 0 0-2 2M20 13v4a2 2 0 0 1-2 2h-1.5v-6H18a2 2 0 0 1 2 2"/><path d="M9.5 19h2.5"/></svg>
+          </button>
           <div class="notification-wrap" id="notificationWrap">
-            <button id="notificationBtn" class="notification-btn" aria-label="Notifications">${`<svg viewBox="0 0 24 24"><path d="M18 9a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4"/></svg>`}<span id="notificationCount" class="notification-count hidden">0</span></button>
+            <button id="notificationBtn" class="header-icon-btn notification-btn" aria-label="Notifications" title="Notifications"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 9a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4"/></svg><span id="notificationCount" class="notification-count hidden">0</span></button>
             <div id="notificationPopover" class="notification-popover"></div>
           </div>
-          <div class="client-identity"><span id="clientAvatar" class="client-avatar">CL</span><span><b id="clientName">Client</b><small id="clientRole">Client</small></span></div>
+          <div class="client-profile-wrap" id="clientProfileWrap">
+            <button id="clientProfileBtn" class="client-profile-btn" type="button" aria-expanded="false" aria-label="Open account menu">
+              <span id="clientAvatar" class="client-avatar">CL</span>
+              <span class="client-profile-copy"><b id="clientName">Client</b><small><span class="status-dot"></span><span id="clientRole">Customer Account</span></small></span>
+              <svg class="profile-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m7 9 5 5 5-5"/></svg>
+            </button>
+            <div id="clientProfileMenu" class="client-profile-menu" role="menu">
+              <div class="profile-menu-head"><span id="menuAvatar" class="client-avatar">CL</span><div><b id="menuClientName">Client</b><small><span class="status-dot"></span> Account Active</small></div></div>
+              <div class="profile-menu-divider"></div>
+              <button type="button" data-route="profile"><span class="menu-icon"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.5"/><path d="M5.5 20a6.5 6.5 0 0 1 13 0"/></svg></span>My Profile</button>
+              <button type="button" data-route="notifications"><span class="menu-icon"><svg viewBox="0 0 24 24"><path d="M18 9a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4"/></svg></span>Notifications</button>
+              <button type="button" id="menuChangePassword"><span class="menu-icon"><svg viewBox="0 0 24 24"><rect x="5" y="10" width="14" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg></span>Change Password</button>
+              <div class="profile-menu-divider"></div>
+              <button type="button" class="menu-danger" id="menuLogout"><span class="menu-icon"><svg viewBox="0 0 24 24"><path d="M10 4H5.5A1.5 1.5 0 0 0 4 5.5v13A1.5 1.5 0 0 0 5.5 20H10"/><path d="M13 8l4 4-4 4M17 12H8"/></svg></span>Logout</button>
+            </div>
+          </div>
         </div>
       </header>
       <section id="view" class="client-content"></section>
     </main>
+  </div>
+
+  <div id="clientSupportModal" class="client-support-modal hidden" aria-hidden="true">
+    <div class="client-support-backdrop"></div>
+    <section class="client-support-card" role="dialog" aria-modal="true" aria-labelledby="supportTitle">
+      <button id="closeSupportModal" class="support-close" type="button" aria-label="Close support">×</button>
+      <div class="support-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 13a8 8 0 0 1 16 0"/><path d="M4 13v4a2 2 0 0 0 2 2h1.5v-6H6a2 2 0 0 0-2 2M20 13v4a2 2 0 0 1-2 2h-1.5v-6H18a2 2 0 0 1 2 2"/><path d="M9.5 19h2.5"/></svg></div>
+      <span class="eyebrow">CUSTOMER SUPPORT</span>
+      <h2 id="supportTitle">How can we help?</h2>
+      <p>Your account is connected to PISO WIFI. Use your account pages to review your records, or contact your administrator for account-specific assistance.</p>
+      <div class="support-actions"><button class="client-secondary" type="button" data-route="profile">Open My Profile</button><button class="client-primary" type="button" data-route="notifications">View Notifications</button></div>
+    </section>
   </div>
 
   <div id="clientPasswordSetup" class="client-password-modal hidden" aria-hidden="true">

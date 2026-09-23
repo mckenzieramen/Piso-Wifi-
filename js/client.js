@@ -165,6 +165,7 @@ function setupShell(){
   renderUnitSelector();
   renderNotificationsPopover();
   updateBell();
+  syncProfileMenu?.();
 }
 function renderMonthSelectors(){
   const opts=monthOptions(records).map(m=>`<option value="${m}" ${m===selectedMonth?"selected":""}>${monthLabel(m)}</option>`).join("");
@@ -477,10 +478,24 @@ async function bootstrap(user){
 }
 $("#clientMenuBtn").onclick=()=>{$("#clientSidebar").classList.add("open");$("#clientOverlay").classList.add("show");};
 $("#clientOverlay").onclick=()=>{$("#clientSidebar").classList.remove("open");$("#clientOverlay").classList.remove("show");};
-$("#clientLogout").onclick=async()=>{await signOut(auth);location.replace("/");};
+async function logoutClient(){await signOut(auth);location.replace("/");}
+$("#clientLogout").onclick=logoutClient;
+$("#menuLogout").onclick=logoutClient;
 $("#notificationBtn").onclick=toggleNotificationPopover;
+$("#clientProfileBtn").onclick=()=>{const m=$("#clientProfileMenu"),b=$("#clientProfileBtn"),open=m?.classList.toggle("show");b?.setAttribute("aria-expanded",open?"true":"false");};
+$("#clientSupportBtn").onclick=()=>{$("#clientSupportModal")?.classList.remove("hidden");$("#clientSupportModal")?.setAttribute("aria-hidden","false");};
+$("#closeSupportModal").onclick=()=>{$("#clientSupportModal")?.classList.add("hidden");$("#clientSupportModal")?.setAttribute("aria-hidden","true");};
+$("#menuChangePassword").onclick=()=>{$("#clientProfileMenu")?.classList.remove("show");$("#clientProfileBtn")?.setAttribute("aria-expanded","false");const modal=$("#clientPasswordSetup");if(modal){modal.classList.remove("hidden");modal.setAttribute("aria-hidden","false");}};
+function syncProfileMenu(){const name=clientName(), av=initials(name);if($("#menuClientName"))$("#menuClientName").textContent=name;if($("#menuAvatar"))$("#menuAvatar").textContent=av;}
+function routeFromSearch(q){const v=String(q||"").trim().toLowerCase();if(!v)return null;if(v.includes("dashboard")||v.includes("home"))return"dashboard";if(v.includes("unit"))return"units";if(v.includes("sale")||v.includes("revenue"))return"sales";if(v.includes("pay"))return"payments";if(v.includes("statement")||v.includes("bill"))return"statement";if(v.includes("profile")||v.includes("account"))return"profile";if(v.includes("notification")||v.includes("alert"))return"notifications";return null;}
+function bindQuickSearch(){const input=$("#clientQuickSearch"),box=$("#clientSearchSuggestions");if(!input||!box)return;const items=[['dashboard','Dashboard','Overview of your account'],['units','My Units','Assigned Piso WiFi units'],['sales','Sales History','Monthly sales records'],['payments','Payments','Payment history and balance'],['statement','Statement','Monthly client statement'],['profile','My Profile','Account information'],['notifications','Notifications','Updates from Admin']];const draw=(q='')=>{const f=items.filter(x=>!q||x[1].toLowerCase().includes(q.toLowerCase())||x[2].toLowerCase().includes(q.toLowerCase()));box.innerHTML=f.slice(0,5).map(x=>`<button type="button" data-search-route="${x[0]}"><b>${esc(x[1])}</b><small>${esc(x[2])}</small></button>`).join('');box.querySelectorAll('[data-search-route]').forEach(b=>b.onclick=()=>{location.hash='#'+b.dataset.searchRoute;box.classList.add('hidden');input.value='';});box.classList.toggle('hidden',f.length===0);};input.addEventListener('focus',()=>draw(input.value));input.addEventListener('input',()=>{const target=routeFromSearch(input.value);if(target&&input.value.trim().length>=3){draw(input.value)}else draw(input.value)});}
+bindQuickSearch();
+syncProfileMenu();
 document.addEventListener("click",e=>{
   if(!e.target.closest("#notificationWrap"))$("#notificationPopover")?.classList.remove("show");
+  if(!e.target.closest("#clientProfileWrap")){ $("#clientProfileMenu")?.classList.remove("show"); $("#clientProfileBtn")?.setAttribute("aria-expanded","false"); }
+  if(!e.target.closest("#clientSearchWrap"))$("#clientSearchSuggestions")?.classList.add("hidden");
+  const routeEl=e.target.closest("[data-route]");if(routeEl&&routeEl.closest("#clientProfileMenu")){e.preventDefault();location.hash="#"+routeEl.dataset.route;$("#clientProfileMenu")?.classList.remove("show");$("#clientProfileBtn")?.setAttribute("aria-expanded","false");}
 });
-window.addEventListener("hashchange",()=>{route=parseRoute();render();});
+window.addEventListener("hashchange",()=>{route=parseRoute();render();syncProfileMenu();});
 onAuthStateChanged(auth,bootstrap);
