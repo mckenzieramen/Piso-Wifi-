@@ -14,11 +14,11 @@ export function calculateFinancialRecord(record = {}, settings = {}, payments = 
   const client = net * clientPercent / 100;
 
   const electricity = Math.max(0, Number(settings.electricity || 0));
-  let clientTotal = client;
 
-  if (settings.electricityRule === "ADD_TO_CLIENT") clientTotal = client + electricity;
-  if (settings.electricityRule === "SUBTRACT_FROM_CLIENT") clientTotal = Math.max(0, client - electricity);
-  if (settings.electricityRule === "SEPARATE_CHARGE") clientTotal = client;
+  // Customer earnings are exactly the customer's percentage share of net sales.
+  // Electricity remains a separate line item and must not change the customer's
+  // earnings / Amount Due.
+  const clientTotal = client;
 
   const paid = payments
     .filter(p => p.unitId === record.unitId && p.month === record.month)

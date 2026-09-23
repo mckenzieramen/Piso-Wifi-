@@ -311,9 +311,24 @@ async function openSupportConversation(){
 function closeSupportChat(){supportChatOpen=false;$("#supportConversationView")?.classList.add("hidden");$("#supportLobby")?.classList.remove("hidden");}
 async function sendSupportMessage(){
   if(supportChatSending)return; const input=$("#supportChatInput");const text=String(input?.value||"").trim();if(!text)return;
-  if(String(supportChat?.status||"Open")==="Closed"){toast("This support conversation is closed.","error");return;}
+  if(["Closed","Solved"].includes(String(supportChat?.status||"Open"))){toast("This support conversation is not open. Please wait for Admin to reopen it.","error");return;}
   supportChatSending=true;
-  try{await createSupportChat();await updateDoc(supportChatRef(),{messages:arrayUnion({senderType:"customer",text,createdAt:supportNow()}),updatedAt:supportNow(),unreadForAdmin:true,unreadForCustomer:false,"typingBy.customer":false});input.value="";}
+  try{
+    await createSupportChat();
+    const existingMessages=Array.isArray(supportChat?.messages)?supportChat.messages:[];
+    const firstCustomerMessage=!existingMessages.some(m=>String(m?.senderType||"").toLowerCase()==="customer");
+    const customerMessage={senderType:"customer",text,createdAt:supportNow()};
+    const acknowledgement={senderType:"system",text:"Thank you for letting us know about this. Kindly please wait for the Admin's reply. We’ll assist you as soon as possible.",createdAt:supportNow(),kind:"auto-acknowledgement"};
+    await updateDoc(supportChatRef(),{
+      messages:firstCustomerMessage?arrayUnion(customerMessage,acknowledgement):arrayUnion(customerMessage),
+      updatedAt:supportNow(),
+      unreadForAdmin:true,
+      unreadForCustomer:false,
+      "typingBy.customer":false,
+      status:"Open"
+    });
+    input.value="";
+  }
   catch(e){
     window.pisoDebug?.capture(e?.message||e,{type:"firebase.support.send",source:`client.js → updateDoc(supportChats/${currentUser?.uid||"uid"})`,stack:e?.stack});
     toast(e?.message||"Unable to send your message.","error");
