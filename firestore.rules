@@ -7,9 +7,12 @@ service cloud.firestore {
       return request.auth != null;
     }
 
+    // Admin authorization must follow the same role-based source of truth
+    // used by the Admin portal. Do not hard-code a Firebase UID here.
     function isAdmin() {
       return isSignedIn()
-        && request.auth.uid == "u3Vjej0CrFgDSekt3NpXuHERpJM2";
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == "admin"
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.active != false;
     }
 
     function isClientUnit(data) {
