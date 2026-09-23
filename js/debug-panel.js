@@ -28,7 +28,7 @@
       #pisoDebugPanel .pdp-item:last-child{border-bottom:0}
       #pisoDebugPanel .pdp-meta{font-size:10px;opacity:.72;margin-bottom:4px}
       #pisoDebugPanel .pdp-message{font:600 12px/1.45 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;white-space:pre-wrap;word-break:break-word}
-      #pisoDebugPanel .pdp-stack{margin-top:6px;color:#fecaca;font:500 10px/1.4 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;white-space:pre-wrap;word-break:break-word}
+      #pisoDebugPanel .pdp-next{margin-top:8px;padding:8px 9px;border-radius:8px;background:rgba(255,255,255,.08);color:#fde68a;font-size:11px;line-height:1.4}#pisoDebugPanel .pdp-next code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;color:#fff}#pisoDebugPanel .pdp-stack{margin-top:6px;color:#fecaca;font:500 10px/1.4 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;white-space:pre-wrap;word-break:break-word}
       #pisoDebugPanel .pdp-empty{opacity:.7;font-size:12px}
       #pisoDebugPanel.pdp-hidden{display:none}
       @media(max-width:600px){#pisoDebugPanel{left:8px;right:8px;bottom:8px}#pisoDebugPanel .pdp-body{max-height:230px}#pisoDebugPanel .pdp-head{flex-wrap:wrap}.pdp-title{min-width:150px}}
@@ -57,7 +57,11 @@
       body.innerHTML = `<div class="pdp-empty">No errors captured.</div>`;
       return;
     }
-    body.innerHTML = state.errors.slice().reverse().map(e => `<div class="pdp-item"><div class="pdp-meta">${esc(e.time)} · ${esc(e.type)}${e.source ? ` · ${esc(e.source)}` : ""}</div><div class="pdp-message">${esc(e.message)}</div>${e.stack ? `<div class="pdp-stack">${esc(e.stack)}</div>` : ""}</div>`).join("");
+    body.innerHTML = state.errors.slice().reverse().map(e => {
+      const permission = /permission|insufficient permissions|permission-denied/i.test(String(e.message||""));
+      const next = permission ? `<div class="pdp-next"><b>Next step:</b> Firebase Firestore Rules are blocking this operation. Publish the current <code>firestore.rules</code> and repeat the action. The source above identifies the exact Firebase operation that was blocked.</div>` : "";
+      return `<div class="pdp-item"><div class="pdp-meta">${esc(e.time)} · ${esc(e.type)}${e.source ? ` · ${esc(e.source)}` : ""}</div><div class="pdp-message">${esc(e.message)}</div>${next}${e.stack ? `<div class="pdp-stack">${esc(e.stack)}</div>` : ""}</div>`;
+    }).join("");
     body.scrollTop = 0;
     root.classList.remove("pdp-hidden");
   }

@@ -182,7 +182,10 @@ function subscribeClientCollectionChunks(collectionName,field,ids,assign,unsubSt
       [...merged.keys()].forEach(id=>{const row=merged.get(id);if(row&&!activeIds.has(row[field]))merged.delete(id);});
       assign([...merged.values()]);
       clientRealtimeRender();
-    },err=>console.warn(`PISO WIFI realtime ${collectionName} error`,err));
+    },err=>{
+      console.warn(`PISO WIFI realtime ${collectionName} error`,err);
+      window.pisoDebug?.capture(err?.message||err,{type:"firebase.realtime",source:`client.js → ${collectionName} realtime (${field} in [...])`,stack:err?.stack});
+    });
     unsubStore.push(unsub);
   });
 }
@@ -200,12 +203,18 @@ function startClientRealtime(){
     subscribeClientCollectionChunks("payments","unitId",ids,v=>{payments=v;},clientPaymentUnsubs);
     subscribeClientCollectionChunks("notifications","relatedId",ids,v=>{notifications=v.sort((a,b)=>timeValue(b.createdAt)-timeValue(a.createdAt));},clientNotificationUnsubs);
     clientRealtimeRender();
-  },err=>console.warn("PISO WIFI realtime units error",err));
+  },err=>{
+    console.warn("PISO WIFI realtime units error",err);
+    window.pisoDebug?.capture(err?.message||err,{type:"firebase.realtime",source:"client.js → units realtime (authUserId == currentUser.uid)",stack:err?.stack});
+  });
   clientRealtimeUnsubs.push(unitUnsub);
   clientSettingsUnsub=onSnapshot(doc(db,"settings","business"),snap=>{
     if(snap.exists())settings={...settings,...snap.data()};
     clientRealtimeRender();
-  },err=>console.warn("PISO WIFI realtime settings error",err));
+  },err=>{
+    console.warn("PISO WIFI realtime settings error",err);
+    window.pisoDebug?.capture(err?.message||err,{type:"firebase.realtime",source:"client.js → settings/business realtime",stack:err?.stack});
+  });
   clientRealtimeUnsubs.push(clientSettingsUnsub);
 }
 function timeValue(v){if(!v)return 0;if(v.toMillis)return v.toMillis();const n=new Date(v).getTime();return Number.isNaN(n)?0:n;}
@@ -291,7 +300,10 @@ function subscribeSupportChat(){
     if(supportChatOpen){
       if($("#supportConversationView")?.classList.contains("hidden"))renderSupportLobby();else renderSupportChat();
     }
-  },err=>console.warn("PISO WIFI support chat realtime error",err));
+  },err=>{
+    console.warn("PISO WIFI support chat realtime error",err);
+    window.pisoDebug?.capture(err?.message||err,{type:"firebase.support.realtime",source:`client.js → onSnapshot(supportChats/${currentUser?.uid||"uid"})`,stack:err?.stack});
+  });
 }
 async function openSupportConversation(){
   try{await createSupportChat();subscribeSupportChat();supportChatOpen=true;renderSupportChat();await updateDoc(supportChatRef(),{unreadForCustomer:false,updatedAt:supportNow()});}catch(e){toast(e?.message||"Unable to open support chat. Please contact Admin if this continues.","error");}
@@ -302,7 +314,10 @@ async function sendSupportMessage(){
   if(String(supportChat?.status||"Open")==="Closed"){toast("This support conversation is closed.","error");return;}
   supportChatSending=true;
   try{await createSupportChat();await updateDoc(supportChatRef(),{messages:arrayUnion({senderType:"customer",text,createdAt:supportNow()}),updatedAt:supportNow(),unreadForAdmin:true,unreadForCustomer:false,"typingBy.customer":false});input.value="";}
-  catch(e){toast(e?.message||"Unable to send your message.","error");}
+  catch(e){
+    window.pisoDebug?.capture(e?.message||e,{type:"firebase.support.send",source:`client.js → updateDoc(supportChats/${currentUser?.uid||"uid"})`,stack:e?.stack});
+    toast(e?.message||"Unable to send your message.","error");
+  }
   finally{supportChatSending=false;}
 }
 async function setSupportTyping(isTyping){
@@ -317,7 +332,9 @@ async function openSupportModal(){
     renderSupportLobby();
   }catch(e){
     console.warn("Unable to restore PISO WIFI support conversation",e);
-    toast(e?.message||"Unable to load your support conversation.","error");
+    window.pisoDebug?.capture(e?.message||e,{type:"firebase.support.load",source:`client.js → getDoc(supportChats/${currentUser?.uid||"uid"})`,stack:e?.stack});
+    // Keep the lobby usable so Start Chat remains available even while Firebase rules are being debugged.
+    supportChat=null; supportChatDocId=currentUser?.uid||""; renderSupportLobby();
   }
   bindSupportTyping();
 }
@@ -377,7 +394,7 @@ function renderDashboard(){
       ${financialCard("▥","Gross Sales",total.gross,"Gross Sales","gross")}
       ${financialCard("◉","Your Share",total.client,`${settings.clientPercent}% share`,"share")}
       ${financialCard("−","Total Deductions",Math.max(0,total.internet+total.elec),`Internet + electricity`,"deductions")}
-      ${financialCard("₱","Total Earnings",Math.max(0,total.client),`${settings.clientPercent}% customer share`,"earnings")}
+      ${financialCard("₱","Total Earnings",Math.max(0,total.due),"Customer earnings for this period","earnings")}
     </div>
     <div class="client-two-col">
       <section class="client-panel">
