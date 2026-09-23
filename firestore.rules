@@ -120,15 +120,27 @@ service cloud.firestore {
     }
 
     match /supportChats/{chatId} {
-      allow read: if isAdmin() || (isSignedIn() && resource.data.authUserId == request.auth.uid);
-      allow create: if isAdmin() || (isSignedIn()
-        && request.resource.data.authUserId == request.auth.uid
-        && request.resource.data.unitId is string
-        && exists(/databases/$(database)/documents/units/$(request.resource.data.unitId))
-        && isClientUnit(get(/databases/$(database)/documents/units/$(request.resource.data.unitId)).data));
-      allow update: if isAdmin() || (isSignedIn()
-        && resource.data.authUserId == request.auth.uid
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["messages","updatedAt","typingBy","unreadForAdmin","unreadForCustomer"]));
+      // Support conversations are private to the authenticated customer who owns
+      // the conversation, or to an authenticated Admin. Do not make chat access
+      // depend on the customer's unit linkage fields; those fields can legitimately
+      // change while the support conversation must remain available.
+      allow read: if isAdmin()
+        || (isSignedIn() && resource.data.authUserId == request.auth.uid);
+
+      allow create: if isAdmin()
+        || (isSignedIn()
+          && request.resource.data.authUserId == request.auth.uid
+          && request.resource.data.status is string
+          && request.resource.data.messages is list);
+
+      allow update: if isAdmin()
+        || (isSignedIn()
+          && resource.data.authUserId == request.auth.uid
+          && request.resource.data.authUserId == resource.data.authUserId
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            "messages", "updatedAt", "typingBy", "unreadForAdmin", "unreadForCustomer", "status"
+          ]));
+
       allow delete: if isAdmin();
     }
 

@@ -30,3 +30,11 @@ where required by the existing backend; only the customer-facing wording was cha
 
 
 Support chat added in this SafeEdit version: customer ↔ admin real-time chat via supportChats, typing indicators, unread flags, Open/Solved/Closed statuses, and preserved conversation history.
+
+
+## V16 Support Chat Root-Cause Fix
+- Customer support conversations now use the authenticated customer's UID as the stable default document ID.
+- Existing conversations created by earlier versions are recovered by `authUserId` lookup.
+- Customer support access no longer depends on unit-linkage fields at the time a chat is created; access remains restricted to the signed-in owner or Admin.
+- Admin opening a conversation clears the Admin unread flag.
+- Publish the included `firestore.rules` to the same Firebase project used by the site before testing support chat.

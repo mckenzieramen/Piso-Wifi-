@@ -158,7 +158,8 @@ let supportChat=null;
 let supportChatOpen=false;
 let supportChatSending=false;
 let supportTypingTimer=null;
-const supportChatId=()=>String(currentUser?.uid||"");
+let supportChatDocId="";
+const supportChatId=()=>String(supportChatDocId||currentUser?.uid||"");
 const supportChatRef=()=>supportChatId()?doc(db,"supportChats",supportChatId()):null;
 function supportNow(){return new Date().toISOString();}
 function supportMessageHtml(m){
@@ -188,9 +189,35 @@ function renderSupportChat(){
   $("#supportChatCustomer").textContent=clientName();
   renderSupportConversation();
 }
+async function loadExistingSupportChat(){
+  if(!currentUser?.uid) return null;
+  // First use the stable UID document used by the current implementation.
+  const direct=doc(db,"supportChats",currentUser.uid);
+  const directSnap=await getDoc(direct);
+  if(directSnap.exists()){
+    supportChatDocId=directSnap.id;
+    supportChat={id:directSnap.id,...directSnap.data()};
+    return supportChat;
+  }
+  // Backward-compatible lookup so conversations created by an earlier version
+  // are not lost just because their document ID was different.
+  const qSnap=await getDocs(query(collection(db,"supportChats"),where("authUserId","==",currentUser.uid)));
+  if(qSnap.docs.length){
+    const latest=[...qSnap.docs].sort((a,b)=>timeValue(b.data()?.updatedAt||b.data()?.createdAt)-timeValue(a.data()?.updatedAt||a.data()?.createdAt))[0];
+    supportChatDocId=latest.id;
+    supportChat={id:latest.id,...latest.data()};
+    return supportChat;
+  }
+  supportChatDocId=currentUser.uid;
+  supportChat=null;
+  return null;
+}
 async function createSupportChat(){
-  const ref=supportChatRef(); if(!ref)throw new Error("Customer account is not ready.");
-  const existing=await getDoc(ref); if(existing.exists()){supportChat={id:existing.id,...existing.data()};return supportChat;}
+  if(!currentUser?.uid)throw new Error("Customer account is not ready.");
+  if(!supportChat) await loadExistingSupportChat();
+  if(supportChat) return supportChat;
+  supportChatDocId=currentUser.uid;
+  const ref=supportChatRef();
   const unit=primaryUnit();
   const greeting={senderType:"admin",text:"Hi! I’m PISO WIFI Customer Support. Let us know what you need help with, and our Admin will assist you here.",createdAt:supportNow()};
   const payload={authUserId:currentUser.uid,unitId:unit.id||"",clientCode:unit.clientCode||"",customerName:clientName(),customerEmail:clientEmail(),status:"Open",messages:[greeting],typingBy:{customer:false,admin:false},unreadForAdmin:true,unreadForCustomer:false,createdAt:serverTimestamp(),updatedAt:supportNow()};
@@ -203,6 +230,7 @@ function subscribeSupportChat(){
   const ref=supportChatRef(); if(!ref)return;
   supportChatUnsub=onSnapshot(ref,snap=>{
     supportChat=snap.exists()?{id:snap.id,...snap.data()}:null;
+    if(snap.exists())supportChatDocId=snap.id;
     updateSupportBadge();
     if(supportChatOpen){
       if($("#supportConversationView")?.classList.contains("hidden"))renderSupportLobby();else renderSupportChat();
@@ -210,7 +238,7 @@ function subscribeSupportChat(){
   },err=>console.warn("PISO WIFI support chat realtime error",err));
 }
 async function openSupportConversation(){
-  try{await createSupportChat();supportChatOpen=true;renderSupportChat();await updateDoc(supportChatRef(),{unreadForCustomer:false,updatedAt:supportNow()});}catch(e){toast(e?.message||"Unable to open support chat.","error");}
+  try{await createSupportChat();subscribeSupportChat();supportChatOpen=true;renderSupportChat();await updateDoc(supportChatRef(),{unreadForCustomer:false,updatedAt:supportNow()});}catch(e){toast(e?.message||"Unable to open support chat. Please contact Admin if this continues.","error");}
 }
 function closeSupportChat(){supportChatOpen=false;$("#supportConversationView")?.classList.add("hidden");$("#supportLobby")?.classList.remove("hidden");}
 async function sendSupportMessage(){
@@ -225,9 +253,18 @@ async function setSupportTyping(isTyping){
   try{if(!supportChatRef())return;await updateDoc(supportChatRef(),{"typingBy.customer":!!isTyping,updatedAt:supportNow()});}catch(e){/* typing is non-blocking */}
 }
 function bindSupportTyping(){const input=$("#supportChatInput");if(!input)return;input.oninput=()=>{clearTimeout(supportTypingTimer);setSupportTyping(true);supportTypingTimer=setTimeout(()=>setSupportTyping(false),1200);};input.onkeydown=e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();sendSupportMessage();}};}
-function openSupportModal(){
+async function openSupportModal(){
   const modal=$("#clientSupportModal");if(!modal)return;modal.classList.remove("hidden");modal.setAttribute("aria-hidden","false");supportChatOpen=false;renderSupportLobby();
-  const ref=supportChatRef();if(ref)getDoc(ref).then(s=>{supportChat=s.exists()?{id:s.id,...s.data()}:null;renderSupportLobby();}).catch(()=>{});
+  try{
+    await loadExistingSupportChat();
+    subscribeSupportChat();
+    renderSupportLobby();
+    // If an Admin has already replied, open the existing conversation directly.
+    if(supportChat?.messages?.length) openSupportConversation();
+  }catch(e){
+    console.warn("Unable to restore PISO WIFI support conversation",e);
+    toast(e?.message||"Unable to load your support conversation.","error");
+  }
   bindSupportTyping();
 }
 
