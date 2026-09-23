@@ -75,6 +75,7 @@ let clientNotificationUnsubs=[];
 let clientSettingsUnsub=null;
 
 function toast(message,type="success"){
+  if(type==="error") window.pisoDebug?.capture(message,{type:"client.toast"});
   const el=$("#clientToast"); if(!el)return;
   el.textContent=message; el.className=`client-toast show ${type}`;
   clearTimeout(window.__clientToast); window.__clientToast=setTimeout(()=>el.classList.remove("show"),2800);

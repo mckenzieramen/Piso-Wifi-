@@ -73,6 +73,7 @@ async function syncCustomerDirectory(){
 
 
 function notify(msg, type="success") {
+  if(type==="error") window.pisoDebug?.capture(msg,{type:"admin.notify"});
   toastEl.textContent = msg;
   toastEl.className = `toast show ${type}`;
   clearTimeout(window.__toastTimer);
