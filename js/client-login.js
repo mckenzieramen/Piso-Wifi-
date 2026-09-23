@@ -190,6 +190,7 @@ async function submitResetRequest(e){
       clientCode:clientId,
       email,
       status:"pending",
+      adminRead:false,
       createdAt:serverTimestamp()
     });
     msgEl.textContent="Recovery request sent. Your Admin has received the request for verification. Once it is approved, follow the recovery instructions provided by Admin.";

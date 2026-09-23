@@ -21,7 +21,7 @@ const esc = (v) => String(v ?? "").replace(/[&<>"']/g, m => ({"&":"&amp;","<":"&
 const uid = () => `${Date.now()}-${Math.random().toString(36).slice(2,8)}`;
 
 let currentUser = null;
-let units = [], records = [], payments = [], notifications = [], activities = [], supportChats = [];
+let units = [], records = [], payments = [], notifications = [], activities = [], supportChats = [], passwordResetRequests = [];
 let supportUnsub=null, selectedSupportChatId="";
 let coreRealtimeUnsubs=[];
 let dashboardRealtimeTimer=null;
@@ -130,6 +130,14 @@ async function loadData(){
   }
 
   try {
+    const rr=await getDocs(collection(db,"passwordResetRequests"));
+    passwordResetRequests=rr.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>timeValue(b.createdAt)-timeValue(a.createdAt));
+  } catch(e) {
+    console.warn("Password recovery requests are not readable yet. Publish the latest Firestore rules.",e);
+    passwordResetRequests=[];
+  }
+
+  try {
     const a=await getDocs(collection(db,"activities"));
     activities=a.docs.map(d=>({id:d.id,...d.data()}))
       .sort((a,b)=>timeValue(b.createdAt)-timeValue(a.createdAt));
@@ -177,14 +185,10 @@ async function logActivity(type,description,relatedId=""){
 async function addNotification(type,title,message,relatedId=""){
   try { await addDoc(collection(db,"notifications"),{type,title,message,relatedId,read:false,createdAt:serverTimestamp()}); } catch(e){ console.warn("Notification failed",e); }
 }
-function unreadCount(){ return notifications.filter(n=>n.read!==true).length; }
-function updateNotificationBadge(){
-  const el=document.querySelector("#adminNotificationBadge");
-  if(!el)return;
-  const count=unreadCount();
-  el.textContent=count>99?"99+":String(count);
-  el.classList.toggle("hidden",count===0);
-}
+function recoveryNotifications(){return passwordResetRequests.map(r=>({id:`reset:${r.id}`,source:"passwordResetRequest",requestId:r.id,type:"password-reset",title:"Account Recovery Request",message:`${r.clientCode||"Customer"} requested a password reset${r.email?` — ${r.email}`:""}.`,read:r.adminRead===true||r.status!=="pending",createdAt:r.createdAt,relatedId:r.clientCode||""}));}
+function allAdminNotifications(){return [...notifications,...recoveryNotifications()].sort((a,b)=>timeValue(b.createdAt)-timeValue(a.createdAt));}
+function unreadCount(){return allAdminNotifications().filter(n=>n.read!==true).length;}
+function updateNotificationBadge(){const el=document.querySelector("#adminNotificationBadge");if(!el)return;const count=unreadCount();el.textContent=count>99?"99+":String(count);el.classList.toggle("hidden",count===0);}
 function nav(){ document.querySelectorAll("#nav [data-route]").forEach(a=>a.classList.toggle("active",a.dataset.route===route)); }
 function closeMenu(){ $("#sidebar").classList.remove("open"); $("#overlay").classList.remove("show"); }
 function baseHead(title,sub,button=""){ return `<div class="page-head"><div><h1>${title}</h1><p>${sub}</p></div>${button}</div>`; }
@@ -253,6 +257,11 @@ function renderDashboard(){
       </div>
     </div>
 
+    <div class="panel dashboard-recovery-card">
+      <div class="panel-head"><div><h3>Account Recovery Requests</h3><p>Password reset requests waiting for Admin review.</p></div><button class="link-btn" data-route="notifications">View Notifications</button></div>
+      <div class="recovery-summary-list">${passwordResetRequests.filter(r=>String(r.status||"pending")==="pending").slice(0,4).map(r=>{const u=units.find(x=>String(x.clientCode||"").toUpperCase()===String(r.clientCode||"").toUpperCase());return `<button class="recovery-summary-row" data-recovery-request="${esc(r.id)}"><span><b>${esc(r.clientCode||"Customer")}</b><small>${esc(u?.name||r.email||"Recovery request")}</small></span><strong>Review</strong></button>`}).join("")||empty("No pending recovery requests.")}</div>
+    </div>
+
     <div class="panel">
       <div class="panel-head"><div><h3>Units / Clients</h3><p>Monthly computation for ${monthLabel(selectedMonth)}.</p></div><div class="tools"><input class="search" id="dashSearch" placeholder="Search client or unit…"><select id="dashStatus" class="search"><option value="">All Payment Status</option><option>Paid</option><option>Partial</option><option>Unpaid</option></select><button class="secondary-btn" data-route="units">Manage Clients</button></div></div>
       <div class="table-wrap accumulating-table"><table><thead><tr><th>Unit Code</th><th>Client Name</th><th>Location</th><th>Status</th><th>Gross Sales</th><th>Customer Earnings</th><th>Payment</th><th>Actions</th></tr></thead><tbody id="dashBody">${rows.length?rows.map(dashboardRow).join(""):emptyRow(8,"No clients or units found.")}</tbody></table></div>
@@ -264,6 +273,7 @@ function renderDashboard(){
   $("#chartMetric").onchange=e=>{$("#salesChart").innerHTML=salesChart(e.target.value);};
   $("#topPeriod").onchange=e=>renderTopUnits(e.target.value);
   document.querySelectorAll("[data-pay-unit]").forEach(b=>b.onclick=()=>openPaymentModal(b.dataset.payUnit));
+  document.querySelectorAll("[data-recovery-request]").forEach(b=>b.onclick=()=>openRecoveryRequestModal(passwordResetRequests.find(r=>r.id===b.dataset.recoveryRequest)));
   bindDynamicButtons();
 }
 function kpi(icon,title,value,sub,cls="",routeTarget=""){ return `<article class="kpi ${cls} ${routeTarget?"is-clickable":""}" ${routeTarget?`data-route="${routeTarget.replace("#","")}" tabindex="0" role="button"`:""}><div class="kpi-icon">${icon}</div><span>${title}</span><b>${value}</b><small>${sub}</small></article>`; }
@@ -370,11 +380,18 @@ function downloadStatementPdf(id,month){
 function printStatement(id,month){const {u,c}=statementData(id,month);openPrintWindow(statementDocumentHtml(u,c,month));}
 
 function renderNotifications(){
-  view.innerHTML=baseHead("Notifications","Stay updated on payments, balances, reports and system changes.",`<button class="secondary-btn" id="markAllRead">Mark all as read</button>`)+`<div class="notification-list">${notifications.length?notifications.map(n=>`<button class="notification-card ${n.read===true?"read":"unread"}" data-notification="${n.id}"><span class="notification-icon">${n.type==="payment"?"₱":n.type==="balance"?"!":n.type==="report"?"▥":n.type==="password-reset"?"🔐":"●"}</span><span><b>${esc(n.title)}</b><small>${esc(n.message)}</small><time>${dateTimeLabel(n.createdAt)}</time></span>${n.read!==true?"<em>NEW</em>":""}</button>`).join(""):empty("You're all caught up.")}</div>`;
-  $("#markAllRead").onclick=markAllNotificationsRead; document.querySelectorAll("[data-notification]").forEach(b=>b.onclick=()=>openNotification(b.dataset.notification));
+  const list=allAdminNotifications();
+  view.innerHTML=baseHead("Notifications","Stay updated on payments, balances, reports and system changes.",`<button class="secondary-btn" id="markAllRead">Mark all as read</button>`)+`<div class="notification-list">${list.length?list.map(n=>`<button class="notification-card ${n.read===true?"read":"unread"}" data-notification="${esc(n.id)}"><span class="notification-icon">${n.type==="payment"?"₱":n.type==="balance"?"!":n.type==="report"?"▥":n.type==="password-reset"?"🔐":"●"}</span><span><b>${esc(n.title)}</b><small>${esc(n.message)}</small><time>${dateTimeLabel(n.createdAt)}</time></span>${n.read!==true?"<em>NEW</em>":""}</button>`).join(""):empty("You're all caught up.")}</div>`;
+  $("#markAllRead").onclick=markAllNotificationsRead;document.querySelectorAll("[data-notification]").forEach(b=>b.onclick=()=>openNotification(b.dataset.notification));
 }
-async function openNotification(id){const n=notifications.find(x=>x.id===id);if(!n)return;if(n.read!==true){await updateDoc(doc(db,"notifications",id),{read:true});await loadData();} if(n.relatedId && units.some(u=>u.id===n.relatedId)){openProfile(n.relatedId);}else{render();}}
-async function markAllNotificationsRead(){const unread=notifications.filter(n=>n.read!==true);await Promise.all(unread.map(n=>updateDoc(doc(db,"notifications",n.id),{read:true})));await loadData();render();notify("All notifications marked as read.");}
+async function openNotification(id){const n=allAdminNotifications().find(x=>x.id===id);if(!n)return;if(n.source==="passwordResetRequest"){const r=passwordResetRequests.find(x=>x.id===n.requestId);if(!r)return;if(r.adminRead!==true)await updateDoc(doc(db,"passwordResetRequests",r.id),{adminRead:true});openRecoveryRequestModal(r);return;}if(n.read!==true){await updateDoc(doc(db,"notifications",id),{read:true});await loadData();}if(n.relatedId&&units.some(u=>u.id===n.relatedId))openProfile(n.relatedId);else render();}
+async function markAllNotificationsRead(){const jobs=[...notifications.filter(n=>n.read!==true).map(n=>updateDoc(doc(db,"notifications",n.id),{read:true})),...passwordResetRequests.filter(r=>r.adminRead!==true).map(r=>updateDoc(doc(db,"passwordResetRequests",r.id),{adminRead:true}))];await Promise.all(jobs);await loadData();render();notify("All notifications marked as read.");}
+function openRecoveryRequestModal(request){
+ if(!request){notify("Recovery request not found.","error");return;}
+ const status=String(request.status||"pending"),statusText=status.charAt(0).toUpperCase()+status.slice(1);
+ openModal("Account Recovery Request",`<div class="recovery-review"><div class="recovery-review-status ${esc(status)}">${esc(statusText)}</div><div class="recovery-review-grid"><div><small>Customer</small><strong>${esc(request.customerName||request.clientCode||"Customer")}</strong></div><div><small>Client ID</small><strong>${esc(request.clientCode||"—")}</strong></div><div><small>Registered Gmail</small><strong>${esc(request.email||"—")}</strong></div><div><small>Unit</small><strong>${esc(request.unitCode||"—")}</strong></div><div><small>Requested</small><strong>${dateTimeLabel(request.createdAt)}</strong></div></div><div class="recovery-review-note">The customer's existing password is never displayed to Admin. Approval only confirms that the recovery request was reviewed.</div></div>`,status==="pending"?"Approve Recovery":"Close",async()=>{if(status!=="pending")return;await updateDoc(doc(db,"passwordResetRequests",request.id),{status:"approved",adminRead:true,reviewedAt:serverTimestamp(),reviewedBy:currentUser?.email||"Admin"});await logActivity("Clients",`Approved password recovery request for ${request.clientCode||"customer"}`,request.clientCode||"");notify("Recovery request approved. Admin can now assist the customer with the next recovery step.");});
+ if(status==="pending")setTimeout(()=>{const actions=document.querySelector("#modalRoot .modal-actions");if(!actions)return;const reject=document.createElement("button");reject.className="danger-outline-btn";reject.textContent="Reject Request";reject.onclick=async()=>{try{await updateDoc(doc(db,"passwordResetRequests",request.id),{status:"rejected",adminRead:true,reviewedAt:serverTimestamp(),reviewedBy:currentUser?.email||"Admin"});closeModal();await loadData();render();notify("Recovery request rejected.");}catch(e){notify(e?.message||"Unable to reject recovery request.","error");}};actions.insertBefore(reject,actions.firstChild);},0);
+}
 
 function renderActivity(){
   view.innerHTML=baseHead("Activity Log","Track important system, client, sales, payment and settings actions.",`<select class="search" id="activityFilter"><option value="">All Activities</option><option>System</option><option>Sales</option><option>Payments</option><option>Clients</option><option>Units</option><option>Settings</option><option>Reports</option></select>`)+`<div class="panel"><div class="panel-head"><div><h3>Recent Activity</h3><p>Newest actions appear first and are stored in Firebase.</p></div></div><div class="table-wrap"><table><thead><tr><th>Date & Time</th><th>Activity</th><th>Details</th><th>Admin</th></tr></thead><tbody id="activityBody">${activityRows("")}</tbody></table></div></div>`;
@@ -711,6 +728,7 @@ function startCoreRealtime(){
   bind("payments",rows=>{payments=rows;});
   coreRealtimeUnsubs.push(onSnapshot(doc(db,"settings","business"),snap=>{if(snap.exists())settings={...settings,...snap.data()};scheduleDashboardRealtime();},err=>console.warn("PISO WIFI realtime settings unavailable",err)));
   coreRealtimeUnsubs.push(onSnapshot(collection(db,"activities"),snap=>{activities=snap.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>timeValue(b.createdAt)-timeValue(a.createdAt));scheduleDashboardRealtime();},err=>console.warn("PISO WIFI realtime activities unavailable",err)));
+  coreRealtimeUnsubs.push(onSnapshot(collection(db,"passwordResetRequests"),snap=>{passwordResetRequests=snap.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>timeValue(b.createdAt)-timeValue(a.createdAt));updateNotificationBadge();if(route==="notifications"||route==="dashboard")scheduleDashboardRealtime();},err=>console.warn("PISO WIFI realtime password recovery requests unavailable",err)));
 }
 
 function showAuthError(message){console.error("[PISO WIFI]",message);const loader=$("#authLoading");if(loader){loader.innerHTML=`<div class="auth-error"><strong>Unable to open the dashboard</strong><span>${esc(message)}</span><button onclick="location.href='index.html'">Return to Login</button></div>`;loader.classList.remove("hidden");}}
