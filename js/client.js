@@ -430,7 +430,7 @@ async function withTimeout(promise,ms,label){
 async function bootstrap(user){
   if(!user){
     bootstrapFinished=true; clearTimeout(bootTimer);
-    location.replace("/index.html");
+    location.replace("/");
     return;
   }
   currentUser=user;
@@ -456,7 +456,7 @@ async function bootstrap(user){
 }
 $("#clientMenuBtn").onclick=()=>{$("#clientSidebar").classList.add("open");$("#clientOverlay").classList.add("show");};
 $("#clientOverlay").onclick=()=>{$("#clientSidebar").classList.remove("open");$("#clientOverlay").classList.remove("show");};
-$("#clientLogout").onclick=async()=>{await signOut(auth);location.replace("/index.html");};
+$("#clientLogout").onclick=async()=>{await signOut(auth);location.replace("/");};
 $("#notificationBtn").onclick=toggleNotificationPopover;
 document.addEventListener("click",e=>{
   if(!e.target.closest("#notificationWrap"))$("#notificationPopover")?.classList.remove("show");

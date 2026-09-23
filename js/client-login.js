@@ -54,7 +54,7 @@ async function routeUser(user) {
       else if (!remember?.checked) localStorage.removeItem(CLIENT_REMEMBER_KEY);
     } catch {}
 
-    window.location.replace("/client.html");
+    window.location.replace("/client/");
       return;
     }
 
@@ -115,7 +115,7 @@ form.addEventListener("submit", async e => {
       return;
     }
 
-    window.location.replace("/client.html");
+    window.location.replace("/client/");
   } catch (err) {
     console.error("[PISO WIFI CUSTOMER LOGIN]", err);
     message(

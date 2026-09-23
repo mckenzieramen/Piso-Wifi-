@@ -1,15 +1,13 @@
-# PISO WIFI OFFICIAL ROUTES — Cloudflare Pages internal rewrites only
-# Public customer/client website (official): /
+# PISO WIFI OFFICIAL ROUTES — Cloudflare Pages
 / /index.html 200
 
 # Admin portal
 /admin /admin/index.html 200
 /admin/ /admin/index.html 200
 
-# Optional client-login alias; official customer URL remains /
+# Customer login remains the official root page.
 /client-login /index.html 200
 /client-login/ /index.html 200
 
-# Authenticated client dashboard — stable public route.
-/client /client.html 200
-/client/ /client.html 200
+# Customer dashboard uses the native /client/ directory route.
+# Do NOT rewrite /client or /client/ here; Cloudflare Pages serves client/index.html directly.
