@@ -14,11 +14,11 @@ export function calculateFinancialRecord(record = {}, settings = {}, payments = 
   const client = net * clientPercent / 100;
 
   const electricity = Math.max(0, Number(settings.electricity || 0));
-
-  // Customer earnings are exactly the customer's percentage share of net sales.
-  // Electricity remains a separate line item and must not change the customer's
-  // earnings / Amount Due.
-  const clientTotal = client;
+  // Miscellaneous fees are custom per monthly record and are deducted from the
+  // customer share. Electricity remains a separate line item and does not
+  // reduce the customer's earnings / Amount Due.
+  const miscellaneous = Math.max(0, Number(record.miscellaneousFee || 0));
+  const clientTotal = Math.max(0, client - miscellaneous);
 
   const paid = payments
     .filter(p => p.unitId === record.unitId && p.month === record.month)
@@ -42,6 +42,7 @@ export function calculateFinancialRecord(record = {}, settings = {}, payments = 
     owner,
     client,
     elec: electricity,
+    miscellaneous,
     clientTotal: due,
     paid,
     balance,

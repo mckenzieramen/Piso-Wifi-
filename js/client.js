@@ -101,9 +101,9 @@ function rowsForMonth(month=selectedMonth){
 }
 function aggregate(month=selectedMonth){
   return rowsForMonth(month).reduce((a,x)=>{
-    a.gross+=x.c.gross;a.internet+=x.c.internet;a.net+=x.c.net;a.owner+=x.c.owner;a.client+=x.c.client;a.elec+=x.c.elec;
+    a.gross+=x.c.gross;a.internet+=x.c.internet;a.net+=x.c.net;a.owner+=x.c.owner;a.client+=x.c.client;a.elec+=x.c.elec;a.miscellaneous+=x.c.miscellaneous;
     a.due+=x.c.clientTotal;a.paid+=x.c.paid;a.balance+=x.c.balance;return a;
-  },{gross:0,internet:0,net:0,owner:0,client:0,elec:0,due:0,paid:0,balance:0});
+  },{gross:0,internet:0,net:0,owner:0,client:0,elec:0,miscellaneous:0,due:0,paid:0,balance:0});
 }
 function paymentStatus(total){
   if(total.due===0) return total.paid>0?"Paid":"Unpaid";
@@ -252,7 +252,7 @@ function renderSupportLobby(){
   const status=String(supportChat?.status||"Open");
   const active=hasRealSupportConversation(supportChat);
   const closed=status==="Closed"||status==="Solved";
-  lobby.innerHTML=`<div class="piso-support-hero"><div class="support-icon">${icons.bell}</div><span class="eyebrow">PISO WIFI CUSTOMER SUPPORT</span><h2>How can we help?</h2><p>Chat directly with the PISO WIFI Admin. Your conversation stays connected to your Customer Account.</p></div><div class="piso-ticket-card"><div><b>Customer Support</b><small>${status==="Closed"?"This conversation is closed.":status==="Solved"?"This conversation was marked solved.":active?"Your active support conversation.":"No conversation started yet."}</small></div><span class="piso-ticket-status ${status.toLowerCase()}">${esc(status)}</span></div><button id="startSupportChat" class="client-primary piso-support-start" ${closed?"disabled":""}>${active?"Open Conversation":"Start Chat"}</button>`;
+  lobby.innerHTML=`<div class="piso-support-hero"><div class="support-icon">${icons.bell}</div><span class="eyebrow">PISO WIFI CUSTOMER SUPPORT</span><h2>How can we help?</h2><p>Chat directly with the PISO WIFI Admin. Your conversation stays connected to your Customer Account.</p></div><div class="piso-ticket-card"><div><b>Customer Support</b><small>${status==="Closed"?"Ticket was closed.":status==="Solved"?"Ticket was closed by PISO WIFI Support.":active?"Your active support conversation.":"No conversation started yet."}</small></div><span class="piso-ticket-status ${status.toLowerCase()}">${esc(status)}</span></div><button id="startSupportChat" class="client-primary piso-support-start" ${closed?"disabled":""}>${active?"Open Conversation":"Start Chat"}</button>`;
   convo.classList.add("hidden");
   const start=$("#startSupportChat");
   if(start&&!closed) start.onclick=()=>openSupportConversation();
@@ -263,6 +263,10 @@ function renderSupportChat(){
   $("#supportStatus").textContent=String(supportChat?.status||"Open");
   $("#supportChatCustomer").textContent=clientName();
   renderSupportConversation();
+  const closed=["Solved","Closed"].includes(status);
+  const input=$("#supportChatInput"), send=$("#supportSend");
+  if(input){input.disabled=closed;input.placeholder=closed?"Ticket was closed.":"Type your concern…";}
+  if(send)send.disabled=closed;
 }
 async function loadExistingSupportChat(){
   if(!currentUser?.uid) return null;
@@ -408,7 +412,7 @@ function renderDashboard(){
     <div class="financial-grid">
       ${financialCard("▥","Gross Sales",total.gross,"Gross Sales","gross")}
       ${financialCard("◉","Your Share",total.client,`${settings.clientPercent}% share`,"share")}
-      ${financialCard("−","Total Deductions",Math.max(0,total.internet+total.elec),`Internet + electricity`,"deductions")}
+      ${financialCard("−","Total Deductions",Math.max(0,total.internet+total.elec+total.miscellaneous),`Internet + electricity + misc. fee`,"deductions")}
       ${financialCard("₱","Total Earnings",Math.max(0,total.due),"Customer earnings for this period","earnings")}
     </div>
     <div class="client-two-col">
@@ -435,7 +439,7 @@ function unitCard(u){
 }
 function breakdown(t){
   const net=Math.max(0,t.client - t.elec);
-  return `<div class="breakdown-list"><div><span>Gross Sales</span><b>${money(t.gross)}</b></div><div><span>Internet Fee</span><b>${money(t.internet)}</b></div><div><span>Electricity Share</span><b>${money(t.elec)}</b></div><div><span>Your Share (${settings.clientPercent}%)</span><b>${money(t.client)}</b></div><div class="highlight"><span>Amount Due</span><b>${money(t.due)}</b></div><div><span>Amount Paid</span><b>${money(t.paid)}</b></div><div class="balance-row"><span>Balance</span><b>${money(t.balance)}</b></div></div>`;
+  return `<div class="breakdown-list"><div><span>Gross Sales</span><b>${money(t.gross)}</b></div><div><span>Internet Fee</span><b>${money(t.internet)}</b></div><div><span>Electricity Share</span><b>${money(t.elec)}</b></div><div><span>Miscellaneous Fee</span><b>${money(t.miscellaneous)}</b></div><div><span>Your Share (${settings.clientPercent}%)</span><b>${money(t.client)}</b></div><div class="highlight"><span>Amount Due</span><b>${money(t.due)}</b></div><div><span>Amount Paid</span><b>${money(t.paid)}</b></div><div class="balance-row"><span>Balance</span><b>${money(t.balance)}</b></div></div>`;
 }
 function recentPaymentsHtml(){
   const list=ownPayments().sort((a,b)=>timeValue(b.paymentDate||b.date||b.createdAt)-timeValue(a.paymentDate||a.date||a.createdAt)).slice(0,5);
@@ -455,10 +459,10 @@ function renderSales(){
   const year=selectedYear;
   const list=ownRecords().filter(r=>String(r.month||"").startsWith(year+"-")).sort((a,b)=>String(b.month).localeCompare(String(a.month)));
   $("#view").innerHTML=pageTitle("Sales History","View your monthly sales and computations.",`<div class="filter-row"><select id="salesYear" class="client-filter"></select><select id="salesUnit" class="client-filter"><option value="all">All Units</option>${clientUnits.map(u=>`<option value="${u.id}" ${u.id===selectedUnitId?"selected":""}>${esc(u.unitCode)}</option>`).join("")}</select></div>`)+
-    `<section class="client-panel table-panel"><div class="table-scroll"><table class="client-table"><thead><tr><th>Month</th><th>Unit</th><th>Gross Sales</th><th>Internet Fee</th><th>Electricity Share</th><th>Your Share</th><th>Amount Due</th><th>Status</th></tr></thead><tbody>${
+    `<section class="client-panel table-panel"><div class="table-scroll"><table class="client-table"><thead><tr><th>Month</th><th>Unit</th><th>Gross Sales</th><th>Internet Fee</th><th>Electricity Share</th><th>Misc. Fee</th><th>Your Share</th><th>Amount Due</th><th>Status</th></tr></thead><tbody>${
       list.filter(r=>selectedUnitId==="all"||r.unitId===selectedUnitId).length
-      ? list.filter(r=>selectedUnitId==="all"||r.unitId===selectedUnitId).map(r=>{const u=clientUnits.find(x=>x.id===r.unitId),c=calc(r);return `<tr><td>${monthLabel(r.month)}</td><td><b>${esc(u?.unitCode||"—")}</b></td><td>${money(c.gross)}</td><td>${money(c.internet)}</td><td>${money(c.elec)}</td><td>${money(c.client)}</td><td class="strong-amount">${money(c.clientTotal)}</td><td>${statusBadge(c.status)}</td></tr>`}).join("")
-      : `<tr><td colspan="8">${empty("No sales records available.")}</td></tr>`
+      ? list.filter(r=>selectedUnitId==="all"||r.unitId===selectedUnitId).map(r=>{const u=clientUnits.find(x=>x.id===r.unitId),c=calc(r);return `<tr><td>${monthLabel(r.month)}</td><td><b>${esc(u?.unitCode||"—")}</b></td><td>${money(c.gross)}</td><td>${money(c.internet)}</td><td>${money(c.elec)}</td><td>${money(c.miscellaneous)}</td><td>${money(c.client)}</td><td class="strong-amount">${money(c.clientTotal)}</td><td>${statusBadge(c.status)}</td></tr>`}).join("")
+      : `<tr><td colspan="9">${empty("No sales records available.")}</td></tr>`
     }</tbody></table></div></section>`;
   $("#salesYear").innerHTML=[...new Set(ownRecords().map(r=>String(r.month||"").slice(0,4)).filter(Boolean))].sort((a,b)=>Number(b)-Number(a)).map(y=>`<option ${y===year?"selected":""}>${y}</option>`).join("")||`<option>${year}</option>`;
   $("#salesYear").onchange=e=>{selectedYear=e.target.value;renderSales();};
@@ -480,7 +484,7 @@ function renderStatement(){
   $("#view").innerHTML=pageTitle("Statement","Generate and download your statement.",`<div class="filter-row"><select id="statementMonth" class="client-filter"></select>${clientUnits.length>1?`<select id="statementUnit" class="client-filter"><option value="all">All Units</option>${clientUnits.map(x=>`<option value="${x.id}" ${x.id===selectedUnitId?"selected":""}>${esc(x.unitCode)}</option>`).join("")}</select>`:""}<button class="client-primary" id="downloadPdf">${icons.download}Download PDF</button><button class="client-secondary" id="printStatement">${icons.printer}Print</button></div>`)+
     `<section class="statement-sheet" id="statementSheet"><div class="statement-header"><div class="statement-brand"><div class="brand-logo">${wifiLogo()}</div><div><h2>PISO WIFI</h2><span>Client Statement</span></div></div><div class="statement-period"><b>${monthLabel(month)}</b><span>Generated ${dateLong(new Date())}</span></div></div>
       <div class="statement-client-grid"><div><b>Client Name</b><span>${esc(clientName())}</span></div><div><b>Client ID</b><span>${esc(clientCode())}</span></div><div><b>Unit${units.length>1?"s":""}</b><span>${esc(units.map(x=>x.unitCode).join(", ")||"—")}</span></div><div><b>Location</b><span>${esc(units.length===1?units[0].location:"Multiple assigned units")}</span></div></div>
-      <div class="statement-table-wrap"><table class="client-table statement-table"><tbody><tr><td>Gross Sales</td><td>${money(total.gross)}</td></tr><tr><td>Internet Fee</td><td>${money(total.internet)}</td></tr><tr><td>Electricity Share</td><td>${money(total.elec)}</td></tr><tr><td>Your Share (${settings.clientPercent}%)</td><td>${money(total.client)}</td></tr><tr class="total-row"><td>Amount Due</td><td>${money(total.due)}</td></tr><tr><td>Amount Paid</td><td>${money(total.paid)}</td></tr><tr class="balance-row"><td>Balance</td><td>${money(total.balance)}</td></tr></tbody></table></div>
+      <div class="statement-table-wrap"><table class="client-table statement-table"><tbody><tr><td>Gross Sales</td><td>${money(total.gross)}</td></tr><tr><td>Internet Fee</td><td>${money(total.internet)}</td></tr><tr><td>Electricity Share</td><td>${money(total.elec)}</td></tr><tr><td>Miscellaneous Fee</td><td>${money(total.miscellaneous)}</td></tr><tr><td>Your Share (${settings.clientPercent}%)</td><td>${money(total.client)}</td></tr><tr class="total-row"><td>Amount Due</td><td>${money(total.due)}</td></tr><tr><td>Amount Paid</td><td>${money(total.paid)}</td></tr><tr class="balance-row"><td>Balance</td><td>${money(total.balance)}</td></tr></tbody></table></div>
       <div class="statement-footer"><span>Status ${statusBadge(paymentStatus(total))}</span><small>This statement reflects records maintained in the PISO WIFI Management System.</small></div>
     </section>`;
   renderMonthSelectors();
@@ -517,7 +521,7 @@ function printStatement(total,units,month){
   @media print{body{padding:10px}}
   </style></head><body><div class="brand"><div><h1>PISO WIFI</h1><div class="muted">Client Statement</div></div><div>${monthLabel(month)}<br><span class="muted">Generated ${dateLong(new Date())}</span></div></div>
   <div class="meta"><div><b>Client Name</b><br>${esc(clientName())}</div><div><b>Client ID</b><br>${esc(clientCode())}</div><div><b>Unit${units.length>1?"s":""}</b><br>${esc(units.map(u=>u.unitCode).join(", "))}</div><div><b>Location</b><br>${esc(units.length===1?units[0].location:"Multiple assigned units")}</div></div>
-  <table><tbody><tr><td>Gross Sales</td><td>${money(total.gross)}</td></tr><tr><td>Internet Fee</td><td>${money(total.internet)}</td></tr><tr><td>Electricity Share</td><td>${money(total.elec)}</td></tr><tr><td>Your Share (${settings.clientPercent}%)</td><td>${money(total.client)}</td></tr><tr class="total"><td>Amount Due</td><td>${money(total.due)}</td></tr><tr><td>Amount Paid</td><td>${money(total.paid)}</td></tr><tr class="balance"><td>Balance</td><td>${money(total.balance)}</td></tr></tbody></table>
+  <table><tbody><tr><td>Gross Sales</td><td>${money(total.gross)}</td></tr><tr><td>Internet Fee</td><td>${money(total.internet)}</td></tr><tr><td>Electricity Share</td><td>${money(total.elec)}</td></tr><tr><td>Miscellaneous Fee</td><td>${money(total.miscellaneous)}</td></tr><tr><td>Your Share (${settings.clientPercent}%)</td><td>${money(total.client)}</td></tr><tr class="total"><td>Amount Due</td><td>${money(total.due)}</td></tr><tr><td>Amount Paid</td><td>${money(total.paid)}</td></tr><tr class="balance"><td>Balance</td><td>${money(total.balance)}</td></tr></tbody></table>
   <div class="foot">Status: ${paymentStatus(total)} · PISO WIFI Management System</div></body></html>`);
   w.document.close();w.focus();setTimeout(()=>w.print(),350);
 }
