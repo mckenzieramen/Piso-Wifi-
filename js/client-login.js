@@ -159,7 +159,10 @@ function openForgotPasswordModal(){
       </form>
     </section>`;
   document.body.appendChild(wrap);
-  wrap.querySelectorAll("[data-close-reset]").forEach(el=>el.onclick=()=>wrap.remove());
+  // Do not close the recovery form when the backdrop is clicked; use the explicit X button.
+  wrap.querySelectorAll("[data-close-reset]").forEach(el=>{
+    if(!el.classList.contains("client-reset-backdrop")) el.onclick=()=>wrap.remove();
+  });
   wrap.querySelector("#forgotPasswordForm").onsubmit=submitResetRequest;
   wrap.querySelector("#resetClientId").focus();
 }

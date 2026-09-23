@@ -370,7 +370,9 @@ function renderProfileTab(id,tab){
 
 function openModal(title,body,saveText,onSave,{danger=false}={}){
   $("#modalRoot").innerHTML=`<div class="modal-backdrop" id="modalBackdrop"><div class="modal ${danger?"danger-modal":""}"><div class="modal-head"><h3>${title}</h3><button class="close" id="closeModal">×</button></div><div class="modal-body">${body}</div><div class="modal-actions"><button class="secondary-btn" id="cancelModal">Cancel</button><button class="${danger?"danger-btn":"primary-btn"}" id="saveModal">${saveText}</button></div></div></div>`;
-  $("#closeModal").onclick=closeModal; $("#cancelModal").onclick=closeModal; $("#modalBackdrop").onclick=e=>{if(e.target.id==="modalBackdrop")closeModal()};
+  $("#closeModal").onclick=closeModal; $("#cancelModal").onclick=closeModal;
+  // Keep the form open when the user clicks outside the modal. Only the explicit X/Cancel controls close it.
+  $("#modalBackdrop").onclick=e=>{ e.stopPropagation(); };
   $("#saveModal").onclick=async()=>{try{await onSave();closeModal();await loadData();render();notify("Saved successfully.");}catch(e){notify(e?.message||"Unable to save.","error");}};
   setTimeout(()=>document.querySelector("#modalRoot input, #modalRoot select")?.focus(),50);
 }
