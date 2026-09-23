@@ -91,6 +91,42 @@ input,select,textarea{font-size:16px}
 }
 
 
+
+/* Account Recovery modal */
+.client-reset-modal{position:fixed;inset:0;z-index:5000;display:flex;align-items:center;justify-content:center;padding:18px;isolation:isolate}
+.client-reset-modal.hidden{display:none!important}
+.client-reset-backdrop{position:absolute;inset:0;background:rgba(5,24,48,.66);backdrop-filter:blur(7px);-webkit-backdrop-filter:blur(7px)}
+.client-reset-card{position:relative;z-index:1;width:min(470px,100%);background:#fff;border:1px solid #e4ebf3;border-radius:22px;padding:30px;box-shadow:0 28px 80px rgba(5,29,57,.28);animation:resetCardIn .18s ease-out}
+@keyframes resetCardIn{from{opacity:0;transform:translateY(10px) scale(.985)}to{opacity:1;transform:none}}
+.client-reset-close{position:absolute;right:16px;top:16px;width:38px;height:38px;border:1px solid #e1e9f2;border-radius:11px;background:#f7faff;color:#60748b;font-size:22px;line-height:1;display:grid;place-items:center;cursor:pointer}
+.client-reset-close:hover{background:#eef5fc;color:#173657}
+.client-reset-icon{width:54px;height:54px;border-radius:16px;background:linear-gradient(135deg,#edf7ff,#e4f1ff);color:#0877e8;display:grid;place-items:center;margin-bottom:16px;box-shadow:inset 0 0 0 1px #d7ebfb}
+.client-reset-icon svg{width:27px;height:27px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.client-reset-card .eyebrow{display:block;margin-bottom:8px;color:#0877e8}
+.client-reset-card h2{margin:0 42px 8px 0;color:#102a4c;font-size:27px;line-height:1.15;letter-spacing:-.025em}
+.client-reset-card .reset-intro{margin:0 0 22px;color:#667990;font-size:13px;line-height:1.6}
+.client-reset-card .client-field{margin:16px 0}
+.client-reset-card .client-field>span{display:block;font-size:12px;font-weight:800;color:#33445d;margin-bottom:8px}
+.client-reset-card .client-field input{width:100%;height:50px;border:1px solid #dbe4ee;border-radius:11px;padding:0 14px;color:var(--ink);background:#fff;outline:0;transition:.2s}
+.client-reset-card .client-field input:focus{border-color:#3b9af1;box-shadow:0 0 0 4px rgba(8,119,232,.09)}
+.client-reset-actions{display:grid;grid-template-columns:1fr 1.2fr;gap:10px;margin-top:20px}
+.client-reset-actions button{width:100%;min-height:48px}
+.client-reset-note{margin:15px 0 0;padding:11px 12px;border-radius:10px;background:#f6f9fc;color:#6c7e93;font-size:11px;line-height:1.5;text-align:left}
+.client-reset-card .client-login-message{min-height:20px;margin:12px 0 0;text-align:left}
+@media(max-width:600px){
+  .client-reset-modal{padding:12px;align-items:flex-end}
+  .client-reset-card{width:100%;border-radius:22px;padding:24px 18px calc(20px + env(safe-area-inset-bottom));max-height:calc(100svh - 24px);overflow:auto}
+  .client-reset-icon{width:50px;height:50px;border-radius:15px;margin-bottom:13px}
+  .client-reset-card h2{font-size:24px;margin-right:38px}
+  .client-reset-card .reset-intro{font-size:12px;margin-bottom:18px}
+  .client-reset-actions{grid-template-columns:1fr;gap:9px}
+  .client-reset-actions .client-secondary{order:2}
+}
+
+</style>
+
+<style>
+.client-login-official-logo{display:block;width:158px;height:auto;object-fit:contain;filter:drop-shadow(0 10px 22px rgba(0,0,0,.16))}.client-login-official-logo.mobile{width:132px}.mobile-brand{margin-bottom:24px}.mobile-brand .client-login-official-logo{filter:none}
 </style>
 </head>
 <body class="client-login-page">
@@ -98,7 +134,7 @@ input,select,textarea{font-size:16px}
   <main class="client-login-shell">
     <section class="client-brand-panel">
       <div class="client-brand-top">
-        <div class="client-logo-lockup"><span class="client-logo-mark"><svg viewBox="0 0 48 48" aria-hidden="true"><path d="M7 20c10-9 24-9 34 0M12 26c7-6 17-6 24 0M18 32c3.5-3 8.5-3 12 0" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round"/><circle cx="24" cy="38" r="2.6" fill="currentColor"/></svg></span><span><b>PISO WIFI</b><small>Connect · Earn · Grow Together</small></span></div>
+        <div class="client-logo-lockup"><img class="client-login-official-logo" src="/assets/piso-wifi-logo-transparent.png" alt="PISO WIFI"></div>
       </div>
       <div class="brand-copy">
         <span class="eyebrow">SECURE CUSTOMER ACCESS</span>
@@ -114,10 +150,10 @@ input,select,textarea{font-size:16px}
     </section>
     <section class="client-login-area">
       <div class="client-login-card">
-        <div class="mobile-brand"><span class="client-logo-mark"><svg viewBox="0 0 48 48"><path d="M7 20c10-9 24-9 34 0M12 26c7-6 17-6 24 0M18 32c3.5-3 8.5-3 12 0" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round"/><circle cx="24" cy="38" r="2.6" fill="currentColor"/></svg></span><b>PISO WIFI</b></div>
+        <div class="mobile-brand"><img class="client-login-official-logo mobile" src="/assets/piso-wifi-logo-transparent.png" alt="PISO WIFI"></div>
         <div class="login-heading"><span class="eyebrow">CLIENT ACCESS</span><h2>Welcome to Your Customer Account!</h2><p>Log in to your account to view your Piso WiFi records.</p></div>
         <form id="clientLoginForm" novalidate>
-          <label class="client-field"><span>Unit ID / Login ID</span><div class="input-with-icon"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m4 7 8 6 8-6"/></svg><input id="clientEmail" type="text" autocomplete="username" placeholder="UNIT-001" required></div></label>
+          <label class="client-field"><span>Username</span><div class="input-with-icon"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m4 7 8 6 8-6"/></svg><input id="clientEmail" type="text" autocomplete="username" placeholder="UNIT-001" required></div></label>
           <label class="client-field"><span>Password</span><div class="input-with-icon"><svg viewBox="0 0 24 24"><rect x="5" y="10" width="14" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg><input id="clientPassword" type="password" autocomplete="current-password" placeholder="Enter your password" required><button type="button" id="clientTogglePassword">Show</button></div></label>
           <div class="login-options"><button type="button" id="clientForgotPassword" class="text-link">Forgot Password?</button></div>
           <button class="client-primary login-submit" id="clientLoginButton" type="submit">Login</button>

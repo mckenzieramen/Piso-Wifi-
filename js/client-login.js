@@ -192,17 +192,7 @@ async function submitResetRequest(e){
       status:"pending",
       createdAt:serverTimestamp()
     });
-    await addDoc(collection(db,"notifications"),{
-      type:"password-reset",
-      title:"Customer password reset requested",
-      message:`Reset requested for ${clientId} (${email}). Review the customer record and process the password reset.`,
-      relatedId:"",
-      clientCode:clientId,
-      email,
-      read:false,
-      createdAt:serverTimestamp()
-    });
-    msgEl.textContent="Recovery request sent. Admin has been notified. Once the recovery is approved, follow the instructions provided by Admin to create your new private password.";
+    msgEl.textContent="Recovery request sent. Your Admin has received the request for verification. Once it is approved, follow the recovery instructions provided by Admin.";
     msgEl.className="client-login-message success";
     btn.textContent="Request Sent";
     btn.disabled=true;

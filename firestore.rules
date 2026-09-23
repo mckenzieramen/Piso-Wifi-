@@ -87,16 +87,15 @@ service cloud.firestore {
     }
 
     match /passwordResetRequests/{requestId} {
-      // Customer can submit a recovery request only when the supplied Client ID, Unit ID
-      // and registered email exactly match the Admin-created directory record.
+      // Customer can submit a recovery request only when the supplied Client ID
+      // and registered Gmail exactly match the Admin-created directory record.
+      // The customer does not need to know or submit the assigned Unit Code.
       allow create: if
         request.resource.data.status == "pending"
         && request.resource.data.clientCode is string
-        && request.resource.data.unitCode is string
         && request.resource.data.email is string
         && request.resource.data.createdAt == request.time
         && exists(/databases/$(database)/documents/customerLoginDirectory/$(request.resource.data.clientCode))
-        && get(/databases/$(database)/documents/customerLoginDirectory/$(request.resource.data.clientCode)).data.unitCode == request.resource.data.unitCode
         && get(/databases/$(database)/documents/customerLoginDirectory/$(request.resource.data.clientCode)).data.email == request.resource.data.email
         && get(/databases/$(database)/documents/customerLoginDirectory/$(request.resource.data.clientCode)).data.active == true;
 
