@@ -1,4 +1,57 @@
-<!doctype html>
-<html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#071d38"><title>PISO WIFI — Administrator</title><style>
-:root{--navy:#071d38;--navy2:#0c355d;--blue:#147ff5;--ink:#12243d;--muted:#718096;--line:#dce6f1;--bg:#f4f7fb;--red:#df4b5a;--green:#159a68}*{box-sizing:border-box}body{margin:0;font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:var(--ink);background:var(--bg)}button,input{font:inherit}main{min-height:100vh;display:grid;grid-template-columns:1fr 1fr}.brand{position:relative;overflow:hidden;color:#fff;padding:54px 7vw;background:radial-gradient(circle at 80% 20%,#1685f544,transparent 32%),linear-gradient(145deg,#05172e,#0b365d 62%,#071d38);display:flex;flex-direction:column}.brand h1{font-size:48px;letter-spacing:-.04em;margin:110px 0 12px}.brand p{max-width:450px;color:#c5d7ea;line-height:1.7;font-size:16px}.badge{color:#58bfff;font-size:11px;font-weight:800;letter-spacing:.16em}.brand-foot{margin-top:auto;color:#9bb6d2;font-size:12px}.card-area{display:grid;place-items:center;padding:40px}.card{width:min(460px,100%);background:#fff;border:1px solid #e3ebf4;border-radius:22px;padding:42px;box-shadow:0 30px 80px #0c274514}.eyebrow{color:var(--blue);font-size:10px;font-weight:800;letter-spacing:.14em}.card h2{font-size:30px;margin:10px 0 8px;letter-spacing:-.025em}.sub{color:var(--muted);font-size:14px;line-height:1.6;margin-bottom:30px}.field{margin:18px 0}.field label{display:block;font-size:13px;font-weight:750;margin-bottom:8px}.field input{width:100%;height:52px;border:1px solid var(--line);border-radius:11px;padding:0 14px;outline:0}.field input:focus{border-color:#328ff5;box-shadow:0 0 0 4px #328ff51c}.pw{display:flex;align-items:center;border:1px solid var(--line);border-radius:11px;height:52px;padding-right:7px}.pw input{border:0;height:100%;box-shadow:none}.pw:focus-within{border-color:#328ff5;box-shadow:0 0 0 4px #328ff51c}.pw button{border:0;background:transparent;color:var(--blue);font-weight:750;font-size:12px;padding:8px}.options{display:flex;justify-content:space-between;align-items:center;margin:4px 0 20px;font-size:12px}.remember{display:flex;align-items:center;gap:8px;color:#63758b}.remember input{width:16px;height:16px;accent-color:var(--blue)}.link{border:0;background:none;color:var(--blue);font-weight:750;cursor:pointer}.submit{width:100%;height:52px;border:0;border-radius:11px;background:linear-gradient(135deg,#1684f4,#075fc1);color:#fff;font-weight:800;box-shadow:0 12px 24px #0877e82e}.submit:disabled{opacity:.65}.msg{min-height:22px;text-align:center;margin-top:13px;font-size:12px;color:var(--muted)}.msg.error{color:var(--red)}.msg.success{color:var(--green)}.notice{margin-top:22px;padding:12px 14px;border:1px solid #dcecff;background:#f5f9ff;border-radius:11px;color:#52708f;font-size:12px;line-height:1.5}@media(max-width:800px){main{grid-template-columns:1fr}.brand{display:none}.card-area{min-height:100vh;padding:22px}.card{padding:28px 22px}.card h2{font-size:26px}}
-</style></head><body><main><section class="brand"><span class="badge">SECURE ADMIN ACCESS</span><h1>PISO WIFI<br>Management</h1><p>Manage customers, units, sales, payments, statements and business activity from one secure workspace.</p><div class="brand-foot">Connect · Earn · Grow Together</div></section><section class="card-area"><div class="card"><span class="eyebrow">ADMINISTRATOR</span><h2>Welcome back</h2><p class="sub">Sign in to your management workspace.</p><form id="loginForm" novalidate><div class="field"><label for="email">Admin Email</label><input id="email" type="email" autocomplete="username" placeholder="admin@example.com" required></div><div class="field"><label for="password">Password</label><div class="pw"><input id="password" type="password" autocomplete="current-password" placeholder="Enter your password" required><button type="button" id="togglePassword">Show</button></div></div><div class="options"><label class="remember"><input id="rememberAdmin" type="checkbox"> Remember my email</label><button type="button" id="resetPassword" class="link">Forgot password?</button></div><button class="submit" type="submit">Sign In</button><div id="loginMessage" class="msg" role="status" aria-live="polite"></div></form><div class="notice"><b>Administrator access only.</b><br>This login is separate from the Customer Account.</div></div></section></main><script type="module" src="../js/auth.js?v=10"></script></body></html>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#0b1730">
+  <title>PISO WIFI — Management System</title>
+  <link rel="stylesheet" href="../css/style.css">
+</head>
+<body class="login-page">
+  <main class="login-card" aria-labelledby="loginTitle">
+    <div class="login-brand" aria-hidden="true">
+      <div class="login-brand-mark">
+        <svg viewBox="0 0 48 48" role="img">
+          <path d="M8 19.5c11-10 21-10 32 0"/>
+          <path d="M13.5 25c7.2-6.2 13.8-6.2 21 0"/>
+          <path d="M19 30.2c3.4-2.8 6.6-2.8 10 0"/>
+          <circle cx="24" cy="35.5" r="2" fill="currentColor" stroke="none"/>
+        </svg>
+      </div>
+    </div>
+
+    <h1 id="loginTitle">PISO WIFI</h1>
+    <p>Secure Admin Management System</p>
+
+    <form id="loginForm" novalidate>
+      <div class="login-form-group">
+        <label for="email">Email Address</label>
+        <input id="email" type="email" autocomplete="username" required placeholder="Enter your admin email">
+      </div>
+
+      <div class="login-form-group">
+        <label for="password">Password</label>
+        <div class="password-wrap">
+          <input id="password" type="password" autocomplete="current-password" required placeholder="Enter your password">
+          <button type="button" id="togglePassword" aria-label="Show password">Show</button>
+        </div>
+      </div>
+
+      <label class="admin-remember"><input id="rememberAdmin" type="checkbox"> <span>Remember my email on this device</span></label>
+      <button class="primary-btn" type="submit">Sign in to Admin</button>
+      <button class="link-btn login-forgot" type="button" id="resetPassword">Forgot password?</button>
+      <div id="loginMessage" class="login-message" role="status" aria-live="polite"></div>
+    </form>
+
+    <div class="admin-login-help"><strong>Admin access only</strong><span>Use your authorized Admin email and password. Customer accounts cannot sign in here.</span></div>
+
+    <div class="login-footer">
+      <strong>Connect · Earn · Grow Together</strong><br>
+      Secure access to your Piso WiFi business management system.
+
+    </div>
+  </main>
+
+  <script type="module" src="../js/auth.js"></script>
+</body>
+</html>

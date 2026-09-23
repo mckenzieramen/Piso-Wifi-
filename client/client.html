@@ -143,10 +143,8 @@ input,select,textarea{font-size:16px}
       <div class="client-password-icon">🔐</div>
       <span class="eyebrow">FIRST LOGIN SETUP</span>
       <h2 id="clientPasswordTitle">Create your password</h2>
-      <p>Confirm your Client ID and registered Gmail, then create your private password. Admin will never see your new password.</p>
+      <p>Your Admin provided your Unit ID and temporary password. Create a private password now; Admin will not see it.</p>
       <form id="clientPasswordForm">
-        <label class="client-field"><span>Client ID</span><div class="input-with-icon"><input id="verifyClientId" type="text" autocomplete="off" placeholder="C-001" required></div></label>
-        <label class="client-field"><span>Registered Gmail</span><div class="input-with-icon"><input id="verifyClientEmail" type="email" autocomplete="email" placeholder="customer@gmail.com" required></div></label>
         <label class="client-field"><span>New Password</span><div class="input-with-icon"><input id="newClientPassword" type="password" minlength="8" autocomplete="new-password" placeholder="At least 8 characters" required></div></label>
         <label class="client-field"><span>Confirm Password</span><div class="input-with-icon"><input id="confirmClientPassword" type="password" minlength="8" autocomplete="new-password" placeholder="Re-enter your password" required></div></label>
         <div id="clientPasswordMessage" class="client-login-message" role="status" aria-live="polite"></div>

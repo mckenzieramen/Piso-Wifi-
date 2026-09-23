@@ -1,14 +1,205 @@
 import { auth, db } from "./firebase.js";
-import { signInWithEmailAndPassword, onAuthStateChanged, signOut, setPersistence, browserLocalPersistence, browserSessionPersistence } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-auth.js";
+import {
+  signInWithEmailAndPassword,
+  onAuthStateChanged,
+  signOut,
+  setPersistence,
+  browserSessionPersistence
+} from "https://www.gstatic.com/firebasejs/12.2.1/firebase-auth.js";
 import { doc, getDoc, addDoc, collection, serverTimestamp } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-firestore.js";
-const form=document.querySelector("#clientLoginForm"),msg=document.querySelector("#clientLoginMessage"),submit=document.querySelector("#clientLoginButton");
-const remembered=localStorage.getItem("pisoRememberClientId")||"";
-const idInput=document.querySelector("#clientEmail"); if(idInput&&remembered)idInput.value=remembered;
-function message(t,type=""){msg.textContent=t;msg.className=`client-login-message ${type}`.trim();}
-function cleanId(v){return String(v||"").trim().toUpperCase();}
-async function routeUser(user){if(!user)return;try{const s=await getDoc(doc(db,"users",user.uid));const p=s.exists()?s.data():null;if(p?.role==="client"&&p?.active!==false){location.replace("/client");return;}await signOut(auth);message("This account is not a Customer Account. Please use the correct portal.","error");}catch(e){console.error(e);await signOut(auth).catch(()=>{});message("We could not verify this account. Please try again.","error");}}
-onAuthStateChanged(auth,user=>{if(user)routeUser(user);});
-form.addEventListener("submit",async e=>{e.preventDefault();const clientId=cleanId(idInput.value),password=document.querySelector("#clientPassword").value,remember=document.querySelector("#rememberClient").checked;if(!/^C-\d{3,}$/.test(clientId)){message("Enter your Client ID, for example C-001.","error");return;}if(!password){message("Enter your password.","error");return;}submit.disabled=true;submit.textContent="Signing in…";message("Verifying your account…");try{const mapSnap=await getDoc(doc(db,"clientLoginMap",clientId));if(!mapSnap.exists()||mapSnap.data()?.active===false)throw new Error("CLIENT_NOT_FOUND");const map=mapSnap.data();await setPersistence(auth,remember?browserLocalPersistence:browserSessionPersistence);const cred=await signInWithEmailAndPassword(auth,map.authEmail,password);const profile=await getDoc(doc(db,"users",cred.user.uid));if(!profile.exists()||profile.data()?.role!=="client"||profile.data()?.clientCode!==clientId||profile.data()?.active===false){await signOut(auth);throw new Error("NOT_CLIENT");}const sessionId=crypto.randomUUID();sessionStorage.setItem("pisoClientSession",sessionId);if(remember)localStorage.setItem("pisoRememberClientId",clientId);else localStorage.removeItem("pisoRememberClientId");await import("https://www.gstatic.com/firebasejs/12.2.1/firebase-firestore.js").then(({updateDoc})=>updateDoc(doc(db,"users",cred.user.uid),{sessionId,updatedAt:serverTimestamp()}));location.replace("/client");}catch(err){console.error("[CUSTOMER LOGIN]",err);message(err.message==="CLIENT_NOT_FOUND"?"Client ID not found or inactive. Please check your Client ID.":"Invalid Client ID or password. Please try again.","error");submit.disabled=false;submit.textContent="Login";}});
-document.querySelector("#clientTogglePassword").onclick=()=>{const p=document.querySelector("#clientPassword");p.type=p.type==="password"?"text":"password";document.querySelector("#clientTogglePassword").textContent=p.type==="password"?"Show":"Hide";};
-document.querySelector("#rememberClient").onchange=e=>{if(!e.target.checked)localStorage.removeItem("pisoRememberClientId");};
-document.querySelector("#clientForgotPassword").onclick=async()=>{const clientId=cleanId(idInput.value);const email=prompt("Enter the Gmail address registered by Admin for this Client ID:");if(!email)return;try{const mapSnap=await getDoc(doc(db,"clientLoginMap",clientId));if(!mapSnap.exists()||mapSnap.data()?.active===false)throw new Error();await addDoc(collection(db,"passwordResetRequests"),{clientCode:clientId,email:email.trim().toLowerCase(),unitId:mapSnap.data().unitId,status:"pending",createdAt:serverTimestamp()});message("Reset request sent to Admin. Admin will review your account and provide the next reset step.","success");}catch{message("We could not verify that Client ID. Please check your details and try again.","error");}};
+
+const form = document.querySelector("#clientLoginForm");
+const msg = document.querySelector("#clientLoginMessage");
+const submit = document.querySelector("#clientLoginButton");
+const remember = document.querySelector("#clientRememberMe");
+const UNIT_AUTH_DOMAIN = "@client-login.pisowifi.local";
+const CLIENT_REMEMBER_KEY = "pisoWifi.rememberedUnitId";
+
+function message(text, type = "") {
+  msg.textContent = text;
+  msg.className = `client-login-message ${type}`.trim();
+}
+
+function normalizeUnitId(value) {
+  return String(value || "").trim();
+}
+
+try {
+  const savedUnit = localStorage.getItem(CLIENT_REMEMBER_KEY);
+  if (savedUnit && document.querySelector("#clientEmail")) {
+    document.querySelector("#clientEmail").value = savedUnit;
+    if (remember) remember.checked = true;
+  }
+} catch {}
+
+function authEmailFromUnitId(unitId) {
+  return `${unitId.toLowerCase().replace(/[^a-z0-9]+/g, "-")}${UNIT_AUTH_DOMAIN}`;
+}
+
+async function getRole(user) {
+  const snap = await getDoc(doc(db, "users", user.uid));
+  return snap.exists() ? snap.data() : null;
+}
+
+async function routeUser(user) {
+  if (!user) return;
+
+  try {
+    const profile = await getRole(user);
+
+    if (profile?.role === "client" && profile?.active !== false) {
+      try {
+      if (remember?.checked) localStorage.setItem(CLIENT_REMEMBER_KEY, unitId);
+      else localStorage.removeItem(CLIENT_REMEMBER_KEY);
+    } catch {}
+
+    window.location.replace("/client");
+      return;
+    }
+
+    // Admin accounts must never be routed into the Customer portal.
+    await signOut(auth);
+    message(
+      "This is an Admin Account. Please use the Admin Portal.",
+      "error"
+    );
+  } catch (e) {
+    console.error("[PISO WIFI CUSTOMER AUTH]", e);
+    try { await signOut(auth); } catch {}
+    message(
+      "This account is not authorized for the Customer Account.",
+      "error"
+    );
+  }
+}
+
+onAuthStateChanged(auth, user => {
+  if (user) routeUser(user);
+});
+
+form.addEventListener("submit", async e => {
+  e.preventDefault();
+
+  const unitId = normalizeUnitId(document.querySelector("#clientEmail").value);
+  const password = document.querySelector("#clientPassword").value;
+
+  if (!unitId || !password) {
+    message("Enter your Unit ID and password.", "error");
+    return;
+  }
+
+  submit.disabled = true;
+  submit.textContent = "Signing in…";
+  message("Authenticating…");
+
+  try {
+    await setPersistence(auth, browserSessionPersistence);
+
+    const cred = await signInWithEmailAndPassword(
+      auth,
+      authEmailFromUnitId(unitId),
+      password
+    );
+
+    const profile = await getRole(cred.user);
+
+    if (profile?.role !== "client" || profile?.active === false) {
+      await signOut(auth);
+      message(
+        "Access denied. This account is not a Customer Account.",
+        "error"
+      );
+      submit.disabled = false;
+      submit.textContent = "Login";
+      return;
+    }
+
+    window.location.replace("/client");
+  } catch (err) {
+    console.error("[PISO WIFI CUSTOMER LOGIN]", err);
+    message(
+      "Invalid Unit ID or password. If this is your first login, use the temporary password provided by Admin.",
+      "error"
+    );
+    submit.disabled = false;
+    submit.textContent = "Login";
+  }
+});
+
+document.querySelector("#clientTogglePassword").onclick = () => {
+  const p = document.querySelector("#clientPassword");
+  p.type = p.type === "password" ? "text" : "password";
+  document.querySelector("#clientTogglePassword").textContent =
+    p.type === "password" ? "Show" : "Hide";
+};
+
+document.querySelector("#clientForgotPassword").onclick = () => {
+  openForgotPasswordModal();
+};
+
+function openForgotPasswordModal(){
+  const existing=document.querySelector("#forgotPasswordModal");
+  if(existing){ existing.classList.remove("hidden"); existing.querySelector("input")?.focus(); return; }
+  const wrap=document.createElement("div");
+  wrap.id="forgotPasswordModal";
+  wrap.className="client-reset-modal";
+  wrap.innerHTML=`
+    <div class="client-reset-backdrop" data-close-reset></div>
+    <section class="client-reset-card" role="dialog" aria-modal="true" aria-labelledby="forgotTitle">
+      <button type="button" class="client-reset-close" data-close-reset aria-label="Close">×</button>
+      <span class="eyebrow">ACCOUNT RECOVERY</span>
+      <h2 id="forgotTitle">Forgot your password?</h2>
+      <p>Verify your Client ID, Unit ID and registered Gmail. We will notify Admin to process the reset.</p>
+      <form id="forgotPasswordForm">
+        <label class="client-field"><span>Client ID</span><input id="resetClientId" autocomplete="off" placeholder="C-001" required></label>
+        <label class="client-field"><span>Unit ID</span><input id="resetUnitId" autocomplete="off" placeholder="001" required></label>
+        <label class="client-field"><span>Registered Gmail</span><input id="resetEmail" type="email" autocomplete="email" placeholder="yourname@gmail.com" required></label>
+        <div id="resetMessage" class="client-login-message" role="status" aria-live="polite"></div>
+        <button class="client-primary login-submit" id="resetSubmit" type="submit">Send Reset Request</button>
+      </form>
+    </section>`;
+  document.body.appendChild(wrap);
+  wrap.querySelectorAll("[data-close-reset]").forEach(el=>el.onclick=()=>wrap.remove());
+  wrap.querySelector("#forgotPasswordForm").onsubmit=submitResetRequest;
+  wrap.querySelector("#resetClientId").focus();
+}
+
+async function submitResetRequest(e){
+  e.preventDefault();
+  const clientId=document.querySelector("#resetClientId").value.trim().toUpperCase();
+  const unitId=document.querySelector("#resetUnitId").value.trim().toUpperCase();
+  const email=document.querySelector("#resetEmail").value.trim().toLowerCase();
+  const msgEl=document.querySelector("#resetMessage");
+  const btn=document.querySelector("#resetSubmit");
+  if(!clientId||!unitId||!email){msgEl.textContent="Complete all fields.";msgEl.className="client-login-message error";return;}
+  btn.disabled=true; btn.textContent="Sending…"; msgEl.textContent="Verifying your account details…"; msgEl.className="client-login-message";
+  try{
+    // The security rules verify these details against the admin-created customer directory.
+    await addDoc(collection(db,"passwordResetRequests"),{
+      clientCode:clientId,
+      unitCode:unitId,
+      email,
+      status:"pending",
+      createdAt:serverTimestamp()
+    });
+    await addDoc(collection(db,"notifications"),{
+      type:"password-reset",
+      title:"Customer password reset requested",
+      message:`Reset requested for ${clientId} / Unit ${unitId} (${email}). Review the customer record and provide a temporary password.`,
+      relatedId:"",
+      clientCode:clientId,
+      unitCode:unitId,
+      email,
+      read:false,
+      createdAt:serverTimestamp()
+    });
+    msgEl.textContent="Request sent. Admin has been notified. Once Admin provides a temporary password, log in and create your new private password.";
+    msgEl.className="client-login-message success";
+    setTimeout(()=>document.querySelector("#forgotPasswordModal")?.remove(),2200);
+  }catch(err){
+    console.error("[PISO WIFI PASSWORD RESET]",err);
+    msgEl.textContent="We could not verify those details. Check your Client ID, Unit ID and registered Gmail, then try again.";
+    msgEl.className="client-login-message error";
+    btn.disabled=false; btn.textContent="Send Reset Request";
+  }
+}

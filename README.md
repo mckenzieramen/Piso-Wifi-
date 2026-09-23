@@ -27,13 +27,3 @@ https://piso-wifi.pages.dev/admin
 
 The internal data/auth architecture may still use client/clientId terminology
 where required by the existing backend; only the customer-facing wording was changed.
-
-
-## Premium account architecture
-- Admin portal: /admin
-- Customer portal: /
-- Customer login uses Client ID (C-001+) mapped to Firebase Authentication.
-- Unit codes are searchable in a custom 001–050 combobox; active units cannot be duplicated.
-- Temporary customer password is generated as PISO-<unit code> because Firebase requires a minimum password length; customer must create a private password on first login.
-- Remember Me stores only the Client ID/admin email, never passwords.
-- A new login updates the user session marker so older signed-in devices can be signed out by the dashboard session watcher.

@@ -5,7 +5,7 @@ import { getAuth, createUserWithEmailAndPassword } from "https://www.gstatic.com
 import { calculateFinancialRecord } from "./finance.js";
 import { onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-auth.js";
 import {
-  collection, doc, getDoc, getDocs, setDoc, addDoc, updateDoc, deleteDoc, writeBatch, onSnapshot,
+  collection, doc, getDoc, getDocs, setDoc, addDoc, updateDoc, deleteDoc, writeBatch,
   serverTimestamp, Timestamp
 } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-firestore.js";
 
@@ -31,11 +31,24 @@ let unitSearch = "", unitStatus = "", unitPaymentStatus = "";
 // Set to false later to remove the Delete Client button without changing the rest of the system.
 const ENABLE_CLIENT_DELETE = true;
 const CLIENT_AUTH_DOMAIN="@client-login.pisowifi.local";
-const clientAuthEmailFromId=(clientId)=>`${String(clientId||"").trim().toLowerCase().replace(/[^a-z0-9]+/g,"-")}${CLIENT_AUTH_DOMAIN}`;
-const clientAuthEmailFromUnitId=(unitCode)=>`${String(unitCode||"").trim().toLowerCase().replace(/[^a-z0-9]+/g,"-")}${CLIENT_AUTH_DOMAIN}`;
 const clientProvisionerApp=initializeApp(firebaseConfig,"clientProvisioner");
 const clientProvisionerAuth=getAuth(clientProvisionerApp);
 const clientAuthEmailFromUnitId=(unitCode)=>`${String(unitCode||"").trim().toLowerCase().replace(/[^a-z0-9]+/g,"-")}${CLIENT_AUTH_DOMAIN}`;
+
+async function syncCustomerDirectory(){
+  const jobs=units.filter(u=>u.clientCode&&u.unitCode&&u.email).map(u=>
+    setDoc(doc(db,"customerLoginDirectory",String(u.clientCode).toUpperCase()),{
+      clientCode:String(u.clientCode).toUpperCase(),
+      unitCode:String(u.unitCode).toUpperCase(),
+      email:String(u.email).trim().toLowerCase(),
+      unitDocId:u.id,
+      authUserId:u.authUserId||"",
+      active:u.active!==false,
+      updatedAt:serverTimestamp()
+    },{merge:true})
+  );
+  if(jobs.length) await Promise.all(jobs);
+}
 
 
 function notify(msg, type="success") {
@@ -66,21 +79,6 @@ function calc(r){
 }
 function totals(rows){ return rows.reduce((a,x)=>{a.gross+=x.c.gross;a.internet+=x.c.internet;a.net+=x.c.net;a.owner+=x.c.owner;a.client+=x.c.client;a.elec+=x.c.elec;a.due+=x.c.clientTotal;a.paid+=x.c.paid;a.balance+=x.c.balance;return a},{gross:0,internet:0,net:0,owner:0,client:0,elec:0,due:0,paid:0,balance:0}); }
 
-async function syncClientLoginMaps(){
-  const jobs=[];
-  for(const u of units){
-    if(!u.clientCode || !u.authUserId) continue;
-    const authEmail=u.authEmail || clientAuthEmailFromUnitId(u.unitCode);
-    jobs.push(setDoc(doc(db,"clientLoginMap",String(u.clientCode).toUpperCase()),{
-      clientCode:String(u.clientCode).toUpperCase(),
-      unitId:u.id,
-      authEmail,
-      active:u.active!==false,
-      updatedAt:serverTimestamp()
-    },{merge:true}));
-  }
-  if(jobs.length) await Promise.all(jobs);
-}
 async function loadData(){
   // Core financial collections are required for the dashboard.
   // Notifications and Activity Log are optional during rollout so a missing
@@ -93,7 +91,7 @@ async function loadData(){
   ]);
 
   units=u.docs.map(d=>({id:d.id,...d.data()}));
-  await syncClientLoginMaps();
+  try { await syncCustomerDirectory(); } catch(e) { console.warn("Customer directory sync skipped",e); }
   records=r.docs.map(d=>({id:d.id,...d.data()}));
   payments=p.docs.map(d=>({id:d.id,...d.data()}));
   if(s.exists()) settings={...settings,...s.data()};
@@ -149,9 +147,11 @@ async function addNotification(type,title,message,relatedId=""){
 }
 function unreadCount(){ return notifications.filter(n=>n.read!==true).length; }
 function updateNotificationBadge(){
-  // Notification UI was intentionally removed from the dashboard header/sidebar.
-  // Keep notification data generation compatible without requiring visible badge elements.
-  return unreadCount();
+  const el=document.querySelector("#adminNotificationBadge");
+  if(!el)return;
+  const count=unreadCount();
+  el.textContent=count>99?"99+":String(count);
+  el.classList.toggle("hidden",count===0);
 }
 function nav(){ document.querySelectorAll("#nav a").forEach(a=>a.classList.toggle("active",a.dataset.route===route)); }
 function closeMenu(){ $("#sidebar").classList.remove("open"); $("#overlay").classList.remove("show"); }
@@ -175,7 +175,7 @@ function renderDashboard(){
   const customerNet = Math.max(0, t.client - t.elec);
   const top=[...rows].sort((a,b)=>b.c.gross-a.c.gross).slice(0,5);
   const outstanding=rows.filter(x=>x.c.balance>0).sort((a,b)=>b.c.balance-a.c.balance).slice(0,5);
-  view.innerHTML=baseHead("Dashboard","Overview of your Piso WiFi business.")+`
+  view.innerHTML=baseHead("Dashboard","Overview of your Piso WiFi business.",`<button class="primary-btn" id="addUnitTop">+ Add New Unit</button>`)+`
   <div class="dashboard-grid">
     <div class="kpis">
       ${kpi("▦","Total Units",units.length,"All registered units")}
@@ -195,6 +195,7 @@ function renderDashboard(){
     </div>
     <div class="panel"><div class="panel-head"><div><h3>Units / Clients</h3><p>Monthly computation for ${monthLabel(selectedMonth)}</p></div><div class="tools"><input class="search" id="dashSearch" placeholder="Search client or unit…"><select id="dashStatus" class="search"><option value="">All Payment Status</option><option>Paid</option><option>Partial</option><option>Unpaid</option></select></div></div><div class="table-wrap accumulating-table"><table><thead><tr><th>Unit Code</th><th>Client Name</th><th>Location</th><th>Status</th><th>This Month</th><th>Payment</th><th>Actions</th></tr></thead><tbody id="dashBody">${rows.length?rows.map(dashboardRow).join(""):emptyRow(7,"No clients or units found.")}</tbody></table></div></div>
   </div>`;
+  $("#addUnitTop").onclick=()=>openUnitModal();
   $("#dashSearch").oninput=e=>filterDashboard(e.target.value,$("#dashStatus").value);
   $("#dashStatus").onchange=e=>filterDashboard($("#dashSearch").value,e.target.value);
   $("#viewOutstanding").onclick=()=>{location.hash="#payments";};
@@ -238,7 +239,7 @@ function yearMonths(k){const y=Number(k.slice(0,4));return Array.from({length:12
 
 function renderUnits(){
   const rows=normalizeRows().filter(x=>(!unitSearch||`${x.u.name} ${x.u.unitCode} ${x.u.location} ${x.u.contact}`.toLowerCase().includes(unitSearch.toLowerCase()))&&(!unitStatus||String(x.u.active!==false?"Active":"Inactive")===unitStatus)&&(!unitPaymentStatus||x.c.status===unitPaymentStatus));
-  view.innerHTML=baseHead("Units / Clients","Manage your Piso WiFi units and clients.",`<button class="primary-btn" id="addUnitBtn">+ Add New Client</button>`)+`<div class="panel"><div class="panel-head"><div><h3>Registered Units</h3><p>Showing ${rows.length} of ${units.length} units · ${monthLabel(selectedMonth)}</p></div><div class="tools"><input id="unitSearch" class="search" placeholder="Search client or unit…" value="${esc(unitSearch)}"><select id="unitStatus" class="search"><option value="">All Status</option><option ${unitStatus==="Active"?"selected":""}>Active</option><option ${unitStatus==="Inactive"?"selected":""}>Inactive</option></select><select id="unitPaymentStatus" class="search"><option value="">All Payment Status</option><option ${unitPaymentStatus==="Paid"?"selected":""}>Paid</option><option ${unitPaymentStatus==="Partial"?"selected":""}>Partial</option><option ${unitPaymentStatus==="Unpaid"?"selected":""}>Unpaid</option></select><button class="secondary-btn" id="exportUnits">Export Excel/CSV</button></div></div><div class="table-wrap accumulating-table"><table><thead><tr><th>Unit Code</th><th>Client Name</th><th>Location</th><th>Contact</th><th>Status</th><th>This Month</th><th>Payment</th><th>Actions</th></tr></thead><tbody>${rows.length?rows.map(x=>`<tr><td><b>${esc(x.u.unitCode||"—")}</b></td><td>${esc(x.u.name||"—")}</td><td>${esc(x.u.location||"—")}</td><td>${esc(x.u.contact||"—")}</td><td>${statusBadge(x.u.active!==false?"Active":"Inactive")}</td><td class="amount">${money(x.c.gross)}</td><td>${statusBadge(x.c.status)}</td><td><button class="action-btn" data-sale="${x.u.id}">Gross Sale</button><button class="action-btn" data-profile="${x.u.id}">View</button><button class="action-btn" data-edit-unit="${x.u.id}">Edit</button><button class="action-btn danger" data-toggle-unit="${x.u.id}">${x.u.active!==false?"Deactivate":"Activate"}</button>${ENABLE_CLIENT_DELETE?`<button class="action-btn danger solid-danger" data-delete-unit="${x.u.id}">Delete</button>`:""}</td></tr>`).join(""):emptyRow(8,"No clients or units found.")}</tbody></table></div></div>`;
+  view.innerHTML=baseHead("Units / Clients","Manage your Piso WiFi units and clients.",`<button class="primary-btn" id="addUnitBtn">+ Add Client / Unit</button>`)+`<div class="panel"><div class="panel-head"><div><h3>Registered Units</h3><p>Showing ${rows.length} of ${units.length} units · ${monthLabel(selectedMonth)}</p></div><div class="tools"><input id="unitSearch" class="search" placeholder="Search client or unit…" value="${esc(unitSearch)}"><select id="unitStatus" class="search"><option value="">All Status</option><option ${unitStatus==="Active"?"selected":""}>Active</option><option ${unitStatus==="Inactive"?"selected":""}>Inactive</option></select><select id="unitPaymentStatus" class="search"><option value="">All Payment Status</option><option ${unitPaymentStatus==="Paid"?"selected":""}>Paid</option><option ${unitPaymentStatus==="Partial"?"selected":""}>Partial</option><option ${unitPaymentStatus==="Unpaid"?"selected":""}>Unpaid</option></select><button class="secondary-btn" id="exportUnits">Export Excel/CSV</button></div></div><div class="table-wrap accumulating-table"><table><thead><tr><th>Unit Code</th><th>Client Name</th><th>Location</th><th>Contact</th><th>Status</th><th>This Month</th><th>Payment</th><th>Actions</th></tr></thead><tbody>${rows.length?rows.map(x=>`<tr><td><b>${esc(x.u.unitCode||"—")}</b></td><td>${esc(x.u.name||"—")}</td><td>${esc(x.u.location||"—")}</td><td>${esc(x.u.contact||"—")}</td><td>${statusBadge(x.u.active!==false?"Active":"Inactive")}</td><td class="amount">${money(x.c.gross)}</td><td>${statusBadge(x.c.status)}</td><td><button class="action-btn" data-sale="${x.u.id}">Gross Sale</button><button class="action-btn" data-profile="${x.u.id}">View</button><button class="action-btn" data-edit-unit="${x.u.id}">Edit</button><button class="action-btn danger" data-toggle-unit="${x.u.id}">${x.u.active!==false?"Deactivate":"Activate"}</button>${ENABLE_CLIENT_DELETE?`<button class="action-btn danger solid-danger" data-delete-unit="${x.u.id}">Delete</button>`:""}</td></tr>`).join(""):emptyRow(8,"No clients or units found.")}</tbody></table></div></div>`;
   $("#addUnitBtn").onclick=()=>openUnitModal();
   $("#unitSearch").oninput=e=>{unitSearch=e.target.value;renderUnits()};
   $("#unitStatus").onchange=e=>{unitStatus=e.target.value;renderUnits()};
@@ -295,7 +296,7 @@ function downloadStatementPdf(id,month){
 function printStatement(id,month){const {u,c}=statementData(id,month);openPrintWindow(statementDocumentHtml(u,c,month));}
 
 function renderNotifications(){
-  view.innerHTML=baseHead("Notifications","Stay updated on payments, balances, reports and system changes.",`<button class="secondary-btn" id="markAllRead">Mark all as read</button>`)+`<div class="notification-list">${notifications.length?notifications.map(n=>`<button class="notification-card ${n.read===true?"read":"unread"}" data-notification="${n.id}"><span class="notification-icon">${n.type==="payment"?"₱":n.type==="balance"?"!":n.type==="report"?"▥":"●"}</span><span><b>${esc(n.title)}</b><small>${esc(n.message)}</small><time>${dateTimeLabel(n.createdAt)}</time></span>${n.read!==true?"<em>NEW</em>":""}</button>`).join(""):empty("You're all caught up.")}</div>`;
+  view.innerHTML=baseHead("Notifications","Stay updated on payments, balances, reports and system changes.",`<button class="secondary-btn" id="markAllRead">Mark all as read</button>`)+`<div class="notification-list">${notifications.length?notifications.map(n=>`<button class="notification-card ${n.read===true?"read":"unread"}" data-notification="${n.id}"><span class="notification-icon">${n.type==="payment"?"₱":n.type==="balance"?"!":n.type==="report"?"▥":n.type==="password-reset"?"🔐":"●"}</span><span><b>${esc(n.title)}</b><small>${esc(n.message)}</small><time>${dateTimeLabel(n.createdAt)}</time></span>${n.read!==true?"<em>NEW</em>":""}</button>`).join(""):empty("You're all caught up.")}</div>`;
   $("#markAllRead").onclick=markAllNotificationsRead; document.querySelectorAll("[data-notification]").forEach(b=>b.onclick=()=>openNotification(b.dataset.notification));
 }
 async function openNotification(id){const n=notifications.find(x=>x.id===id);if(!n)return;if(n.read!==true){await updateDoc(doc(db,"notifications",id),{read:true});await loadData();} if(n.relatedId && units.some(u=>u.id===n.relatedId)){openProfile(n.relatedId);}else{render();}}
@@ -347,86 +348,69 @@ function openModal(title,body,saveText,onSave,{danger=false}={}){
   setTimeout(()=>document.querySelector("#modalRoot input, #modalRoot select")?.focus(),50);
 }
 function closeModal(){ $("#modalRoot").innerHTML=""; }
-function nextAvailableClientCode(excludeId=""){
-  const used=new Set(units.filter(u=>u.id!==excludeId && u.active!==false).map(u=>String(u.clientCode||"").toUpperCase()));
-  let n=1; while(used.has(`C-${String(n).padStart(3,"0")}`)) n++;
-  return `C-${String(n).padStart(3,"0")}`;
-}
-function availableUnitCodes(excludeId=""){
-  const used=new Set(units.filter(u=>u.id!==excludeId && u.active!==false).map(u=>String(u.unitCode||"").padStart(3,"0")));
-  return Array.from({length:50},(_,i)=>String(i+1).padStart(3,"0")).filter(code=>!used.has(code));
-}
-function unitComboboxHtml(selected="",excludeId=""){
-  const current=String(selected||"").padStart(3,"0");
-  const options=availableUnitCodes(excludeId);
-  if(current && !options.includes(current)) options.unshift(current);
-  return `<div class="premium-combobox" id="unitCombo" data-value="${esc(current)}">
-    <input id="fCodeSearch" class="combo-input" autocomplete="off" placeholder="Search or select unit code…" value="${esc(current)}" aria-label="Search or select unit code">
-    <button type="button" class="combo-chevron" id="unitComboToggle" aria-label="Show unit codes">⌄</button>
-    <div class="combo-menu" id="unitComboMenu">
-      <div class="combo-empty">No available unit code found.</div>
-      ${options.map(code=>`<button type="button" class="combo-option ${code===current?"selected":""}" data-unit-option="${code}"><span>${code}</span>${code===current?"<small>Current</small>":""}</button>`).join("")}
-    </div>
-  </div>`;
-}
-function setupUnitCombobox(selected="",excludeId=""){
-  const combo=$("#unitCombo"), input=$("#fCodeSearch"), menu=$("#unitComboMenu"); if(!combo||!input||!menu)return;
-  const setOpen=open=>{combo.classList.toggle("open",open);};
-  const filter=()=>{const q=input.value.trim().toLowerCase();let shown=0;menu.querySelectorAll("[data-unit-option]").forEach(btn=>{const ok=btn.dataset.unitOption.includes(q);btn.classList.toggle("hidden",!ok);if(ok)shown++;});menu.querySelector(".combo-empty").classList.toggle("hidden",shown!==0);};
-  input.onfocus=()=>{setOpen(true);filter();}; input.oninput=()=>{setOpen(true);filter();};
-  $("#unitComboToggle").onclick=()=>{setOpen(!combo.classList.contains("open"));input.focus();filter();};
-  menu.querySelectorAll("[data-unit-option]").forEach(btn=>btn.onclick=()=>{input.value=btn.dataset.unitOption;combo.dataset.value=btn.dataset.unitOption;menu.querySelectorAll(".selected").forEach(x=>x.classList.remove("selected"));btn.classList.add("selected");setOpen(false);});
-  document.addEventListener("click",e=>{if(!combo.contains(e.target))setOpen(false)},{once:true});
-}
 function openUnitModal(id=null){
   const u=id?units.find(x=>x.id===id):null;
-  const suggestedCode = u?.clientCode || nextAvailableClientCode();
+  const suggestedCode = u?.clientCode || `C-${String(units.length+1).padStart(3,"0")}`;
   const suggestedDate = u?.dateJoined || new Date().toISOString().slice(0,10);
-  const available=availableUnitCodes(id);
-  if(!id && !available.length) { notify("All 50 unit codes are currently assigned.","error"); return; }
-  const tempPreview=u?"":`PISO-${String(available[0]||"001")}`;
-  openModal(id?"Edit Client":"Add New Client",`
-    <div class="modal-intro"><span class="modal-step">CLIENT SETUP</span><h4>${id?"Update customer information":"Create a customer account"}</h4><p>Client ID is generated automatically. Select an available unit; the customer will use the Client ID to sign in.</p></div>
-    <div class="form-grid premium-form-grid">
-      <div class="field"><label>Client ID</label><input id="fClientCode" value="${esc(suggestedCode)}" readonly class="locked-field"><small class="hint">Automatically assigned. Active IDs cannot be duplicated.</small></div>
-      <div class="field"><label>Unit Code *</label>${unitComboboxHtml(u?.unitCode||available[0]||"",id)}<small class="hint">Search directly in the box. Only available 001–050 units appear.</small></div>
-      <div class="field"><label>Client Name *</label><input id="fName" value="${esc(u?.name||"")}" placeholder="Juan Dela Cruz" autocomplete="name"></div>
-      <div class="field"><label>Registered Gmail *</label><input id="fEmail" type="email" value="${esc(u?.email||"")}" placeholder="customer@gmail.com" autocomplete="email"><small class="hint">Used to verify account ownership during activation/recovery.</small></div>
-      <div class="field"><label>Contact Number</label><input id="fContact" value="${esc(u?.contact||"")}" placeholder="09XX XXX XXXX" autocomplete="tel"></div>
+  openModal(id?"Edit Client / Unit":"Add New Client / Unit",`
+    <div class="form-grid">
+      <div class="field"><label>Client ID *</label><input id="fClientCode" value="${esc(suggestedCode)}" placeholder="C-001"></div>
+      <div class="field"><label>Unit Code *</label><input id="fCode" value="${esc(u?.unitCode||"")}" placeholder="UNIT-001"></div>
+      <div class="field"><label>Client Name *</label><input id="fName" value="${esc(u?.name||"")}" placeholder="Juan Dela Cruz"></div>
+      <div class="field"><label>Client Email *</label><input id="fEmail" type="email" value="${esc(u?.email||"")}" placeholder="client@example.com"><small class="hint">Used for contact/recovery records. Client signs in with Unit ID.</small></div>
+      <div class="field"><label>Contact Number</label><input id="fContact" value="${esc(u?.contact||"")}" placeholder="09171234567"></div>
       <div class="field"><label>Date Joined</label><input id="fDateJoined" type="date" value="${esc(suggestedDate)}"></div>
-      <div class="field full"><label>Unit Location</label><input id="fLocation" value="${esc(u?.location||"")}" placeholder="Barangay / area where the unit is installed"></div>
-      <div class="field full"><label>Client Address</label><input id="fAddress" value="${esc(u?.address||u?.location||"")}" placeholder="Customer address"></div>
+      <div class="field full"><label>Unit Location</label><input id="fLocation" value="${esc(u?.location||"")}" placeholder="Brgy. San Isidro, Antipolo"></div>
+      <div class="field full"><label>Client Address</label><input id="fAddress" value="${esc(u?.address||u?.location||"")}" placeholder="Client residential/contact address"></div>
       <div class="field"><label>Status</label><select id="fStatus"><option value="active" ${u?.active!==false?"selected":""}>Active</option><option value="inactive" ${u?.active===false?"selected":""}>Inactive</option></select></div>
-      ${id?`<div class="field"><label>Account Login</label><div class="credential-preview"><b>${esc(u?.clientCode||"—")}</b><span>Customer uses Client ID</span></div></div>`:`<div class="field"><label>Temporary Password</label><div class="credential-preview"><b id="tempPasswordPreview">${esc(tempPreview)}</b><span>Unit code + PISO prefix · customer changes this after first login</span></div></div>`}
-      <div class="field full"><label>Notes</label><textarea id="fNotes" rows="3" placeholder="Optional internal notes">${esc(u?.notes||"")}</textarea></div>
+      <div class="field"><label>Customer Account Login</label><input id="fAuthUserId" value="${esc(u?.authUserId||"")}" placeholder="Created automatically" disabled><small class="hint">Login ID is the Unit Code. Firebase Auth ID is created automatically for new clients.</small></div>
+      ${id?"":`<div class="field"><label>Temporary Password *</label><input id="fTempPassword" type="text" minlength="8" placeholder="Give client a temporary password"><small class="hint">Client must create a private password after first login.</small></div>`}
+      <div class="field full"><label>Notes</label><textarea id="fNotes" rows="3">${esc(u?.notes||"")}</textarea></div>
     </div>`,`Save Client`,async()=>{
-      const clientCode=$("#fClientCode").value.trim().toUpperCase(), unitCode=$("#unitCombo")?.dataset.value || $("#fCodeSearch")?.value.trim(), name=$("#fName").value.trim(), email=$("#fEmail").value.trim().toLowerCase();
-      if(!/^C-\d{3,}$/.test(clientCode)) throw new Error("Invalid Client ID.");
-      if(!/^\d{3}$/.test(unitCode)||Number(unitCode)<1||Number(unitCode)>50) throw new Error("Choose a valid unit code from 001 to 050.");
-      if(!name||!email) throw new Error("Client Name and Registered Gmail are required.");
-      if(!/^[^\s@]+@gmail\.com$/i.test(email)) throw new Error("Please enter a valid Gmail address.");
-      const duplicateClient=units.find(x=>x.id!==id&&String(x.clientCode||"").toUpperCase()===clientCode&&x.active!==false); if(duplicateClient)throw new Error("That Client ID is already active.");
-      const duplicateUnit=units.find(x=>x.id!==id&&String(x.unitCode||"").padStart(3,"0")===unitCode&&x.active!==false); if(duplicateUnit)throw new Error("That Unit Code is already assigned.");
-      const data={clientCode,unitCode,name,email,location:$("#fLocation").value.trim(),address:$("#fAddress").value.trim(),contact:$("#fContact").value.trim(),dateJoined:$("#fDateJoined").value||suggestedDate,authUserId:u?.authUserId||"",notes:$("#fNotes").value.trim(),active:$("#fStatus").value==="active",updatedAt:serverTimestamp()};
+      const clientCode=$("#fClientCode").value.trim(), unitCode=$("#fCode").value.trim(), name=$("#fName").value.trim(), email=$("#fEmail").value.trim().toLowerCase();
+      if(!clientCode||!unitCode||!name||!email) throw new Error("Client ID, Unit Code, Client Name and Client Email are required.");
+      if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new Error("Enter a valid client email address.");
+      const data={
+        clientCode,
+        unitCode,
+        name,
+        email,
+        location:$("#fLocation").value.trim(),
+        address:$("#fAddress").value.trim(),
+        contact:$("#fContact").value.trim(),
+        dateJoined:$("#fDateJoined").value||suggestedDate,
+        authUserId:$("#fAuthUserId").value.trim(),
+        notes:$("#fNotes").value.trim(),
+        active:$("#fStatus").value==="active",
+        updatedAt:serverTimestamp()
+      };
       if(id){
         await updateDoc(doc(db,"units",id),data);
-        if(data.authUserId) await setDoc(doc(db,"clientLoginMap",clientCode),{clientCode,unitId:id,authEmail:u.authEmail||clientAuthEmailFromUnitId(unitCode),active:data.active,updatedAt:serverTimestamp()},{merge:true});
-        await logActivity("Clients",`Edited ${unitCode} — ${name}`,id); await addNotification("client","Client profile updated.",`${name} (${clientCode}) was updated.`,id);
+        await logActivity("Clients",`Edited ${unitCode} — ${name}`,id);
+        await addNotification("client","Client profile updated.",`${name} (${clientCode}) was updated.`,id);
       }else{
-        const tempPassword=`PISO-${unitCode}`;
-        const authEmail=clientAuthEmailFromId(clientCode);
-        let cred; try{cred=await createUserWithEmailAndPassword(clientProvisionerAuth,authEmail,tempPassword);}catch(e){if(e?.code==="auth/email-already-in-use")throw new Error("That Client ID already has a login account. Use the next available Client ID.");throw e;}
-        try{await setDoc(doc(db,"users",cred.user.uid),{role:"client",clientCode,loginId:clientCode,email,createdAt:serverTimestamp(),updatedAt:serverTimestamp()});}finally{try{await signOut(clientProvisionerAuth);}catch{}}
-        data.authUserId=cred.user.uid; data.forcePasswordChange=true; data.loginId=clientCode; data.authEmail=authEmail;
+        const tempPassword=$("#fTempPassword")?.value||"";
+        if(tempPassword.length<8) throw new Error("Temporary password must be at least 8 characters.");
+        const authEmail=clientAuthEmailFromUnitId(unitCode);
+        let cred;
+        try{
+          cred=await createUserWithEmailAndPassword(clientProvisionerAuth,authEmail,tempPassword);
+        }catch(e){
+          if(e?.code==="auth/email-already-in-use") throw new Error("This Unit ID already has a client login account. Use a different Unit Code or edit the existing client.");
+          throw e;
+        }
+        data.authUserId=cred.user.uid;
+        data.forcePasswordChange=true;
+        data.loginId=unitCode;
+        data.authEmail=authEmail;
         const ref=await addDoc(collection(db,"units"),{...data,createdAt:serverTimestamp()});
-        await setDoc(doc(db,"clientLoginMap",clientCode),{clientCode,unitId:ref.id,authEmail,active:true,updatedAt:serverTimestamp()});
-        await logActivity("Clients",`Added client ${clientCode} — Unit ${unitCode} — ${name}`,ref.id);
-        await addNotification("client","New customer account created.",`${name} (${clientCode}) is ready. Temporary password: ${tempPassword}`,ref.id);
+        await setDoc(doc(db,"users",cred.user.uid),{role:"client",clientUnitId:ref.id,unitId:ref.id,clientCode,loginId:unitCode,email,createdAt:serverTimestamp(),updatedAt:serverTimestamp()});
+        await logActivity("Clients",`Added client account ${clientCode} — ${unitCode} — ${name}`,ref.id);
+        await addNotification("client","New client account created.",`${name} (${clientCode}) can now log in using ${unitCode}.`,ref.id);
       }
   });
-  setupUnitCombobox(u?.unitCode||available[0]||"",id);
 }
-async function toggleUnit(id){const u=units.find(x=>x.id===id);if(!u)return;const next=u.active===false; if(!confirm(`${next?"Activate":"Deactivate"} ${u.unitCode}? Historical sales and payments will remain.`))return;await updateDoc(doc(db,"units",id),{active:next,updatedAt:serverTimestamp()});if(u.clientCode)await setDoc(doc(db,"clientLoginMap",String(u.clientCode).toUpperCase()),{active:next,updatedAt:serverTimestamp()},{merge:true});await logActivity("Units",`${next?"Activated":"Deactivated"} ${u.unitCode}`,id);await addNotification("unit",`${u.unitCode} is ${next?"active":"inactive"}.`,`Unit status was changed.`,id);await loadData();render();notify(`Unit ${next?"activated":"deactivated"}.`);}
+async function toggleUnit(id){const u=units.find(x=>x.id===id);if(!u)return;const next=u.active===false; if(!confirm(`${next?"Activate":"Deactivate"} ${u.unitCode}? Historical sales and payments will remain.`))return;await updateDoc(doc(db,"units",id),{active:next,updatedAt:serverTimestamp()});await logActivity("Units",`${next?"Activated":"Deactivated"} ${u.unitCode}`,id);await addNotification("unit",`${u.unitCode} is ${next?"active":"inactive"}.`,`Unit status was changed.`,id);await loadData();render();notify(`Unit ${next?"activated":"deactivated"}.`);}
 
 async function confirmDeleteUnit(id){
   if(!ENABLE_CLIENT_DELETE)return;
@@ -487,7 +471,7 @@ function printCss(){return `body{font-family:Arial,sans-serif;color:#17243a;padd
 function openPrintWindow(html){const w=window.open("","_blank","width=1200,height=800");if(!w){notify("Please allow pop-ups to print.","error");return;}w.document.open();w.document.write(html);w.document.close();w.focus();setTimeout(()=>w.print(),350);}
 
 function showAuthError(message){console.error("[PISO WIFI]",message);const loader=$("#authLoading");if(loader){loader.innerHTML=`<div class="auth-error"><strong>Unable to open the dashboard</strong><span>${esc(message)}</span><button onclick="location.href='index.html'">Return to Login</button></div>`;loader.classList.remove("hidden");}}
-async function bootstrap(user){if(!user){location.replace("index.html");return;}currentUser=user;try{await authorize(user);await loadData();await logActivity("System",`Admin login — ${user.email||"Admin"}`);setupMonthSelector();watchAdminSession(user);$("#authLoading").classList.add("hidden");$("#app").classList.remove("hidden");$("#userEmail").textContent=user.email||"Owner";route=location.hash.replace("#","").split("?")[0]||"dashboard";render();}catch(e){showAuthError(e?.message||"Firebase authorization or database access failed.");}}
+async function bootstrap(user){if(!user){location.replace("index.html");return;}currentUser=user;try{await authorize(user);await loadData();await logActivity("System",`Admin login — ${user.email||"Admin"}`);setupMonthSelector();$("#authLoading").classList.add("hidden");$("#app").classList.remove("hidden");$("#userEmail").textContent=user.email||"Owner";route=location.hash.replace("#","").split("?")[0]||"dashboard";render();}catch(e){showAuthError(e?.message||"Firebase authorization or database access failed.");}}
 
 function parseRoute(){const raw=location.hash.replace("#","");return raw.split("?")[0]||"dashboard";}
 document.addEventListener("click",e=>{const a=e.target.closest("[data-route]");if(a){e.preventDefault();location.hash="#"+a.dataset.route;} const p=e.target.closest("[data-print-inline]");if(p){const id=$("#statementUnit")?.value;if(id)printStatement(id,$("#statementMonth").value);} const pdf=e.target.closest("[data-pdf-inline]");if(pdf){const id=$("#statementUnit")?.value;if(id)downloadStatementPdf(id,$("#statementMonth").value);} const html=e.target.closest("[data-html-inline]");if(html){const id=$("#statementUnit")?.value;if(id)downloadStatementHtml(id,$("#statementMonth").value);}});

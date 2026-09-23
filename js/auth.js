@@ -5,7 +5,7 @@ import {
   sendPasswordResetEmail,
   signOut,
   setPersistence,
-  browserLocalPersistence, browserSessionPersistence
+  browserSessionPersistence
 } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-auth.js";
 import {
   doc,
@@ -13,9 +13,16 @@ import {
 } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-firestore.js";
 
 const form = document.querySelector("#loginForm");
-const rememberedAdmin = localStorage.getItem("pisoRememberAdminEmail") || "";
-if (document.querySelector("#email") && rememberedAdmin) document.querySelector("#email").value = rememberedAdmin;
 const msg = document.querySelector("#loginMessage");
+const REMEMBER_ADMIN_KEY = "pisoWifi.rememberedAdminEmail";
+const rememberAdmin = document.querySelector("#rememberAdmin");
+try {
+  const savedAdminEmail = localStorage.getItem(REMEMBER_ADMIN_KEY);
+  if (savedAdminEmail && document.querySelector("#email")) {
+    document.querySelector("#email").value = savedAdminEmail;
+    if (rememberAdmin) rememberAdmin.checked = true;
+  }
+} catch {}
 
 function showMessage(text, type = "") {
   msg.textContent = text;
@@ -35,7 +42,11 @@ async function routeSignedInUser(user) {
 
     // ADMIN PORTAL IS STRICTLY ADMIN-ONLY.
     if (profile?.role === "admin" && profile?.active !== false) {
-      window.location.replace("/admin/dashboard.html");
+      try {
+      if (rememberAdmin?.checked) localStorage.setItem(REMEMBER_ADMIN_KEY, email);
+      else localStorage.removeItem(REMEMBER_ADMIN_KEY);
+    } catch {}
+    window.location.replace("/admin/dashboard.html");
       return;
     }
 
@@ -65,7 +76,6 @@ form.addEventListener("submit", async e => {
   e.preventDefault();
   const email = document.querySelector("#email").value.trim().toLowerCase();
   const password = document.querySelector("#password").value;
-  const remember = document.querySelector("#rememberAdmin")?.checked === true;
 
   if (!email || !password) {
     showMessage("Enter your email and password.", "error");
@@ -75,14 +85,10 @@ form.addEventListener("submit", async e => {
   showMessage("Signing in…");
 
   try {
-    await setPersistence(auth, remember ? browserLocalPersistence : browserSessionPersistence);
+    await setPersistence(auth, browserSessionPersistence);
 
     const cred = await signInWithEmailAndPassword(auth, email, password);
     const profile = await getRole(cred.user);
-    const sessionId = crypto.randomUUID();
-    sessionStorage.setItem("pisoAdminSession", sessionId);
-    await import("https://www.gstatic.com/firebasejs/12.2.1/firebase-firestore.js").then(({updateDoc,serverTimestamp}) => updateDoc(doc(db,"users",cred.user.uid),{sessionId,updatedAt:serverTimestamp()}));
-    if (remember) localStorage.setItem("pisoRememberAdminEmail", email); else localStorage.removeItem("pisoRememberAdminEmail");
 
     if (profile?.role !== "admin" || profile?.active === false) {
       await signOut(auth);

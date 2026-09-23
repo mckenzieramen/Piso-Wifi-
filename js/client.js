@@ -3,7 +3,7 @@ import {
   onAuthStateChanged, signOut, updatePassword
 } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-auth.js";
 import {
-  collection, doc, getDoc, getDocs, query, where, updateDoc, onSnapshot,
+  collection, doc, getDoc, getDocs, query, where, updateDoc,
   serverTimestamp, writeBatch
 } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-firestore.js";
 import { calculateFinancialRecord } from "./finance.js";
@@ -393,13 +393,9 @@ async function maybeShowFirstLoginPasswordSetup(){
   if(!modal) return;
   modal.classList.remove("hidden"); modal.setAttribute("aria-hidden","false");
   const form=$("#clientPasswordForm"), msg=$("#clientPasswordMessage");
-  $("#verifyClientId").value=clientCode();
-  $("#verifyClientEmail").value=clientEmail() === "—" ? "" : clientEmail();
   form.onsubmit=async e=>{
     e.preventDefault();
-    const verifyId=$("#verifyClientId").value.trim().toUpperCase(), verifyEmail=$("#verifyClientEmail").value.trim().toLowerCase();
     const a=$("#newClientPassword").value, b=$("#confirmClientPassword").value;
-    if(verifyId!==clientCode() || verifyEmail!==String(clientEmail()).trim().toLowerCase()){msg.textContent="Client ID and registered Gmail do not match your account.";msg.className="client-login-message error";return;}
     if(a.length<8){msg.textContent="Use at least 8 characters.";msg.className="client-login-message error";return;}
     if(a!==b){msg.textContent="Passwords do not match.";msg.className="client-login-message error";return;}
     const btn=form.querySelector("button"); btn.disabled=true; btn.textContent="Saving…";
@@ -466,6 +462,4 @@ document.addEventListener("click",e=>{
   if(!e.target.closest("#notificationWrap"))$("#notificationPopover")?.classList.remove("show");
 });
 window.addEventListener("hashchange",()=>{route=parseRoute();render();});
-let sessionUnsub=null;
-function watchClientSession(user){ if(sessionUnsub)sessionUnsub(); sessionUnsub=onSnapshot(doc(db,"users",user.uid),snap=>{ const sid=snap.data()?.sessionId; const current=sessionStorage.getItem("pisoClientSession"); if(sid && current && sid!==current){ sessionUnsub?.(); signOut(auth).finally(()=>location.replace("/")); }}); }
-onAuthStateChanged(auth,user=>{if(user){watchClientSession(user);bootstrap(user);}else{bootstrap(null);}});
+onAuthStateChanged(auth,bootstrap);
