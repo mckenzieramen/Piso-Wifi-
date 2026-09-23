@@ -175,12 +175,19 @@ function renderSupportConversation(){
   if(typing){const adminTyping=!!supportChat?.typingBy?.admin;typing.classList.toggle("show",adminTyping);typing.textContent=adminTyping?"PISO WIFI Support is typing…":"";}
   requestAnimationFrame(()=>{host.scrollTop=host.scrollHeight;});
 }
+function hasRealSupportConversation(chat){
+  const messages=Array.isArray(chat?.messages)?chat.messages:[];
+  return messages.some(m=>String(m?.senderType||"").toLowerCase()==="customer") || messages.length>1;
+}
 function renderSupportLobby(){
   const lobby=$("#supportLobby"), convo=$("#supportConversationView"); if(!lobby||!convo)return;
   const status=String(supportChat?.status||"Open");
-  lobby.innerHTML=`<div class="piso-support-hero"><div class="support-icon">${icons.bell}</div><span class="eyebrow">PISO WIFI CUSTOMER SUPPORT</span><h2>How can we help?</h2><p>Chat directly with the PISO WIFI Admin. Your conversation stays connected to your Customer Account.</p></div><div class="piso-ticket-card"><div><b>Customer Support</b><small>${status==="Closed"?"This conversation is closed.":status==="Solved"?"This conversation was marked solved.":supportChat?.messages?.length?"Your active support conversation.":"No conversation started yet."}</small></div><span class="piso-ticket-status ${status.toLowerCase()}">${esc(status)}</span></div><button id="startSupportChat" class="client-primary piso-support-start">${supportChat?.messages?.length?"Open Conversation":"Start Chat"}</button>`;
+  const active=hasRealSupportConversation(supportChat);
+  const closed=status==="Closed"||status==="Solved";
+  lobby.innerHTML=`<div class="piso-support-hero"><div class="support-icon">${icons.bell}</div><span class="eyebrow">PISO WIFI CUSTOMER SUPPORT</span><h2>How can we help?</h2><p>Chat directly with the PISO WIFI Admin. Your conversation stays connected to your Customer Account.</p></div><div class="piso-ticket-card"><div><b>Customer Support</b><small>${status==="Closed"?"This conversation is closed.":status==="Solved"?"This conversation was marked solved.":active?"Your active support conversation.":"No conversation started yet."}</small></div><span class="piso-ticket-status ${status.toLowerCase()}">${esc(status)}</span></div><button id="startSupportChat" class="client-primary piso-support-start" ${closed?"disabled":""}>${active?"Open Conversation":"Start Chat"}</button>`;
   convo.classList.add("hidden");
-  $("#startSupportChat").onclick=()=>openSupportConversation();
+  const start=$("#startSupportChat");
+  if(start&&!closed) start.onclick=()=>openSupportConversation();
 }
 function renderSupportChat(){
   const lobby=$("#supportLobby"), convo=$("#supportConversationView"); if(!lobby||!convo)return;
@@ -191,21 +198,11 @@ function renderSupportChat(){
 }
 async function loadExistingSupportChat(){
   if(!currentUser?.uid) return null;
-  // First use the stable UID document used by the current implementation.
   const direct=doc(db,"supportChats",currentUser.uid);
   const directSnap=await getDoc(direct);
   if(directSnap.exists()){
     supportChatDocId=directSnap.id;
     supportChat={id:directSnap.id,...directSnap.data()};
-    return supportChat;
-  }
-  // Backward-compatible lookup so conversations created by an earlier version
-  // are not lost just because their document ID was different.
-  const qSnap=await getDocs(query(collection(db,"supportChats"),where("authUserId","==",currentUser.uid)));
-  if(qSnap.docs.length){
-    const latest=[...qSnap.docs].sort((a,b)=>timeValue(b.data()?.updatedAt||b.data()?.createdAt)-timeValue(a.data()?.updatedAt||a.data()?.createdAt))[0];
-    supportChatDocId=latest.id;
-    supportChat={id:latest.id,...latest.data()};
     return supportChat;
   }
   supportChatDocId=currentUser.uid;
@@ -259,8 +256,6 @@ async function openSupportModal(){
     await loadExistingSupportChat();
     subscribeSupportChat();
     renderSupportLobby();
-    // If an Admin has already replied, open the existing conversation directly.
-    if(supportChat?.messages?.length) openSupportConversation();
   }catch(e){
     console.warn("Unable to restore PISO WIFI support conversation",e);
     toast(e?.message||"Unable to load your support conversation.","error");
