@@ -153,10 +153,14 @@ function timeValue(v){if(!v)return 0;if(v.toMillis)return v.toMillis();const n=n
 function unread(){return notifications.filter(n=>n.read!==true).length;}
 
 function setupShell(){
-  $("#clientName").textContent=clientName();
-  $("#clientRole").textContent="Client";
-  $("#clientAvatar").textContent=initials(clientName());
-  $("#clientEmail").textContent=clientEmail();
+  const nameEl=$("#clientName");
+  const roleEl=$("#clientRole");
+  const avatarEl=$("#clientAvatar");
+  const emailEl=$("#clientEmail");
+  if(nameEl) nameEl.textContent=clientName();
+  if(roleEl) roleEl.textContent="Client";
+  if(avatarEl) avatarEl.textContent=initials(clientName());
+  if(emailEl) emailEl.textContent=clientEmail();
   renderMonthSelectors();
   renderUnitSelector();
   renderNotificationsPopover();
