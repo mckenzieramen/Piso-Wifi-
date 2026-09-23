@@ -68,6 +68,11 @@ let selectedMonth=localStorage.getItem("pisoClientMonth") || todayMonth();
 let selectedYear=String(new Date().getFullYear());
 let selectedUnitId="all";
 let route="dashboard";
+let clientRealtimeUnsubs=[];
+let clientRecordUnsubs=[];
+let clientPaymentUnsubs=[];
+let clientNotificationUnsubs=[];
+let clientSettingsUnsub=null;
 
 function toast(message,type="success"){
   const el=$("#clientToast"); if(!el)return;
@@ -148,6 +153,59 @@ async function loadClientData(){
     notifications=await getChunked("notifications","relatedId",ids);
     notifications.sort((a,b)=>timeValue(b.createdAt)-timeValue(a.createdAt));
   }catch(e){notifications=[];}
+}
+function clearClientRealtimeSubscriptions(){
+  [...clientRealtimeUnsubs,...clientRecordUnsubs,...clientPaymentUnsubs,...clientNotificationUnsubs].forEach(fn=>{try{fn?.();}catch(e){}});
+  clientRealtimeUnsubs=[];clientRecordUnsubs=[];clientPaymentUnsubs=[];clientNotificationUnsubs=[];
+  try{clientSettingsUnsub?.();}catch(e){}
+  clientSettingsUnsub=null;
+}
+function clientRealtimeRender(){
+  if(!currentUser)return;
+  renderMonthSelectors();
+  renderUnitSelector();
+  updateBell();
+  if(document.querySelector("#clientApp")?.classList.contains("hidden"))return;
+  render();
+}
+function subscribeClientCollectionChunks(collectionName,field,ids,assign,unsubStore){
+  const chunks=[];
+  for(let i=0;i<ids.length;i+=30)chunks.push(ids.slice(i,i+30));
+  if(!chunks.length){assign([]);return;}
+  const merged=new Map();
+  chunks.forEach(chunk=>{
+    const q=query(collection(db,collectionName),where(field,"in",chunk));
+    const unsub=onSnapshot(q,snap=>{
+      snap.docs.forEach(d=>merged.set(d.id,{id:d.id,...d.data()}));
+      const activeIds=new Set(chunks.flat());
+      [...merged.keys()].forEach(id=>{const row=merged.get(id);if(row&&!activeIds.has(row[field]))merged.delete(id);});
+      assign([...merged.values()]);
+      clientRealtimeRender();
+    },err=>console.warn(`PISO WIFI realtime ${collectionName} error`,err));
+    unsubStore.push(unsub);
+  });
+}
+function startClientRealtime(){
+  clearClientRealtimeSubscriptions();
+  if(!currentUser?.uid)return;
+  const unitQuery=query(collection(db,"units"),where("authUserId","==",currentUser.uid));
+  const unitUnsub=onSnapshot(unitQuery,snap=>{
+    clientUnits=snap.docs.map(d=>({id:d.id,...d.data()}));
+    const ids=clientUnits.map(u=>u.id);
+    clientRecordUnsubs.forEach(fn=>{try{fn?.();}catch(e){}});clientRecordUnsubs=[];
+    clientPaymentUnsubs.forEach(fn=>{try{fn?.();}catch(e){}});clientPaymentUnsubs=[];
+    clientNotificationUnsubs.forEach(fn=>{try{fn?.();}catch(e){}});clientNotificationUnsubs=[];
+    subscribeClientCollectionChunks("monthlyRecords","unitId",ids,v=>{records=v;},clientRecordUnsubs);
+    subscribeClientCollectionChunks("payments","unitId",ids,v=>{payments=v;},clientPaymentUnsubs);
+    subscribeClientCollectionChunks("notifications","relatedId",ids,v=>{notifications=v.sort((a,b)=>timeValue(b.createdAt)-timeValue(a.createdAt));},clientNotificationUnsubs);
+    clientRealtimeRender();
+  },err=>console.warn("PISO WIFI realtime units error",err));
+  clientRealtimeUnsubs.push(unitUnsub);
+  clientSettingsUnsub=onSnapshot(doc(db,"settings","business"),snap=>{
+    if(snap.exists())settings={...settings,...snap.data()};
+    clientRealtimeRender();
+  },err=>console.warn("PISO WIFI realtime settings error",err));
+  clientRealtimeUnsubs.push(clientSettingsUnsub);
 }
 function timeValue(v){if(!v)return 0;if(v.toMillis)return v.toMillis();const n=new Date(v).getTime();return Number.isNaN(n)?0:n;}
 function unread(){return notifications.filter(n=>n.read!==true).length;}
@@ -318,7 +376,7 @@ function renderDashboard(){
       ${financialCard("▥","Gross Sales",total.gross,"Gross Sales","gross")}
       ${financialCard("◉","Your Share",total.client,`${settings.clientPercent}% share`,"share")}
       ${financialCard("−","Total Deductions",Math.max(0,total.internet+total.elec),`Internet + electricity`,"deductions")}
-      ${financialCard("₱","Amount Due",Math.max(0,total.balance),status==="Paid"?"Paid in full":`${money(total.balance)} outstanding`,"due")}
+      ${financialCard("₱","Total Earnings",Math.max(0,total.client),`${settings.clientPercent}% customer share`,"earnings")}
     </div>
     <div class="client-two-col">
       <section class="client-panel">
@@ -580,6 +638,7 @@ async function bootstrap(user){
     $("#clientAuthLoading").classList.add("hidden");
     $("#clientApp").classList.remove("hidden");
     setupShell();
+    startClientRealtime();
     route=parseRoute();render();
     bootstrapFinished=true; clearTimeout(bootTimer);
     await maybeShowFirstLoginPasswordSetup();
