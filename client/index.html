@@ -181,13 +181,73 @@ input,select,textarea{font-size:16px}
 @media(max-width:1050px){.client-sidebar{width:275px}.client-main{margin-left:0}.client-content{padding:24px 22px 40px}}
 @media(max-width:600px){.client-content{padding:18px 15px 34px}.client-welcome{padding:18px;min-height:0}.client-welcome h1{font-size:22px}.financial-card{min-height:126px}.client-panel{padding:16px}}
 
+
+/* ==========================================================
+   PREMIUM CUSTOMER ACCOUNT — V11 VISUAL SYSTEM
+   Visual-only refinement. Existing data/auth/logic preserved.
+   ========================================================== */
+:root{--premium-navy:#061a31;--premium-navy-2:#0a2c4d;--premium-blue:#1687f5;--premium-blue-2:#35b5ff;--premium-ink:#102b49;--premium-muted:#71839a;--premium-bg:#f3f7fb;--premium-line:#e2eaf3;--premium-card:#fff;--premium-shadow:0 16px 40px rgba(13,45,78,.075)}
+.client-app-page{background:linear-gradient(180deg,#eef4f9 0%,#f6f9fc 48%,#f2f6fa 100%);color:var(--premium-ink)}
+.client-sidebar{width:274px;padding:20px 14px 18px;background:linear-gradient(180deg,#05182d 0%,#082b4b 52%,#061d35 100%);box-shadow:14px 0 45px rgba(3,25,46,.13);border-right:1px solid rgba(255,255,255,.055)}
+.client-sidebar:before{content:"";position:absolute;inset:0;pointer-events:none;background:radial-gradient(circle at 20% 12%,rgba(44,180,255,.12),transparent 25%),radial-gradient(circle at 80% 80%,rgba(24,126,230,.09),transparent 30%)}
+.client-sidebar>*{position:relative;z-index:1}
+.client-sidebar-brand{height:92px;margin:0 4px 18px;padding:9px 11px 15px;display:flex;align-items:center;justify-content:flex-start;gap:12px;border-bottom:1px solid rgba(255,255,255,.08)}
+.client-official-logo{display:block;width:116px;height:auto;object-fit:contain;filter:drop-shadow(0 8px 16px rgba(0,0,0,.2))}
+.client-brand-caption{align-self:flex-end;margin:0 0 9px -5px;padding-left:10px;border-left:1px solid rgba(109,190,255,.28);font-size:9px;line-height:1.25;letter-spacing:.08em;text-transform:uppercase;color:#91b3d1;font-weight:800;white-space:nowrap}
+.client-nav{gap:6px;padding:0 2px}
+.client-nav a,.client-logout{min-height:48px;border-radius:12px;padding:0 14px;gap:12px;font-size:12px;letter-spacing:.01em;color:#b9cde1;transition:all .2s ease}
+.client-nav a .nav-icon,.client-logout .nav-icon{width:28px;height:28px;display:grid;place-items:center;border-radius:9px;background:rgba(255,255,255,.055);color:#91b8d8;font-size:11px;box-shadow:inset 0 0 0 1px rgba(255,255,255,.035)}
+.client-nav a:hover,.client-logout:hover{transform:none;background:rgba(55,160,240,.10);color:#fff}
+.client-nav a:hover .nav-icon,.client-logout:hover .nav-icon{background:rgba(49,161,245,.14);color:#5fc2ff}
+.client-nav a.active{background:linear-gradient(135deg,#1688ee,#0869c7);color:#fff;box-shadow:0 12px 28px rgba(0,104,207,.25),inset 0 1px 0 rgba(255,255,255,.16)}
+.client-nav a.active .nav-icon{background:rgba(255,255,255,.15);color:#fff;box-shadow:none}
+.client-logout{border:1px solid rgba(255,255,255,.07);background:rgba(255,255,255,.025);margin:0 2px}
+.client-main{margin-left:274px}
+.client-topbar{height:76px;padding:0 38px;background:rgba(255,255,255,.88);backdrop-filter:blur(18px);border-bottom:1px solid rgba(214,226,239,.9);box-shadow:0 5px 25px rgba(19,50,81,.045)}
+.client-top-actions{gap:12px}
+.notification-btn{width:44px;height:44px;border-radius:13px;background:#fff;border:1px solid #e2eaf2;box-shadow:0 7px 18px rgba(16,49,82,.06);color:#244866}
+.notification-btn:hover{background:#f1f8ff;border-color:#bfe0fb;color:#0877e8;transform:translateY(-1px)}
+.notification-count{border-color:#fff;background:#ef5363}
+.client-identity{gap:10px;padding:5px 10px 5px 5px;border:1px solid #e2eaf2;border-radius:15px;background:rgba(255,255,255,.92);box-shadow:0 7px 18px rgba(16,49,82,.055)}
+.client-avatar{width:40px;height:40px;background:linear-gradient(145deg,#168ef2,#075fbe);box-shadow:0 7px 17px rgba(8,119,232,.24);font-size:11px}
+.client-identity b{font-size:11px;color:#163552}.client-identity small{font-size:9px;color:#8193a6}
+.client-content{padding:34px 38px 56px;max-width:1600px}
+.client-welcome{min-height:144px;margin-bottom:22px;padding:26px 28px;border:1px solid rgba(210,224,238,.95);border-radius:22px;background:linear-gradient(120deg,#fff 0%,#fafdff 53%,#eaf6ff 100%);box-shadow:var(--premium-shadow);align-items:center}
+.client-welcome:before{width:360px;height:360px;right:-100px;top:-160px;background:radial-gradient(circle,rgba(22,135,245,.16),rgba(22,135,245,0) 67%)}
+.client-welcome:after{right:180px;bottom:-95px;width:190px;height:190px;border-color:rgba(22,135,245,.10)}
+.client-welcome>div:first-child:before{content:"CUSTOMER ACCOUNT";display:block;margin-bottom:8px;font-size:9px;font-weight:900;letter-spacing:.16em;color:#1885ec}
+.client-welcome h1{font-size:31px;letter-spacing:-.04em;color:#0d2947;margin-bottom:7px}
+.client-welcome p{font-size:12px;color:#72859a}
+.dashboard-filters{padding:6px;background:rgba(255,255,255,.75);border:1px solid #e0ebf5;border-radius:14px;box-shadow:0 8px 20px rgba(16,50,83,.04)}
+.client-select-wrap{height:44px;min-width:184px;border:0;background:#fff;border-radius:10px;box-shadow:inset 0 0 0 1px #e3ebf3,0 3px 9px rgba(16,50,83,.035)}
+.financial-grid{gap:16px;margin-bottom:20px}
+.financial-card{min-height:158px;padding:21px 21px 18px;border-radius:17px;border:1px solid #e1eaf3;box-shadow:0 9px 26px rgba(18,50,83,.055);background:linear-gradient(145deg,#fff 0%,#fbfdff 100%)}
+.financial-card:before{height:4px;opacity:1}
+.financial-card:after{width:140px;height:140px;right:-48px;bottom:-58px;background:radial-gradient(circle,rgba(22,135,245,.09),rgba(22,135,245,0) 68%)}
+.financial-icon{width:42px;height:42px;border-radius:13px;margin-bottom:15px;box-shadow:inset 0 0 0 1px rgba(255,255,255,.65),0 5px 12px rgba(20,55,88,.04);font-size:15px}
+.financial-card>span{font-size:10px;letter-spacing:.07em}.financial-card>strong{font-size:27px;letter-spacing:-.035em;color:#102d4c}.financial-card>small{font-size:10px;color:#8a99aa}
+.client-two-col{grid-template-columns:1.08fr .92fr;gap:20px}
+.client-panel{border-radius:18px;border:1px solid #e0e8f1;background:rgba(255,255,255,.97);box-shadow:var(--premium-shadow);padding:22px}
+.client-panel-head{margin-bottom:19px}.client-panel-head h3{font-size:14px;color:#102c4a;letter-spacing:-.01em}.client-panel-head p{font-size:10px;color:#8191a3}
+.text-btn{border:1px solid #dbe8f3;border-radius:9px;background:#f5faff;padding:8px 11px;color:#0877df;font-size:10px}.text-btn:hover{background:#eaf5ff;border-color:#c9e1f7}
+.unit-card-grid{gap:14px}.unit-card{border-radius:15px;padding:17px;background:linear-gradient(145deg,#fff,#f6faff);border:1px solid #dce7f1;box-shadow:0 6px 18px rgba(18,50,82,.045)}
+.unit-card:hover{border-color:#c6ddf0;box-shadow:0 12px 26px rgba(18,50,82,.075);transform:translateY(-2px)}
+.unit-symbol,.unit-detail-icon{width:41px;height:41px;border-radius:12px;background:linear-gradient(145deg,#eaf5ff,#dff0ff);box-shadow:inset 0 0 0 1px #d3e8fa;color:#0877e8}
+.unit-card h3{font-size:15px;color:#163754}.unit-location{font-size:10px}.unit-divider{background:#e8eef4;margin:14px 0}.unit-meta span{font-size:9px}.unit-meta b{font-size:8px}
+.breakdown-list>div{padding:12px 0}.breakdown-list .highlight{border:1px solid #d9e9fa;background:linear-gradient(90deg,#eef7ff,#f8fbff);border-radius:11px;padding:13px}.breakdown-list .balance-row b{font-size:15px}
+.recent-panel{margin-top:20px}.payment-mini{min-height:58px;padding:10px 12px;border-radius:13px;background:#fbfdff;border:1px solid #e2eaf2}.payment-mini:hover{background:#fff;border-color:#c9deef;box-shadow:0 7px 18px rgba(18,50,82,.055)}
+/* Consistent statement logo */
+.statement-brand .brand-logo img{width:112px;height:auto;display:block;object-fit:contain}
+@media(max-width:1050px){.client-sidebar{width:274px}.client-main{margin-left:0}.client-content{padding:26px 24px 42px}.client-topbar{padding:0 24px}}
+@media(max-width:700px){.client-content{padding:18px 15px 34px}.client-welcome{padding:20px;min-height:0;border-radius:17px}.client-welcome h1{font-size:24px}.dashboard-filters{width:100%}.client-select-wrap{min-width:0;flex:1}.financial-grid{grid-template-columns:1fr 1fr}.financial-card{min-height:138px;padding:16px}.financial-card>strong{font-size:21px}.client-two-col{grid-template-columns:1fr}.client-sidebar-brand{height:78px}.client-official-logo{width:105px}.client-brand-caption{font-size:8px}}
+@media(max-width:480px){.financial-grid{grid-template-columns:1fr}.client-topbar{height:66px;padding:0 14px}.client-content{padding:15px 12px 30px}.client-welcome h1{font-size:22px}.client-identity{padding-right:6px}.client-identity b{max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}}
 </style>
 </head>
 <body class="client-app-page">
   <div id="clientAuthLoading" class="client-auth-loading"><div class="client-spinner"></div><span>Checking your client account…</span></div>
   <div id="clientApp" class="client-app hidden">
     <aside id="clientSidebar" class="client-sidebar">
-      <div class="client-sidebar-brand"><span class="client-logo-mark"><svg viewBox="0 0 48 48"><path d="M7 20c10-9 24-9 34 0M12 26c7-6 17-6 24 0M18 32c3.5-3 8.5-3 12 0" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round"/><circle cx="24" cy="38" r="2.6" fill="currentColor"/></svg></span><span><b>PISO WIFI</b><small>Customer Account</small></span></div>
+      <div class="client-sidebar-brand"><img class="client-official-logo" src="/assets/piso-wifi-logo-transparent.png" alt="PISO WIFI"><span class="client-brand-caption">Customer Account</span></div>
       <nav id="clientNav" class="client-nav" aria-label="Client navigation">
         <a href="#dashboard" data-route="dashboard"><span class="nav-icon">⌂</span>Dashboard</a>
         <a href="#units" data-route="units"><span class="nav-icon">⌁</span>My Units</a>

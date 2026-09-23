@@ -61,13 +61,17 @@ input,select,textarea{font-size:16px}
 
 
 </style>
+
+<style>
+.client-login-official-logo{display:block;width:158px;height:auto;object-fit:contain;filter:drop-shadow(0 10px 22px rgba(0,0,0,.16))}.client-login-official-logo.mobile{width:132px}.mobile-brand{margin-bottom:24px}.mobile-brand .client-login-official-logo{filter:none}
+</style>
 </head>
 <body class="client-login-page">
   <noscript><div style="padding:16px;background:#fff3cd;color:#664d03;text-align:center;font-family:Arial,sans-serif">JavaScript is required for the PISO WIFI Customer Account.</div></noscript>
   <main class="client-login-shell">
     <section class="client-brand-panel">
       <div class="client-brand-top">
-        <div class="client-logo-lockup"><span class="client-logo-mark"><svg viewBox="0 0 48 48" aria-hidden="true"><path d="M7 20c10-9 24-9 34 0M12 26c7-6 17-6 24 0M18 32c3.5-3 8.5-3 12 0" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round"/><circle cx="24" cy="38" r="2.6" fill="currentColor"/></svg></span><span><b>PISO WIFI</b><small>Connect · Earn · Grow Together</small></span></div>
+        <div class="client-logo-lockup"><img class="client-login-official-logo" src="/assets/piso-wifi-logo-transparent.png" alt="PISO WIFI"></div>
       </div>
       <div class="brand-copy">
         <span class="eyebrow">SECURE CUSTOMER ACCESS</span>
@@ -83,7 +87,7 @@ input,select,textarea{font-size:16px}
     </section>
     <section class="client-login-area">
       <div class="client-login-card">
-        <div class="mobile-brand"><span class="client-logo-mark"><svg viewBox="0 0 48 48"><path d="M7 20c10-9 24-9 34 0M12 26c7-6 17-6 24 0M18 32c3.5-3 8.5-3 12 0" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round"/><circle cx="24" cy="38" r="2.6" fill="currentColor"/></svg></span><b>PISO WIFI</b></div>
+        <div class="mobile-brand"><img class="client-login-official-logo mobile" src="/assets/piso-wifi-logo-transparent.png" alt="PISO WIFI"></div>
         <div class="login-heading"><span class="eyebrow">CLIENT ACCESS</span><h2>Welcome to Your Customer Account!</h2><p>Log in to your account to view your Piso WiFi records.</p></div>
         <form id="clientLoginForm" novalidate>
           <label class="client-field"><span>Username</span><div class="input-with-icon"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m4 7 8 6 8-6"/></svg><input id="clientEmail" type="text" autocomplete="username" placeholder="UNIT-001" required></div></label>
