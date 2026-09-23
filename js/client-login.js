@@ -145,25 +145,34 @@ function openForgotPasswordModal(){
   wrap.id="forgotPasswordModal";
   wrap.className="client-reset-modal";
   wrap.innerHTML=`
-    <div class="client-reset-backdrop" data-close-reset></div>
-    <section class="client-reset-card" role="dialog" aria-modal="true" aria-labelledby="forgotTitle">
-      <button type="button" class="client-reset-close" data-close-reset aria-label="Close">×</button>
+    <div class="client-reset-backdrop" aria-hidden="true"></div>
+    <section class="client-reset-card" role="dialog" aria-modal="true" aria-labelledby="forgotTitle" aria-describedby="forgotDescription">
+      <button type="button" class="client-reset-close" data-close-reset aria-label="Close account recovery">×</button>
+      <div class="client-reset-icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24"><path d="M7 10V7a5 5 0 0 1 10 0v3"/><rect x="4" y="10" width="16" height="10" rx="2"/><path d="M12 14v2"/></svg>
+      </div>
       <span class="eyebrow">ACCOUNT RECOVERY</span>
-      <h2 id="forgotTitle">Forgot your password?</h2>
-      <p>Verify your Client ID and registered Gmail. We will notify Admin to process the reset.</p>
+      <h2 id="forgotTitle">Recover your account</h2>
+      <p id="forgotDescription" class="reset-intro">Enter your Client ID and registered Gmail. We’ll send your recovery request to the PISO WIFI Admin for verification.</p>
       <form id="forgotPasswordForm">
-        <label class="client-field"><span>Client ID</span><input id="resetClientId" autocomplete="off" placeholder="CID-0001" required></label>
-        <label class="client-field"><span>Registered Gmail</span><input id="resetEmail" type="email" autocomplete="email" placeholder="yourname@gmail.com" required></label>
+        <label class="client-field"><span>Client ID</span><input id="resetClientId" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="CID-0001" required></label>
+        <label class="client-field"><span>Registered Gmail</span><input id="resetEmail" type="email" autocomplete="email" inputmode="email" placeholder="yourname@gmail.com" required></label>
         <div id="resetMessage" class="client-login-message" role="status" aria-live="polite"></div>
-        <button class="client-primary login-submit" id="resetSubmit" type="submit">Send Reset Request</button>
+        <div class="client-reset-actions">
+          <button class="client-secondary" id="resetCancel" type="button">Cancel</button>
+          <button class="client-primary" id="resetSubmit" type="submit">Send Recovery Request</button>
+        </div>
+        <div class="client-reset-note">For your security, your password is never displayed to Admin. Admin only receives the recovery request and can approve the next recovery step.</div>
       </form>
     </section>`;
   document.body.appendChild(wrap);
   // Do not close the recovery form when the backdrop is clicked; use the explicit X button.
   wrap.querySelectorAll("[data-close-reset]").forEach(el=>{
-    if(!el.classList.contains("client-reset-backdrop")) el.onclick=()=>wrap.remove();
+    el.onclick=()=>wrap.remove();
   });
+  wrap.querySelector("#resetCancel").onclick=()=>wrap.remove();
   wrap.querySelector("#forgotPasswordForm").onsubmit=submitResetRequest;
+  wrap.addEventListener("keydown", e=>{ if(e.key==="Escape") wrap.remove(); });
   wrap.querySelector("#resetClientId").focus();
 }
 
@@ -193,9 +202,10 @@ async function submitResetRequest(e){
       read:false,
       createdAt:serverTimestamp()
     });
-    msgEl.textContent="Request sent. Admin has been notified. Once Admin provides a temporary password, log in and create your new private password.";
+    msgEl.textContent="Recovery request sent. Admin has been notified. Once the recovery is approved, follow the instructions provided by Admin to create your new private password.";
     msgEl.className="client-login-message success";
-    setTimeout(()=>document.querySelector("#forgotPasswordModal")?.remove(),2200);
+    btn.textContent="Request Sent";
+    btn.disabled=true;
   }catch(err){
     console.error("[PISO WIFI PASSWORD RESET]",err);
     msgEl.textContent="We could not verify those details. Check your Client ID and registered Gmail, then try again.";
