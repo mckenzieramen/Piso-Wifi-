@@ -5,7 +5,7 @@ import { getAuth, createUserWithEmailAndPassword } from "https://www.gstatic.com
 import { calculateFinancialRecord } from "./finance.js";
 import { onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-auth.js";
 import {
-  collection, doc, getDoc, getDocs, setDoc, addDoc, updateDoc, deleteDoc, writeBatch,
+  collection, doc, getDoc, getDocs, setDoc, addDoc, updateDoc, deleteDoc, writeBatch, runTransaction,
   serverTimestamp, Timestamp
 } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-firestore.js";
 
@@ -33,7 +33,27 @@ const ENABLE_CLIENT_DELETE = true;
 const CLIENT_AUTH_DOMAIN="@client-login.pisowifi.local";
 const clientProvisionerApp=initializeApp(firebaseConfig,"clientProvisioner");
 const clientProvisionerAuth=getAuth(clientProvisionerApp);
-const clientAuthEmailFromUnitId=(unitCode)=>`${String(unitCode||"").trim().toLowerCase().replace(/[^a-z0-9]+/g,"-")}${CLIENT_AUTH_DOMAIN}`;
+const clientAuthEmailFromUsername=(username)=>`${String(username||"").trim().toLowerCase().replace(/[^a-z0-9]+/g,"-")}${CLIENT_AUTH_DOMAIN}`;
+const firstNameFromFullName=(name)=>String(name||"").trim().split(/\s+/)[0]||"Client";
+const sanitizeUsernamePart=(name)=>firstNameFromFullName(name).replace(/[^A-Za-z0-9]/g,"")||"Client";
+async function nextClientId(){
+  const ref=doc(db,"settings","clientSequence");
+  const maxExisting=units.reduce((max,u)=>{
+    const m=String(u.clientCode||"").match(/^CID-(\d+)$/i);
+    return m?Math.max(max,Number(m[1])):max;
+  },0);
+  return await runTransaction(db,async tx=>{
+    const snap=await tx.get(ref);
+    let next=Number(snap.exists()?snap.data().next:(maxExisting+1));
+    if(!Number.isInteger(next)||next<1) next=maxExisting+1;
+    tx.set(ref,{next:next+1,updatedAt:serverTimestamp()},{merge:true});
+    return `CID-${String(next).padStart(4,"0")}`;
+  });
+}
+function availableUnitCodes(currentCode=""){
+  const activeCodes=new Set(units.filter(u=>u.active!==false && String(u.unitCode)!==String(currentCode)).map(u=>String(u.unitCode)));
+  return Array.from({length:50},(_,i)=>String(i+1)).map(code=>({code,used:activeCodes.has(code)}));
+}
 
 async function syncCustomerDirectory(){
   const jobs=units.filter(u=>u.clientCode&&u.unitCode&&u.email).map(u=>
@@ -175,18 +195,17 @@ function renderDashboard(){
   const customerNet = Math.max(0, t.client - t.elec);
   const top=[...rows].sort((a,b)=>b.c.gross-a.c.gross).slice(0,5);
   const outstanding=rows.filter(x=>x.c.balance>0).sort((a,b)=>b.c.balance-a.c.balance).slice(0,5);
-  view.innerHTML=baseHead("Dashboard","Overview of your Piso WiFi business.",`<button class="primary-btn" id="addUnitTop">+ Add New Unit</button>`)+`
+  view.innerHTML=baseHead("Dashboard","Overview of your Piso WiFi business.")+`
   <div class="dashboard-grid">
     <div class="kpis">
-      ${kpi("▦","Total Units",units.length,"All registered units")}
-      ${kpi("●","Active Units",active,"Currently active","green")}
-      ${kpi("₱","Gross Sales",money(t.gross),"This month","orange")}
-      ${kpi("−","Internet Cost",money(t.internet),"Monthly internet cost","red")}
-      ${kpi("=","Net Sales",money(t.net),"Gross sales − internet","net-sales")}
-      ${kpi("70%","Owner Share",money(t.owner),settings.ownerPercent+"% share","gold")}
-      ${kpi("30%","Client Share",money(t.client),settings.clientPercent+"% share","purple")}
-      ${kpi("✓","Client Net",money(customerNet),"Client share less electricity","customer-net")}
-      ${kpi("!","Total Due",money(t.due),"Pending payments","red")}
+      ${kpi(metricIcons.units,"Total Units",units.length,"All registered units")}
+      ${kpi(metricIcons.active,"Active Units",active,"Currently active","green")}
+      ${kpi(metricIcons.money,"Gross Sales",money(t.gross),"This month","orange")}
+      ${kpi(metricIcons.money,"Internet Cost",money(t.internet),"Monthly internet cost","red")}
+      ${kpi(metricIcons.net,"Net Sales",money(t.net),"Gross sales − internet","net-sales")}
+      ${kpi(metricIcons.owner,"Owner Share",money(t.owner),settings.ownerPercent+"% share","gold")}
+      ${kpi(metricIcons.client,"Client Net",money(customerNet),"Client share less electricity","customer-net")}
+      ${kpi(metricIcons.due,"Total Due",money(t.due),"Client amount due","red")}
     </div>
     <div class="analytics-grid">
       <div class="panel chart-panel"><div class="panel-head"><div><h3>Sales Trend (Last 6 Months)</h3><p>Gross sales from actual monthly records</p></div><select class="compact-select" id="chartMetric"><option>Gross Sales</option><option>Owner Share</option><option>Client Share</option><option>Payments</option></select></div><div class="chart-wrap" id="salesChart">${salesChart()}</div></div>
@@ -195,7 +214,6 @@ function renderDashboard(){
     </div>
     <div class="panel"><div class="panel-head"><div><h3>Units / Clients</h3><p>Monthly computation for ${monthLabel(selectedMonth)}</p></div><div class="tools"><input class="search" id="dashSearch" placeholder="Search client or unit…"><select id="dashStatus" class="search"><option value="">All Payment Status</option><option>Paid</option><option>Partial</option><option>Unpaid</option></select></div></div><div class="table-wrap accumulating-table"><table><thead><tr><th>Unit Code</th><th>Client Name</th><th>Location</th><th>Status</th><th>This Month</th><th>Payment</th><th>Actions</th></tr></thead><tbody id="dashBody">${rows.length?rows.map(dashboardRow).join(""):emptyRow(7,"No clients or units found.")}</tbody></table></div></div>
   </div>`;
-  $("#addUnitTop").onclick=()=>openUnitModal();
   $("#dashSearch").oninput=e=>filterDashboard(e.target.value,$("#dashStatus").value);
   $("#dashStatus").onchange=e=>filterDashboard($("#dashSearch").value,e.target.value);
   $("#viewOutstanding").onclick=()=>{location.hash="#payments";};
@@ -205,9 +223,18 @@ function renderDashboard(){
   document.querySelectorAll("[data-pay-unit]").forEach(b=>b.onclick=()=>openPaymentModal(b.dataset.payUnit));
 }
 function kpi(icon,title,value,sub,cls=""){ return `<article class="kpi ${cls}"><div class="kpi-icon">${icon}</div><span>${title}</span><b>${value}</b><small>${sub}</small></article>`; }
+const metricIcons={
+  units:`<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20V8l8-4 8 4v12M8 20v-5h8v5M9 9h.01M15 9h.01" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
+  active:`<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="m8.5 12 2.3 2.3 4.8-5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
+  money:`<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="6" width="16" height="12" rx="2" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M8 12h8M12 9v6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>`,
+  net:`<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 18 10 13l3 3 6-7" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M15 9h4v4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
+  owner:`<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M12 7v10M15 9.5c-.8-1-4-1.3-4.6.2-.7 1.8 4.7 1.4 4.7 3.4 0 1.8-3.7 2-4.9.6" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>`,
+  client:`<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="3" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M5.5 20a6.5 6.5 0 0 1 13 0" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>`,
+  due:`<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 6h14v12H5z" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M8 10h8M8 14h5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>`
+};
 function empty(msg){ return `<div class="empty">${esc(msg)}</div>`; }
 function emptyRow(cols,msg){ return `<tr><td colspan="${cols}" class="empty">${esc(msg)}</td></tr>`; }
-function dashboardRow(x){ return `<tr><td><b>${esc(x.u.unitCode||"—")}</b></td><td><b>${esc(x.u.name||"—")}</b></td><td>${esc(x.u.location||"—")}</td><td>${statusBadge(x.u.active!==false?"Active":"Inactive")}</td><td class="amount">${money(x.c.gross)}</td><td>${statusBadge(x.c.status)}</td><td><button class="action-btn" data-profile="${x.u.id}">View</button><button class="action-btn" data-sale="${x.u.id}">Gross Sale</button></td></tr>`; }
+function dashboardRow(x){ return `<tr><td><span class="unit-logo" aria-hidden="true">⌁</span><b>${esc(x.u.unitCode||"—")}</b></td><td><b>${esc(x.u.name||"—")}</b></td><td>${esc(x.u.location||"—")}</td><td>${statusBadge(x.u.active!==false?"Active":"Inactive")}</td><td class="amount">${money(x.c.gross)}</td><td>${statusBadge(x.c.status)}</td><td><button class="action-btn" data-profile="${x.u.id}">View</button><button class="action-btn" data-sale="${x.u.id}">Gross Sale</button></td></tr>`; }
 function filterDashboard(q,status){ const rows=normalizeRows().filter(x=>(!q||`${x.u.name} ${x.u.unitCode} ${x.u.location} ${x.u.contact}`.toLowerCase().includes(q.toLowerCase()))&&(!status||x.c.status===status)); $("#dashBody").innerHTML=rows.length?rows.map(dashboardRow).join(""):emptyRow(7,"No matching units."); bindDynamicButtons(); }
 function bindDynamicButtons(){
   document.querySelectorAll("[data-profile]").forEach(b=>b.onclick=()=>openProfile(b.dataset.profile));
@@ -239,7 +266,7 @@ function yearMonths(k){const y=Number(k.slice(0,4));return Array.from({length:12
 
 function renderUnits(){
   const rows=normalizeRows().filter(x=>(!unitSearch||`${x.u.name} ${x.u.unitCode} ${x.u.location} ${x.u.contact}`.toLowerCase().includes(unitSearch.toLowerCase()))&&(!unitStatus||String(x.u.active!==false?"Active":"Inactive")===unitStatus)&&(!unitPaymentStatus||x.c.status===unitPaymentStatus));
-  view.innerHTML=baseHead("Units / Clients","Manage your Piso WiFi units and clients.",`<button class="primary-btn" id="addUnitBtn">+ Add Client / Unit</button>`)+`<div class="panel"><div class="panel-head"><div><h3>Registered Units</h3><p>Showing ${rows.length} of ${units.length} units · ${monthLabel(selectedMonth)}</p></div><div class="tools"><input id="unitSearch" class="search" placeholder="Search client or unit…" value="${esc(unitSearch)}"><select id="unitStatus" class="search"><option value="">All Status</option><option ${unitStatus==="Active"?"selected":""}>Active</option><option ${unitStatus==="Inactive"?"selected":""}>Inactive</option></select><select id="unitPaymentStatus" class="search"><option value="">All Payment Status</option><option ${unitPaymentStatus==="Paid"?"selected":""}>Paid</option><option ${unitPaymentStatus==="Partial"?"selected":""}>Partial</option><option ${unitPaymentStatus==="Unpaid"?"selected":""}>Unpaid</option></select><button class="secondary-btn" id="exportUnits">Export Excel/CSV</button></div></div><div class="table-wrap accumulating-table"><table><thead><tr><th>Unit Code</th><th>Client Name</th><th>Location</th><th>Contact</th><th>Status</th><th>This Month</th><th>Payment</th><th>Actions</th></tr></thead><tbody>${rows.length?rows.map(x=>`<tr><td><b>${esc(x.u.unitCode||"—")}</b></td><td>${esc(x.u.name||"—")}</td><td>${esc(x.u.location||"—")}</td><td>${esc(x.u.contact||"—")}</td><td>${statusBadge(x.u.active!==false?"Active":"Inactive")}</td><td class="amount">${money(x.c.gross)}</td><td>${statusBadge(x.c.status)}</td><td><button class="action-btn" data-sale="${x.u.id}">Gross Sale</button><button class="action-btn" data-profile="${x.u.id}">View</button><button class="action-btn" data-edit-unit="${x.u.id}">Edit</button><button class="action-btn danger" data-toggle-unit="${x.u.id}">${x.u.active!==false?"Deactivate":"Activate"}</button>${ENABLE_CLIENT_DELETE?`<button class="action-btn danger solid-danger" data-delete-unit="${x.u.id}">Delete</button>`:""}</td></tr>`).join(""):emptyRow(8,"No clients or units found.")}</tbody></table></div></div>`;
+  view.innerHTML=baseHead("Units / Clients","Manage your Piso WiFi units and clients.",`<button class="primary-btn" id="addUnitBtn">+ Add New Client</button>`)+`<div class="panel"><div class="panel-head"><div><h3>Registered Units</h3><p>Showing ${rows.length} of ${units.length} units · ${monthLabel(selectedMonth)}</p></div><div class="tools"><input id="unitSearch" class="search" placeholder="Search client or unit…" value="${esc(unitSearch)}"><select id="unitStatus" class="search"><option value="">All Status</option><option ${unitStatus==="Active"?"selected":""}>Active</option><option ${unitStatus==="Inactive"?"selected":""}>Inactive</option></select><select id="unitPaymentStatus" class="search"><option value="">All Payment Status</option><option ${unitPaymentStatus==="Paid"?"selected":""}>Paid</option><option ${unitPaymentStatus==="Partial"?"selected":""}>Partial</option><option ${unitPaymentStatus==="Unpaid"?"selected":""}>Unpaid</option></select><button class="secondary-btn" id="exportUnits">Export Excel/CSV</button></div></div><div class="table-wrap accumulating-table"><table><thead><tr><th>Unit Code</th><th>Client Name</th><th>Location</th><th>Contact</th><th>Status</th><th>This Month</th><th>Payment</th><th>Actions</th></tr></thead><tbody>${rows.length?rows.map(x=>`<tr><td><b>${esc(x.u.unitCode||"—")}</b></td><td>${esc(x.u.name||"—")}</td><td>${esc(x.u.location||"—")}</td><td>${esc(x.u.contact||"—")}</td><td>${statusBadge(x.u.active!==false?"Active":"Inactive")}</td><td class="amount">${money(x.c.gross)}</td><td>${statusBadge(x.c.status)}</td><td><button class="action-btn" data-sale="${x.u.id}">Gross Sale</button><button class="action-btn" data-profile="${x.u.id}">View</button><button class="action-btn" data-edit-unit="${x.u.id}">Edit</button><button class="action-btn danger" data-toggle-unit="${x.u.id}">${x.u.active!==false?"Deactivate":"Activate"}</button>${ENABLE_CLIENT_DELETE?`<button class="action-btn danger solid-danger" data-delete-unit="${x.u.id}">Delete</button>`:""}</td></tr>`).join(""):emptyRow(8,"No clients or units found.")}</tbody></table></div></div>`;
   $("#addUnitBtn").onclick=()=>openUnitModal();
   $("#unitSearch").oninput=e=>{unitSearch=e.target.value;renderUnits()};
   $("#unitStatus").onchange=e=>{unitStatus=e.target.value;renderUnits()};
@@ -350,65 +377,77 @@ function openModal(title,body,saveText,onSave,{danger=false}={}){
 function closeModal(){ $("#modalRoot").innerHTML=""; }
 function openUnitModal(id=null){
   const u=id?units.find(x=>x.id===id):null;
-  const suggestedCode = u?.clientCode || `C-${String(units.length+1).padStart(3,"0")}`;
   const suggestedDate = u?.dateJoined || new Date().toISOString().slice(0,10);
-  openModal(id?"Edit Client / Unit":"Add New Client / Unit",`
+  const codes=availableUnitCodes(u?.unitCode||"");
+  const currentCode=String(u?.unitCode||"");
+  const codeOptions=codes.map(x=>`<button type="button" class="unit-option ${x.used?"is-used":""}" data-unit-code="${x.code}" ${x.used?"disabled":""}><span>${x.code}</span><small>${x.used?"Active / Unavailable":"Available"}</small></button>`).join("");
+  openModal(id?"Edit Client / Unit":"Add New Client",`
     <div class="form-grid">
-      <div class="field"><label>Client ID *</label><input id="fClientCode" value="${esc(suggestedCode)}" placeholder="C-001"></div>
-      <div class="field"><label>Unit Code *</label><input id="fCode" value="${esc(u?.unitCode||"")}" placeholder="UNIT-001"></div>
-      <div class="field"><label>Client Name *</label><input id="fName" value="${esc(u?.name||"")}" placeholder="Juan Dela Cruz"></div>
-      <div class="field"><label>Client Email *</label><input id="fEmail" type="email" value="${esc(u?.email||"")}" placeholder="client@example.com"><small class="hint">Used for contact/recovery records. Client signs in with Unit ID.</small></div>
+      <div class="field"><label>Client ID *</label><input id="fClientCode" value="${esc(u?.clientCode||"")}" placeholder="CID-0001" ${id?"disabled":"disabled"}><small class="hint">Automatically generated in sequence. This ID is never reused.</small></div>
+      <div class="field"><label>Unit Code *</label><div class="unit-combobox"><input id="fCodeSearch" value="${esc(currentCode)}" placeholder="Search or select 1–50" autocomplete="off" aria-autocomplete="list"><input id="fCode" type="hidden" value="${esc(currentCode)}"><div id="unitCodeOptions" class="unit-options">${codeOptions}</div></div><small class="hint">Active unit codes cannot be selected. Deactivated unit codes become available again.</small></div>
+      <div class="field"><label>First Name *</label><input id="fFirstName" value="${esc(u?.firstName||firstNameFromFullName(u?.name||""))}" placeholder="Juan"></div>
+      <div class="field"><label>Last Name *</label><input id="fLastName" value="${esc(u?.lastName||String(u?.name||"").trim().split(/\\s+/).slice(1).join(" "))}" placeholder="Dela Cruz"></div>
+      <div class="field full"><label>Registered Gmail *</label><input id="fEmail" type="email" value="${esc(u?.email||"")}" placeholder="customer@gmail.com"><small class="hint">Used for account recovery and customer records.</small></div>
       <div class="field"><label>Contact Number</label><input id="fContact" value="${esc(u?.contact||"")}" placeholder="09171234567"></div>
       <div class="field"><label>Date Joined</label><input id="fDateJoined" type="date" value="${esc(suggestedDate)}"></div>
       <div class="field full"><label>Unit Location</label><input id="fLocation" value="${esc(u?.location||"")}" placeholder="Brgy. San Isidro, Antipolo"></div>
       <div class="field full"><label>Client Address</label><input id="fAddress" value="${esc(u?.address||u?.location||"")}" placeholder="Client residential/contact address"></div>
       <div class="field"><label>Status</label><select id="fStatus"><option value="active" ${u?.active!==false?"selected":""}>Active</option><option value="inactive" ${u?.active===false?"selected":""}>Inactive</option></select></div>
-      <div class="field"><label>Customer Account Login</label><input id="fAuthUserId" value="${esc(u?.authUserId||"")}" placeholder="Created automatically" disabled><small class="hint">Login ID is the Unit Code. Firebase Auth ID is created automatically for new clients.</small></div>
-      ${id?"":`<div class="field"><label>Temporary Password *</label><input id="fTempPassword" type="text" minlength="8" placeholder="Give client a temporary password"><small class="hint">Client must create a private password after first login.</small></div>`}
+      <div class="field"><label>Username</label><input id="fUsername" value="${esc(u?.username||"")}" placeholder="Generated automatically" disabled><small class="hint">Generated as FirstName + Client ID, e.g. JuanCID-0001.</small></div>
       <div class="field full"><label>Notes</label><textarea id="fNotes" rows="3">${esc(u?.notes||"")}</textarea></div>
     </div>`,`Save Client`,async()=>{
-      const clientCode=$("#fClientCode").value.trim(), unitCode=$("#fCode").value.trim(), name=$("#fName").value.trim(), email=$("#fEmail").value.trim().toLowerCase();
-      if(!clientCode||!unitCode||!name||!email) throw new Error("Client ID, Unit Code, Client Name and Client Email are required.");
-      if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new Error("Enter a valid client email address.");
+      const clientCode=id?String(u?.clientCode||"").trim().toUpperCase():await nextClientId();
+      const unitCode=$("#fCode").value.trim();
+      const firstName=$("#fFirstName").value.trim();
+      const lastName=$("#fLastName").value.trim();
+      const name=`${firstName} ${lastName}`.trim();
+      const email=$("#fEmail").value.trim().toLowerCase();
+      if(!clientCode||!unitCode||!firstName||!lastName||!email) throw new Error("Client ID, Unit Code, First Name, Last Name and Registered Gmail are required.");
+      if(!/^CID-\\d{4,}$/.test(clientCode)) throw new Error("Client ID must use the CID-0001 format.");
+      if(!/^([1-9]|[1-4]\\d|50)$/.test(unitCode)) throw new Error("Unit Code must be between 1 and 50.");
+      if(!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email)) throw new Error("Enter a valid Gmail address.");
+      const activeConflict=units.find(x=>x.id!==id&&x.active!==false&&String(x.unitCode)===unitCode);
+      if(activeConflict) throw new Error(`Unit Code ${unitCode} is already assigned to an active client.`);
+      const username=id?String(u?.username||`${sanitizeUsernamePart(firstName)}${clientCode}`):`${sanitizeUsernamePart(firstName)}${clientCode}`;
       const data={
-        clientCode,
-        unitCode,
-        name,
-        email,
-        location:$("#fLocation").value.trim(),
-        address:$("#fAddress").value.trim(),
-        contact:$("#fContact").value.trim(),
-        dateJoined:$("#fDateJoined").value||suggestedDate,
-        authUserId:$("#fAuthUserId").value.trim(),
-        notes:$("#fNotes").value.trim(),
-        active:$("#fStatus").value==="active",
-        updatedAt:serverTimestamp()
+        clientCode,unitCode,firstName,lastName,name,email,username,
+        location:$("#fLocation").value.trim(),address:$("#fAddress").value.trim(),contact:$("#fContact").value.trim(),
+        dateJoined:$("#fDateJoined").value||suggestedDate,notes:$("#fNotes").value.trim(),active:$("#fStatus").value==="active",updatedAt:serverTimestamp()
       };
       if(id){
         await updateDoc(doc(db,"units",id),data);
+        if(u?.authUserId) await setDoc(doc(db,"users",u.authUserId),{role:"client",clientUnitId:id,unitId:id,clientCode,username,email,updatedAt:serverTimestamp()},{merge:true});
         await logActivity("Clients",`Edited ${unitCode} — ${name}`,id);
         await addNotification("client","Client profile updated.",`${name} (${clientCode}) was updated.`,id);
       }else{
-        const tempPassword=$("#fTempPassword")?.value||"";
-        if(tempPassword.length<8) throw new Error("Temporary password must be at least 8 characters.");
-        const authEmail=clientAuthEmailFromUnitId(unitCode);
+        const authEmail=clientAuthEmailFromUsername(username);
+        const temporaryPassword=clientCode;
         let cred;
-        try{
-          cred=await createUserWithEmailAndPassword(clientProvisionerAuth,authEmail,tempPassword);
-        }catch(e){
-          if(e?.code==="auth/email-already-in-use") throw new Error("This Unit ID already has a client login account. Use a different Unit Code or edit the existing client.");
+        try{ cred=await createUserWithEmailAndPassword(clientProvisionerAuth,authEmail,temporaryPassword); }
+        catch(e){
+          if(e?.code==="auth/email-already-in-use") throw new Error("This generated username already has a login account. Please try again.");
           throw e;
         }
         data.authUserId=cred.user.uid;
         data.forcePasswordChange=true;
-        data.loginId=unitCode;
+        data.loginId=username;
         data.authEmail=authEmail;
         const ref=await addDoc(collection(db,"units"),{...data,createdAt:serverTimestamp()});
-        await setDoc(doc(db,"users",cred.user.uid),{role:"client",clientUnitId:ref.id,unitId:ref.id,clientCode,loginId:unitCode,email,createdAt:serverTimestamp(),updatedAt:serverTimestamp()});
-        await logActivity("Clients",`Added client account ${clientCode} — ${unitCode} — ${name}`,ref.id);
-        await addNotification("client","New client account created.",`${name} (${clientCode}) can now log in using ${unitCode}.`,ref.id);
+        await setDoc(doc(db,"users",cred.user.uid),{role:"client",clientUnitId:ref.id,unitId:ref.id,clientCode,username,email,createdAt:serverTimestamp(),updatedAt:serverTimestamp()});
+        await logActivity("Clients",`Added client account ${clientCode} — ${username} — ${name}`,ref.id);
+        await addNotification("client","New client account created.",`${name} (${clientCode}) can now log in using username ${username}.`,ref.id);
+        notify(`Created ${clientCode}. Username: ${username} · Temporary password: ${temporaryPassword}`);
       }
   });
+  const search=$("#fCodeSearch"), hidden=$("#fCode"), list=$("#unitCodeOptions");
+  const refreshOptions=()=>{
+    const q=search.value.trim().toLowerCase();
+    list.querySelectorAll(".unit-option").forEach(btn=>btn.style.display=btn.dataset.unitCode.includes(q)?"flex":"none");
+  };
+  search.onfocus=()=>list.classList.add("show");
+  search.oninput=()=>{hidden.value=search.value.trim();list.classList.add("show");refreshOptions();};
+  list.querySelectorAll("[data-unit-code]").forEach(btn=>btn.onclick=()=>{hidden.value=btn.dataset.unitCode;search.value=btn.dataset.unitCode;list.classList.remove("show");});
+  document.addEventListener("click",function closeUnitPicker(e){if(!e.target.closest(".unit-combobox")){list.classList.remove("show");document.removeEventListener("click",closeUnitPicker);}}, {once:false});
 }
 async function toggleUnit(id){const u=units.find(x=>x.id===id);if(!u)return;const next=u.active===false; if(!confirm(`${next?"Activate":"Deactivate"} ${u.unitCode}? Historical sales and payments will remain.`))return;await updateDoc(doc(db,"units",id),{active:next,updatedAt:serverTimestamp()});await logActivity("Units",`${next?"Activated":"Deactivated"} ${u.unitCode}`,id);await addNotification("unit",`${u.unitCode} is ${next?"active":"inactive"}.`,`Unit status was changed.`,id);await loadData();render();notify(`Unit ${next?"activated":"deactivated"}.`);}
 

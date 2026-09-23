@@ -108,10 +108,14 @@ body{background:radial-gradient(circle at 80% -10%,#e9f3ff 0,transparent 35%),va
    ========================================================= */
 .login-page{
   min-height:100vh;
+  min-height:100dvh;
+  height:100dvh;
   margin:0;
-  display:grid;
-  place-items:center;
+  display:flex;
+  align-items:center;
+  justify-content:center;
   padding:32px 20px;
+  overflow:auto;
   position:relative;
   overflow:hidden;
   background:
@@ -408,7 +412,7 @@ body:has(> .app){background:#eef3f9;color:#17243a}
 .app .kpi{min-height:122px;border-radius:13px;padding:14px 14px 13px;border:1px solid #dfe8f2;box-shadow:0 8px 22px rgba(21,52,86,.055);position:relative;overflow:hidden}
 .app .kpi:after{content:"";position:absolute;width:72px;height:72px;border-radius:50%;right:-22px;top:-22px;background:#f4f8fd;z-index:0}
 .app .kpi>*{position:relative;z-index:1}
-.app .kpi .kpi-icon{width:27px;height:27px;border-radius:8px;margin-bottom:10px;font-size:10px}
+.app .kpi .kpi-icon{width:27px;height:27px;border-radius:8px;margin-bottom:10px;font-size:10px;display:grid;place-items:center}.app .kpi .kpi-icon svg{width:15px;height:15px;display:block}
 .app .kpi b{font-size:18px;line-height:1.05;margin:5px 0}
 .app .kpi span,.app .kpi small{font-size:9px}
 .app .analytics-grid{grid-template-columns:1.65fr .85fr .85fr;gap:14px;margin-bottom:16px}
@@ -443,3 +447,9 @@ body:has(> .app){background:#eef3f9;color:#17243a}
   .app .profile{min-width:auto}
   .app .profile>span:last-child{display:none}
 }
+
+/* Safe-edit refinements: admin login centering, balanced dashboard, unit identity and searchable unit picker */
+.unit-logo{display:inline-grid;place-items:center;width:26px;height:26px;margin-right:7px;border-radius:8px;background:#eaf3ff;color:#1477ff;font-weight:900;font-size:13px;vertical-align:middle}
+.unit-combobox{position:relative}.unit-combobox>input{width:100%}.unit-options{position:absolute;left:0;right:0;top:calc(100% + 5px);z-index:80;display:none;max-height:220px;overflow:auto;background:#fff;border:1px solid #dbe5f0;border-radius:10px;box-shadow:0 16px 35px rgba(21,52,86,.16);padding:5px}.unit-options.show{display:block}.unit-option{width:100%;display:flex;justify-content:space-between;align-items:center;border:0;background:#fff;color:#17304f;padding:9px 10px;border-radius:7px;text-align:left}.unit-option:hover:not(:disabled){background:#eef6ff}.unit-option small{font-size:10px;color:#12a765}.unit-option.is-used{opacity:.48;cursor:not-allowed}.unit-option.is-used small{color:#e94355}
+@media(min-width:1101px){.app .kpis{grid-template-columns:repeat(8,minmax(0,1fr));}.app .kpi{min-width:0}.app .kpi b{font-size:16px}.app .kpi span{font-size:8.5px}.app .kpi small{font-size:8px}}
+.field input:disabled,.field select:disabled{background:#f1f5f9;color:#7b8ba1;border-color:#dbe4ee;cursor:not-allowed;box-shadow:none}
