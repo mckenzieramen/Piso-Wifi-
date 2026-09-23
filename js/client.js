@@ -237,11 +237,19 @@ function supportMessageHtml(m){
 }
 function renderSupportConversation(){
   const host=$("#supportConversation"); if(!host)return;
+  const previousTop=host.scrollTop;
+  const previousHeight=host.scrollHeight;
+  const clientHeight=host.clientHeight;
+  const hadContent=host.children.length>0;
+  const wasAtBottom=!hadContent || previousHeight-previousTop-clientHeight<32;
   const msgs=Array.isArray(supportChat?.messages)?supportChat.messages:[];
   host.innerHTML=msgs.length?msgs.map(supportMessageHtml).join(""):`<div class="piso-chat-empty"><div class="support-icon">${icons.mail}</div><b>Start a conversation</b><span>Tell us what you need help with and our Admin can reply here.</span></div>`;
   const typing=$("#supportTyping");
   if(typing){const adminTyping=!!supportChat?.typingBy?.admin;typing.classList.toggle("show",adminTyping);typing.textContent=adminTyping?"PISO WIFI Support is typing…":"";}
-  requestAnimationFrame(()=>{host.scrollTop=host.scrollHeight;});
+  requestAnimationFrame(()=>{
+    if(wasAtBottom)host.scrollTop=host.scrollHeight;
+    else host.scrollTop=previousTop;
+  });
 }
 function hasRealSupportConversation(chat){
   const messages=Array.isArray(chat?.messages)?chat.messages:[];
@@ -260,7 +268,8 @@ function renderSupportLobby(){
 function renderSupportChat(){
   const lobby=$("#supportLobby"), convo=$("#supportConversationView"); if(!lobby||!convo)return;
   lobby.classList.add("hidden"); convo.classList.remove("hidden");
-  $("#supportStatus").textContent=String(supportChat?.status||"Open");
+  const status=String(supportChat?.status||"Open");
+  $("#supportStatus").textContent=status;
   $("#supportChatCustomer").textContent=clientName();
   renderSupportConversation();
   const closed=["Solved","Closed"].includes(status);
@@ -302,7 +311,18 @@ function subscribeSupportChat(){
     if(snap.exists())supportChatDocId=snap.id;
     updateSupportBadge();
     if(supportChatOpen){
-      if($("#supportConversationView")?.classList.contains("hidden"))renderSupportLobby();else renderSupportChat();
+      if($("#supportConversationView")?.classList.contains("hidden")){
+        renderSupportLobby();
+      }else{
+        // Update only the live conversation/status. Do not rebuild the
+        // entire modal, so the input keeps focus and the scroll position.
+        $("#supportStatus").textContent=String(supportChat?.status||"Open");
+        renderSupportConversation();
+        const closed=["Solved","Closed"].includes(String(supportChat?.status||"Open"));
+        const input=$("#supportChatInput"),send=$("#supportSend");
+        if(input){input.disabled=closed;input.placeholder=closed?"Ticket was closed.":"Type your concern…";}
+        if(send)send.disabled=closed;
+      }
     }
   },err=>{
     console.warn("PISO WIFI support chat realtime error",err);

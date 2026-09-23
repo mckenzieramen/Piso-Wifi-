@@ -369,11 +369,41 @@ function startSupportRealtime(){
   supportUnsub=onSnapshot(collection(db,"supportChats"),snap=>{
     supportChats=snap.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>timeValue(b.updatedAt||b.createdAt)-timeValue(a.updatedAt||a.createdAt));
     updateSupportBadge();
-    if(route==="support"){
-      const current=selectedSupportChatId;
+
+    // Do NOT rebuild the whole support page on every Firestore event.
+    // Re-rendering the compose area on every keystroke caused the admin
+    // input to lose focus and the conversation to jump back to the top.
+    if(route!=="support")return;
+
+    const all=[...supportChats].sort((a,b)=>timeValue(b.updatedAt||b.createdAt)-timeValue(a.updatedAt||a.createdAt));
+    const filtered=supportStatusFilter==="All"
+      ? all
+      : all.filter(c=>String(c.status||"Open")===supportStatusFilter);
+
+    if(!selectedSupportChatId && filtered[0]){
+      selectedSupportChatId=filtered[0].id;
       renderSupport();
-      if(current)selectedSupportChatId=current;
+      return;
     }
+
+    const listBox=$("#supportChatList");
+    if(listBox){
+      const savedTop=listBox.scrollTop;
+      const q=String($("#supportSearch")?.value||"").toLowerCase();
+      const visible=filtered.filter(c=>`${c.customerName||""} ${c.customerEmail||""} ${c.clientCode||""}`.toLowerCase().includes(q));
+      listBox.innerHTML=renderSupportList(visible);
+      listBox.scrollTop=savedTop;
+      bindSupportList();
+    }
+
+    // Update filter counts without replacing the conversation/input area.
+    const counts={Open:0,Solved:0,Closed:0};
+    all.forEach(c=>{const st=String(c.status||"Open");if(counts[st]!==undefined)counts[st]++;});
+    document.querySelectorAll("[data-support-filter]").forEach(btn=>{
+      const st=btn.dataset.supportFilter;
+      const span=btn.querySelector("span");
+      if(span)span.textContent=st==="All"?String(all.length):String(counts[st]||0);
+    });
   },err=>console.warn("PISO WIFI support realtime unavailable",err));
 }
 let supportStatusFilter="Open";
@@ -397,7 +427,50 @@ function renderSupportList(list){return list.length?list.map(c=>`<button type="b
 function bindSupportList(){document.querySelectorAll("[data-support-id]").forEach(b=>b.onclick=()=>{selectedSupportChatId=b.dataset.supportId;renderSupport();const c=supportChats.find(x=>x.id===selectedSupportChatId);if(c?.unreadForAdmin===true){updateDoc(doc(db,"supportChats",selectedSupportChatId),{unreadForAdmin:false,updatedAt:new Date().toISOString()}).catch(()=>{});}});}
 function renderAdminChatWindow(chat){const status=String(chat.status||"Open");const disabled="";return `<div class="admin-chat-head"><div class="support-admin-avatar">${esc(String(chat.customerName||"CU").trim().split(/\s+/).slice(0,2).map(x=>x[0]).join("").toUpperCase())}</div><div><h3>${esc(chat.customerName||"Customer")}</h3><p>${esc(chat.customerEmail||"")} · ${esc(chat.clientCode||"")}</p></div><span class="admin-chat-status ${supportStatusClass(status)}">${esc(status)}</span><div class="admin-chat-actions"><button class="secondary-btn" id="supportOpenBtn" ${status==="Open"?"disabled":""}>Open</button><button class="secondary-btn" id="supportSolveBtn" ${status!=="Open"?"disabled":""}>Solve</button><button class="danger-outline-btn" id="supportCloseBtn" ${status==="Closed"?"disabled":""}>Close</button></div></div><div id="adminSupportMessages" class="admin-support-messages">${supportMessagesHtml(chat)}</div><div id="adminSupportTyping" class="admin-support-typing ${chat.typingBy?.customer?"show":""}">${chat.typingBy?.customer?"Customer is typing…":""}</div><div class="admin-support-compose"><textarea id="adminSupportInput" placeholder="Reply to customer…" ${disabled}></textarea><button id="adminSupportSend" class="primary-btn" ${disabled}>Send</button></div>`;}
 let selectedSupportUnsub=null;
-function subscribeSelectedSupport(id){if(selectedSupportUnsub)selectedSupportUnsub();const ref=doc(db,"supportChats",id);selectedSupportUnsub=onSnapshot(ref,snap=>{if(!snap.exists())return;const c={id:snap.id,...snap.data()};const idx=supportChats.findIndex(x=>x.id===id);if(idx>=0)supportChats[idx]=c;else supportChats.unshift(c);updateSupportBadge();if(route==="support"&&selectedSupportChatId===id){const box=$("#adminSupportMessages");if(box){const nearBottom=box.scrollHeight-box.scrollTop-box.clientHeight<24;box.innerHTML=supportMessagesHtml(c);if(nearBottom)requestAnimationFrame(()=>box.scrollTop=box.scrollHeight);}const typ=$("#adminSupportTyping");if(typ){typ.textContent=c.typingBy?.customer?"Customer is typing…":"";typ.classList.toggle("show",!!c.typingBy?.customer);}const statusEl=document.querySelector(".admin-chat-status");if(statusEl){statusEl.textContent=c.status||"Open";statusEl.className=`admin-chat-status ${supportStatusClass(c.status)}`;}}});}
+function subscribeSelectedSupport(id){
+  if(selectedSupportUnsub)selectedSupportUnsub();
+  const ref=doc(db,"supportChats",id);
+  selectedSupportUnsub=onSnapshot(ref,snap=>{
+    if(!snap.exists())return;
+    const c={id:snap.id,...snap.data()};
+    const idx=supportChats.findIndex(x=>x.id===id);
+    if(idx>=0)supportChats[idx]=c;else supportChats.unshift(c);
+    updateSupportBadge();
+
+    if(route==="support"&&selectedSupportChatId===id){
+      const box=$("#adminSupportMessages");
+      if(box){
+        // Preserve the exact scroll position across realtime updates.
+        // If the admin is already at the bottom, keep them at the bottom;
+        // otherwise never force the conversation back to the top.
+        const previousTop=box.scrollTop;
+        const previousHeight=box.scrollHeight;
+        const clientHeight=box.clientHeight;
+        const wasAtBottom=previousHeight-previousTop-clientHeight<32;
+        box.innerHTML=supportMessagesHtml(c);
+        requestAnimationFrame(()=>{
+          if(wasAtBottom)box.scrollTop=box.scrollHeight;
+          else box.scrollTop=previousTop;
+        });
+      }
+      const typ=$("#adminSupportTyping");
+      if(typ){
+        typ.textContent=c.typingBy?.customer?"Customer is typing…":"";
+        typ.classList.toggle("show",!!c.typingBy?.customer);
+      }
+      const status=String(c.status||"Open");
+      const statusEl=document.querySelector(".admin-chat-status");
+      if(statusEl){
+        statusEl.textContent=status;
+        statusEl.className=`admin-chat-status ${supportStatusClass(status)}`;
+      }
+      const openBtn=$("#supportOpenBtn"),solveBtn=$("#supportSolveBtn"),closeBtn=$("#supportCloseBtn");
+      if(openBtn)openBtn.disabled=status==="Open";
+      if(solveBtn)solveBtn.disabled=status!=="Open";
+      if(closeBtn)closeBtn.disabled=status==="Closed";
+    }
+  });
+}
 let adminSupportTypingTimer=null;
 function bindAdminChatEvents(chat){if(!chat)return;const input=$("#adminSupportInput"),send=$("#adminSupportSend");if(send)send.onclick=()=>sendAdminSupportMessage(chat.id);if(input){input.oninput=()=>{clearTimeout(adminSupportTypingTimer);setAdminSupportTyping(chat.id,true);adminSupportTypingTimer=setTimeout(()=>setAdminSupportTyping(chat.id,false),1200);};input.onkeydown=e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();sendAdminSupportMessage(chat.id);}};}$("#supportOpenBtn")?.addEventListener("click",()=>setSupportStatus(chat.id,"Open"));$("#supportSolveBtn")?.addEventListener("click",()=>setSupportStatus(chat.id,"Solved"));$("#supportCloseBtn")?.addEventListener("click",()=>setSupportStatus(chat.id,"Closed"));}
 async function setAdminSupportTyping(id,on){try{await updateDoc(doc(db,"supportChats",id),{"typingBy.admin":!!on,updatedAt:new Date().toISOString()});}catch(e){}}
