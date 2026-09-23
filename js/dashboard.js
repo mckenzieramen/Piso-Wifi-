@@ -386,7 +386,7 @@ function openUnitModal(id=null){
       <div class="field"><label>Client ID *</label><input id="fClientCode" value="${esc(u?.clientCode||"")}" placeholder="CID-0001" ${id?"disabled":"disabled"}><small class="hint">Automatically generated in sequence. This ID is never reused.</small></div>
       <div class="field"><label>Unit Code *</label><div class="unit-combobox"><input id="fCodeSearch" value="${esc(currentCode)}" placeholder="Search or select 1–50" autocomplete="off" aria-autocomplete="list"><input id="fCode" type="hidden" value="${esc(currentCode)}"><div id="unitCodeOptions" class="unit-options">${codeOptions}</div></div><small class="hint">Active unit codes cannot be selected. Deactivated unit codes become available again.</small></div>
       <div class="field"><label>First Name *</label><input id="fFirstName" value="${esc(u?.firstName||firstNameFromFullName(u?.name||""))}" placeholder="Juan"></div>
-      <div class="field"><label>Last Name *</label><input id="fLastName" value="${esc(u?.lastName||String(u?.name||"").trim().split(/\\s+/).slice(1).join(" "))}" placeholder="Dela Cruz"></div>
+      <div class="field"><label>Last Name *</label><input id="fLastName" value="${esc(u?.lastName||String(u?.name||"").trim().split(/\s+/).slice(1).join(" "))}" placeholder="Dela Cruz"></div>
       <div class="field full"><label>Registered Gmail *</label><input id="fEmail" type="email" value="${esc(u?.email||"")}" placeholder="customer@gmail.com"><small class="hint">Used for account recovery and customer records.</small></div>
       <div class="field"><label>Contact Number</label><input id="fContact" value="${esc(u?.contact||"")}" placeholder="09171234567"></div>
       <div class="field"><label>Date Joined</label><input id="fDateJoined" type="date" value="${esc(suggestedDate)}"></div>
@@ -403,9 +403,9 @@ function openUnitModal(id=null){
       const name=`${firstName} ${lastName}`.trim();
       const email=$("#fEmail").value.trim().toLowerCase();
       if(!clientCode||!unitCode||!firstName||!lastName||!email) throw new Error("Client ID, Unit Code, First Name, Last Name and Registered Gmail are required.");
-      if(!/^CID-\\d{4,}$/.test(clientCode)) throw new Error("Client ID must use the CID-0001 format.");
-      if(!/^([1-9]|[1-4]\\d|50)$/.test(unitCode)) throw new Error("Unit Code must be between 1 and 50.");
-      if(!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email)) throw new Error("Enter a valid Gmail address.");
+      if(!/^CID-\d{4,}$/.test(clientCode)) throw new Error("Client ID must use the CID-0001 format.");
+      if(!/^([1-9]|[1-4]\d|50)$/.test(unitCode)) throw new Error("Unit Code must be between 1 and 50.");
+      if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new Error("Enter a valid Gmail address.");
       const activeConflict=units.find(x=>x.id!==id&&x.active!==false&&String(x.unitCode)===unitCode);
       if(activeConflict) throw new Error(`Unit Code ${unitCode} is already assigned to an active client.`);
       const username=id?String(u?.username||`${sanitizeUsernamePart(firstName)}${clientCode}`):`${sanitizeUsernamePart(firstName)}${clientCode}`;
