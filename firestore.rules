@@ -116,6 +116,19 @@ service cloud.firestore {
         );
     }
 
+    match /supportChats/{chatId} {
+      allow read: if isAdmin() || (isSignedIn() && resource.data.authUserId == request.auth.uid);
+      allow create: if isAdmin() || (isSignedIn()
+        && request.resource.data.authUserId == request.auth.uid
+        && request.resource.data.unitId is string
+        && exists(/databases/$(database)/documents/units/$(request.resource.data.unitId))
+        && isClientUnit(get(/databases/$(database)/documents/units/$(request.resource.data.unitId)).data));
+      allow update: if isAdmin() || (isSignedIn()
+        && resource.data.authUserId == request.auth.uid
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["messages","updatedAt","typingBy","unreadForAdmin","unreadForCustomer"]));
+      allow delete: if isAdmin();
+    }
+
     match /activities/{document} {
       allow read, write: if isAdmin();
     }

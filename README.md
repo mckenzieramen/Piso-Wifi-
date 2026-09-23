@@ -27,3 +27,6 @@ https://piso-wifi.pages.dev/admin
 
 The internal data/auth architecture may still use client/clientId terminology
 where required by the existing backend; only the customer-facing wording was changed.
+
+
+Support chat added in this SafeEdit version: customer ↔ admin real-time chat via supportChats, typing indicators, unread flags, Open/Solved/Closed statuses, and preserved conversation history.

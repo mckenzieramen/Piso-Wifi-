@@ -3,7 +3,7 @@ import {
   onAuthStateChanged, signOut, updatePassword
 } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-auth.js";
 import {
-  collection, doc, getDoc, getDocs, query, where, updateDoc,
+  collection, doc, getDoc, getDocs, query, where, updateDoc, setDoc, onSnapshot, arrayUnion,
   serverTimestamp, writeBatch
 } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-firestore.js";
 import { calculateFinancialRecord } from "./finance.js";
@@ -152,6 +152,85 @@ async function loadClientData(){
 function timeValue(v){if(!v)return 0;if(v.toMillis)return v.toMillis();const n=new Date(v).getTime();return Number.isNaN(n)?0:n;}
 function unread(){return notifications.filter(n=>n.read!==true).length;}
 
+
+let supportChatUnsub=null;
+let supportChat=null;
+let supportChatOpen=false;
+let supportChatSending=false;
+let supportTypingTimer=null;
+const supportChatId=()=>String(currentUser?.uid||"");
+const supportChatRef=()=>supportChatId()?doc(db,"supportChats",supportChatId()):null;
+function supportNow(){return new Date().toISOString();}
+function supportMessageHtml(m){
+  const type=m?.senderType==="customer"?"customer":m?.senderType==="admin"?"admin":"system";
+  const who=type==="customer"?clientName():type==="admin"?"PISO WIFI Support":"PISO WIFI Support";
+  return `<div class="piso-chat-message ${type}"><div class="piso-chat-bubble">${esc(m?.text||"")}</div><div class="piso-chat-meta">${esc(who)} · ${esc(dateTime(m?.createdAt||""))}</div></div>`;
+}
+function renderSupportConversation(){
+  const host=$("#supportConversation"); if(!host)return;
+  const msgs=Array.isArray(supportChat?.messages)?supportChat.messages:[];
+  host.innerHTML=msgs.length?msgs.map(supportMessageHtml).join(""):`<div class="piso-chat-empty"><div class="support-icon">${icons.mail}</div><b>Start a conversation</b><span>Tell us what you need help with and our Admin can reply here.</span></div>`;
+  const typing=$("#supportTyping");
+  if(typing){const adminTyping=!!supportChat?.typingBy?.admin;typing.classList.toggle("show",adminTyping);typing.textContent=adminTyping?"PISO WIFI Support is typing…":"";}
+  requestAnimationFrame(()=>{host.scrollTop=host.scrollHeight;});
+}
+function renderSupportLobby(){
+  const lobby=$("#supportLobby"), convo=$("#supportConversationView"); if(!lobby||!convo)return;
+  const status=String(supportChat?.status||"Open");
+  lobby.innerHTML=`<div class="piso-support-hero"><div class="support-icon">${icons.bell}</div><span class="eyebrow">PISO WIFI CUSTOMER SUPPORT</span><h2>How can we help?</h2><p>Chat directly with the PISO WIFI Admin. Your conversation stays connected to your Customer Account.</p></div><div class="piso-ticket-card"><div><b>Customer Support</b><small>${status==="Closed"?"This conversation is closed.":status==="Solved"?"This conversation was marked solved.":supportChat?.messages?.length?"Your active support conversation.":"No conversation started yet."}</small></div><span class="piso-ticket-status ${status.toLowerCase()}">${esc(status)}</span></div><button id="startSupportChat" class="client-primary piso-support-start">${supportChat?.messages?.length?"Open Conversation":"Start Chat"}</button>`;
+  convo.classList.add("hidden");
+  $("#startSupportChat").onclick=()=>openSupportConversation();
+}
+function renderSupportChat(){
+  const lobby=$("#supportLobby"), convo=$("#supportConversationView"); if(!lobby||!convo)return;
+  lobby.classList.add("hidden"); convo.classList.remove("hidden");
+  $("#supportStatus").textContent=String(supportChat?.status||"Open");
+  $("#supportChatCustomer").textContent=clientName();
+  renderSupportConversation();
+}
+async function createSupportChat(){
+  const ref=supportChatRef(); if(!ref)throw new Error("Customer account is not ready.");
+  const existing=await getDoc(ref); if(existing.exists()){supportChat={id:existing.id,...existing.data()};return supportChat;}
+  const unit=primaryUnit();
+  const greeting={senderType:"admin",text:"Hi! I’m PISO WIFI Customer Support. Let us know what you need help with, and our Admin will assist you here.",createdAt:supportNow()};
+  const payload={authUserId:currentUser.uid,unitId:unit.id||"",clientCode:unit.clientCode||"",customerName:clientName(),customerEmail:clientEmail(),status:"Open",messages:[greeting],typingBy:{customer:false,admin:false},unreadForAdmin:true,unreadForCustomer:false,createdAt:serverTimestamp(),updatedAt:supportNow()};
+  await setDoc(ref,payload);
+  supportChat={id:ref.id,...payload,createdAt:new Date()};
+  return supportChat;
+}
+function subscribeSupportChat(){
+  if(supportChatUnsub) supportChatUnsub();
+  const ref=supportChatRef(); if(!ref)return;
+  supportChatUnsub=onSnapshot(ref,snap=>{
+    supportChat=snap.exists()?{id:snap.id,...snap.data()}:null;
+    updateSupportBadge();
+    if(supportChatOpen){
+      if($("#supportConversationView")?.classList.contains("hidden"))renderSupportLobby();else renderSupportChat();
+    }
+  },err=>console.warn("PISO WIFI support chat realtime error",err));
+}
+async function openSupportConversation(){
+  try{await createSupportChat();supportChatOpen=true;renderSupportChat();await updateDoc(supportChatRef(),{unreadForCustomer:false,updatedAt:supportNow()});}catch(e){toast(e?.message||"Unable to open support chat.","error");}
+}
+function closeSupportChat(){supportChatOpen=false;$("#supportConversationView")?.classList.add("hidden");$("#supportLobby")?.classList.remove("hidden");}
+async function sendSupportMessage(){
+  if(supportChatSending)return; const input=$("#supportChatInput");const text=String(input?.value||"").trim();if(!text)return;
+  if(String(supportChat?.status||"Open")==="Closed"){toast("This support conversation is closed.","error");return;}
+  supportChatSending=true;
+  try{await createSupportChat();await updateDoc(supportChatRef(),{messages:arrayUnion({senderType:"customer",text,createdAt:supportNow()}),updatedAt:supportNow(),unreadForAdmin:true,unreadForCustomer:false,"typingBy.customer":false});input.value="";}
+  catch(e){toast(e?.message||"Unable to send your message.","error");}
+  finally{supportChatSending=false;}
+}
+async function setSupportTyping(isTyping){
+  try{if(!supportChatRef())return;await updateDoc(supportChatRef(),{"typingBy.customer":!!isTyping,updatedAt:supportNow()});}catch(e){/* typing is non-blocking */}
+}
+function bindSupportTyping(){const input=$("#supportChatInput");if(!input)return;input.oninput=()=>{clearTimeout(supportTypingTimer);setSupportTyping(true);supportTypingTimer=setTimeout(()=>setSupportTyping(false),1200);};input.onkeydown=e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();sendSupportMessage();}};}
+function openSupportModal(){
+  const modal=$("#clientSupportModal");if(!modal)return;modal.classList.remove("hidden");modal.setAttribute("aria-hidden","false");supportChatOpen=false;renderSupportLobby();
+  const ref=supportChatRef();if(ref)getDoc(ref).then(s=>{supportChat=s.exists()?{id:s.id,...s.data()}:null;renderSupportLobby();}).catch(()=>{});
+  bindSupportTyping();
+}
+
 function setupShell(){
   const nameEl=$("#clientName");
   const roleEl=$("#clientRole");
@@ -166,6 +245,8 @@ function setupShell(){
   renderNotificationsPopover();
   updateBell();
   syncProfileMenu?.();
+  subscribeSupportChat();
+  updateSupportBadge();
 }
 function renderMonthSelectors(){
   const opts=monthOptions(records).map(m=>`<option value="${m}" ${m===selectedMonth?"selected":""}>${monthLabel(m)}</option>`).join("");
@@ -483,8 +564,12 @@ $("#clientLogout").onclick=logoutClient;
 $("#menuLogout").onclick=logoutClient;
 $("#notificationBtn").onclick=toggleNotificationPopover;
 $("#clientProfileBtn").onclick=()=>{const m=$("#clientProfileMenu"),b=$("#clientProfileBtn"),open=m?.classList.toggle("show");b?.setAttribute("aria-expanded",open?"true":"false");};
-$("#clientSupportBtn").onclick=()=>{$("#clientSupportModal")?.classList.remove("hidden");$("#clientSupportModal")?.setAttribute("aria-hidden","false");};
-$("#closeSupportModal").onclick=()=>{$("#clientSupportModal")?.classList.add("hidden");$("#clientSupportModal")?.setAttribute("aria-hidden","true");};
+$("#clientSupportBtn").onclick=openSupportModal;
+$("#closeSupportModal").onclick=()=>{$("#clientSupportModal")?.classList.add("hidden");$("#clientSupportModal")?.setAttribute("aria-hidden","true");closeSupportChat();};
+$("#supportBack").onclick=()=>{closeSupportChat();renderSupportLobby();};
+$("#supportSend").onclick=sendSupportMessage;
+function updateSupportBadge(){const b=$("#supportUnreadBadge");if(!b)return;const n=supportChat?.unreadForCustomer?1:0;b.textContent=n;b.classList.toggle("hidden",n===0);}
+
 $("#menuChangePassword").onclick=()=>{$("#clientProfileMenu")?.classList.remove("show");$("#clientProfileBtn")?.setAttribute("aria-expanded","false");const modal=$("#clientPasswordSetup");if(modal){modal.classList.remove("hidden");modal.setAttribute("aria-hidden","false");}};
 function syncProfileMenu(){const name=clientName(), av=initials(name);if($("#menuClientName"))$("#menuClientName").textContent=name;if($("#menuAvatar"))$("#menuAvatar").textContent=av;}
 function routeFromSearch(q){const v=String(q||"").trim().toLowerCase();if(!v)return null;if(v.includes("dashboard")||v.includes("home"))return"dashboard";if(v.includes("unit"))return"units";if(v.includes("sale")||v.includes("revenue"))return"sales";if(v.includes("pay"))return"payments";if(v.includes("statement")||v.includes("bill"))return"statement";if(v.includes("profile")||v.includes("account"))return"profile";if(v.includes("notification")||v.includes("alert"))return"notifications";return null;}

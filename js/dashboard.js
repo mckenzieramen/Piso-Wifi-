@@ -5,7 +5,7 @@ import { getAuth, createUserWithEmailAndPassword } from "https://www.gstatic.com
 import { calculateFinancialRecord } from "./finance.js";
 import { onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-auth.js";
 import {
-  collection, doc, getDoc, getDocs, setDoc, addDoc, updateDoc, deleteDoc, writeBatch, runTransaction,
+  collection, doc, getDoc, getDocs, setDoc, addDoc, updateDoc, deleteDoc, writeBatch, runTransaction, onSnapshot, arrayUnion,
   serverTimestamp, Timestamp
 } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-firestore.js";
 
@@ -21,7 +21,8 @@ const esc = (v) => String(v ?? "").replace(/[&<>"']/g, m => ({"&":"&amp;","<":"&
 const uid = () => `${Date.now()}-${Math.random().toString(36).slice(2,8)}`;
 
 let currentUser = null;
-let units = [], records = [], payments = [], notifications = [], activities = [];
+let units = [], records = [], payments = [], notifications = [], activities = [], supportChats = [];
+let supportUnsub=null, selectedSupportChatId="";
 let settings = { internetCost:1000, ownerPercent:70, clientPercent:30, electricity:100, electricityRule:"ADD_TO_CLIENT" };
 let route = "dashboard";
 let selectedMonth = localStorage.getItem("pisoSelectedMonth") || todayKey();
@@ -134,7 +135,15 @@ async function loadData(){
     activities=[];
   }
 
+  try {
+    const sc=await getDocs(collection(db,"supportChats"));
+    supportChats=sc.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>timeValue(b.updatedAt||b.createdAt)-timeValue(a.updatedAt||a.createdAt));
+  } catch(e) {
+    console.warn("Support chats collection is not readable yet. Publish the latest Firestore rules.",e);
+    supportChats=[];
+  }
   updateNotificationBadge();
+  updateSupportBadge();
 }
 function timeValue(v){ if(!v)return 0; if(v.toMillis)return v.toMillis(); const n=new Date(v).getTime(); return Number.isNaN(n)?0:n; }
 async function authorize(user){
@@ -181,7 +190,7 @@ function pageLoader(){ view.innerHTML=`<div class="loading-panel"><div class="lo
 
 function render(){
   nav();
-  const renderers={dashboard:renderDashboard,units:renderUnits,reports:renderReports,payments:renderPayments,statements:renderStatements,notifications:renderNotifications,activity:renderActivity,settings:renderSettings,profile:renderProfile};
+  const renderers={dashboard:renderDashboard,units:renderUnits,reports:renderReports,payments:renderPayments,statements:renderStatements,notifications:renderNotifications,activity:renderActivity,settings:renderSettings,profile:renderProfile,support:renderSupport};
   (renderers[route]||renderDashboard)();
   closeMenu();
   updateNotificationBadge();
@@ -350,6 +359,43 @@ async function saveSettings(){
   await loadData(); render(); notify("Settings saved.");
 }
 
+
+function supportStatusClass(status){return String(status||"Open").toLowerCase();}
+function updateSupportBadge(){const el=$("#adminSupportBadge");if(!el)return;const n=supportChats.filter(c=>c.unreadForAdmin===true).length;el.textContent=n>99?"99+":String(n);el.classList.toggle("hidden",n===0);}
+function supportMessagesHtml(chat){const msgs=Array.isArray(chat?.messages)?chat.messages:[];return msgs.map(m=>{const t=m.senderType==="customer"?"customer":m.senderType==="admin"?"admin":"system";const who=t==="customer"?(chat.customerName||"Customer"):t==="admin"?"PISO WIFI Admin":"PISO WIFI Support";return `<div class="piso-admin-chat-msg ${t}"><div class="piso-admin-chat-bubble">${esc(m.text||"")}</div><small>${esc(who)} · ${esc(dateTimeLabel(m.createdAt))}</small></div>`}).join("")||`<div class="piso-admin-chat-empty">No messages yet.</div>`;}
+function startSupportRealtime(){
+  if(supportUnsub)supportUnsub();
+  supportUnsub=onSnapshot(collection(db,"supportChats"),snap=>{
+    supportChats=snap.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>timeValue(b.updatedAt||b.createdAt)-timeValue(a.updatedAt||a.createdAt));
+    updateSupportBadge();
+    if(route==="support"){
+      const current=selectedSupportChatId;
+      renderSupport();
+      if(current)selectedSupportChatId=current;
+    }
+  },err=>console.warn("PISO WIFI support realtime unavailable",err));
+}
+function renderSupport(){
+  const sorted=[...supportChats].sort((a,b)=>timeValue(b.updatedAt||b.createdAt)-timeValue(a.updatedAt||a.createdAt));
+  if(!selectedSupportChatId && sorted[0]) selectedSupportChatId=sorted[0].id;
+  const selected=sorted.find(c=>c.id===selectedSupportChatId)||null;
+  view.innerHTML=baseHead("Customer Support","Real-time conversations with your PISO WIFI customers.",`<div class="support-admin-live"><span></span> Live</div>`)+`<div class="admin-support-layout"><aside class="admin-support-list"><div class="admin-support-list-head"><div><b>Conversations</b><small>${sorted.length} customer chat${sorted.length===1?"":"s"}</small></div><button class="secondary-btn" id="refreshSupport">Refresh</button></div><div class="admin-support-search"><input id="supportSearch" placeholder="Search customer…"></div><div id="supportChatList">${renderSupportList(sorted)}</div></aside><section class="admin-support-window">${selected?renderAdminChatWindow(selected):`<div class="admin-support-empty"><div class="support-admin-empty-icon">⌁</div><h3>No conversation selected</h3><p>Customer conversations will appear here when a client starts a chat.</p></div>`}</section></div>`;
+  $("#refreshSupport").onclick=async()=>{await loadData();renderSupport();};
+  $("#supportSearch").oninput=e=>{const q=e.target.value.toLowerCase();$("#supportChatList").innerHTML=renderSupportList(sorted.filter(c=>`${c.customerName||""} ${c.customerEmail||""} ${c.clientCode||""}`.toLowerCase().includes(q)));bindSupportList();};
+  bindSupportList(); bindAdminChatEvents(selected);
+  if(selected)subscribeSelectedSupport(selected.id);
+}
+function renderSupportList(list){return list.length?list.map(c=>`<button type="button" class="admin-support-item ${c.id===selectedSupportChatId?"active":""}" data-support-id="${esc(c.id)}"><span class="support-item-avatar">${esc(String(c.customerName||"CU").trim().split(/\s+/).slice(0,2).map(x=>x[0]).join("").toUpperCase())}</span><span class="support-item-copy"><b>${esc(c.customerName||"Customer")}</b><small>${esc(c.customerEmail||c.clientCode||"Customer Account")}</small><em>${esc((Array.isArray(c.messages)&&c.messages.length?c.messages[c.messages.length-1].text:"No messages yet").slice(0,55))}</em></span><span class="support-item-side"><i class="${supportStatusClass(c.status)}">${esc(c.status||"Open")}</i>${c.unreadForAdmin?'<strong>NEW</strong>':''}</span></button>`).join(""):`<div class="admin-support-no-chats">No customer conversations yet.</div>`;}
+function bindSupportList(){document.querySelectorAll("[data-support-id]").forEach(b=>b.onclick=()=>{selectedSupportChatId=b.dataset.supportId;renderSupport();});}
+function renderAdminChatWindow(chat){const status=String(chat.status||"Open");const disabled=status!=="Open"?"disabled":"";return `<div class="admin-chat-head"><div class="support-admin-avatar">${esc(String(chat.customerName||"CU").trim().split(/\s+/).slice(0,2).map(x=>x[0]).join("").toUpperCase())}</div><div><h3>${esc(chat.customerName||"Customer")}</h3><p>${esc(chat.customerEmail||"")} · ${esc(chat.clientCode||"")}</p></div><span class="admin-chat-status ${supportStatusClass(status)}">${esc(status)}</span><div class="admin-chat-actions"><button class="secondary-btn" id="supportOpenBtn" ${status==="Open"?"disabled":""}>Open</button><button class="secondary-btn" id="supportSolveBtn" ${status!=="Open"?"disabled":""}>Solve</button><button class="danger-outline-btn" id="supportCloseBtn" ${status==="Closed"?"disabled":""}>Close</button></div></div><div id="adminSupportMessages" class="admin-support-messages">${supportMessagesHtml(chat)}</div><div id="adminSupportTyping" class="admin-support-typing ${chat.typingBy?.customer?"show":""}">${chat.typingBy?.customer?"Customer is typing…":""}</div><div class="admin-support-compose"><textarea id="adminSupportInput" placeholder="Reply to customer…" ${disabled}></textarea><button id="adminSupportSend" class="primary-btn" ${disabled}>Send</button></div>`;}
+let selectedSupportUnsub=null;
+function subscribeSelectedSupport(id){if(selectedSupportUnsub)selectedSupportUnsub();const ref=doc(db,"supportChats",id);selectedSupportUnsub=onSnapshot(ref,snap=>{if(!snap.exists())return;const c={id:snap.id,...snap.data()};const idx=supportChats.findIndex(x=>x.id===id);if(idx>=0)supportChats[idx]=c;else supportChats.unshift(c);updateSupportBadge();if(route==="support"&&selectedSupportChatId===id){const box=$("#adminSupportMessages");if(box){const nearBottom=box.scrollHeight-box.scrollTop-box.clientHeight<24;box.innerHTML=supportMessagesHtml(c);if(nearBottom)requestAnimationFrame(()=>box.scrollTop=box.scrollHeight);}const typ=$("#adminSupportTyping");if(typ){typ.textContent=c.typingBy?.customer?"Customer is typing…":"";typ.classList.toggle("show",!!c.typingBy?.customer);}const statusEl=document.querySelector(".admin-chat-status");if(statusEl){statusEl.textContent=c.status||"Open";statusEl.className=`admin-chat-status ${supportStatusClass(c.status)}`;}}});}
+let adminSupportTypingTimer=null;
+function bindAdminChatEvents(chat){if(!chat)return;const input=$("#adminSupportInput"),send=$("#adminSupportSend");if(send)send.onclick=()=>sendAdminSupportMessage(chat.id);if(input){input.oninput=()=>{clearTimeout(adminSupportTypingTimer);setAdminSupportTyping(chat.id,true);adminSupportTypingTimer=setTimeout(()=>setAdminSupportTyping(chat.id,false),1200);};input.onkeydown=e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();sendAdminSupportMessage(chat.id);}};}$("#supportOpenBtn")?.addEventListener("click",()=>setSupportStatus(chat.id,"Open"));$("#supportSolveBtn")?.addEventListener("click",()=>setSupportStatus(chat.id,"Solved"));$("#supportCloseBtn")?.addEventListener("click",()=>setSupportStatus(chat.id,"Closed"));}
+async function setAdminSupportTyping(id,on){try{await updateDoc(doc(db,"supportChats",id),{"typingBy.admin":!!on,updatedAt:new Date().toISOString()});}catch(e){}}
+async function sendAdminSupportMessage(id){const input=$("#adminSupportInput");const text=String(input?.value||"").trim();if(!text)return;try{await updateDoc(doc(db,"supportChats",id),{messages:arrayUnion({senderType:"admin",text,createdAt:new Date().toISOString()}),updatedAt:new Date().toISOString(),unreadForAdmin:false,unreadForCustomer:true,"typingBy.admin":false,status:"Open"});input.value="";}catch(e){notify(e?.message||"Unable to send support reply.","error");}}
+async function setSupportStatus(id,status){try{await updateDoc(doc(db,"supportChats",id),{status,updatedAt:new Date().toISOString(),unreadForAdmin:false});await logActivity("Support",`${status} customer support conversation`,id);render();}catch(e){notify(e?.message||"Unable to update support status.","error");}}
+
 function renderProfile(){ renderDashboard(); }
 function openProfile(id){
   const u=units.find(x=>x.id===id); if(!u)return;
@@ -512,7 +558,7 @@ function printCss(){return `body{font-family:Arial,sans-serif;color:#17243a;padd
 function openPrintWindow(html){const w=window.open("","_blank","width=1200,height=800");if(!w){notify("Please allow pop-ups to print.","error");return;}w.document.open();w.document.write(html);w.document.close();w.focus();setTimeout(()=>w.print(),350);}
 
 function showAuthError(message){console.error("[PISO WIFI]",message);const loader=$("#authLoading");if(loader){loader.innerHTML=`<div class="auth-error"><strong>Unable to open the dashboard</strong><span>${esc(message)}</span><button onclick="location.href='index.html'">Return to Login</button></div>`;loader.classList.remove("hidden");}}
-async function bootstrap(user){if(!user){location.replace("index.html");return;}currentUser=user;try{await authorize(user);await loadData();await logActivity("System",`Admin login — ${user.email||"Admin"}`);setupMonthSelector();$("#authLoading").classList.add("hidden");$("#app").classList.remove("hidden");$("#userEmail").textContent=user.email||"Owner";route=location.hash.replace("#","").split("?")[0]||"dashboard";render();}catch(e){showAuthError(e?.message||"Firebase authorization or database access failed.");}}
+async function bootstrap(user){if(!user){location.replace("index.html");return;}currentUser=user;try{await authorize(user);await loadData();await logActivity("System",`Admin login — ${user.email||"Admin"}`);setupMonthSelector();startSupportRealtime();$("#authLoading").classList.add("hidden");$("#app").classList.remove("hidden");$("#userEmail").textContent=user.email||"Owner";route=location.hash.replace("#","").split("?")[0]||"dashboard";render();}catch(e){showAuthError(e?.message||"Firebase authorization or database access failed.");}}
 
 function parseRoute(){const raw=location.hash.replace("#","");return raw.split("?")[0]||"dashboard";}
 document.addEventListener("click",e=>{const a=e.target.closest("[data-route]");if(a){e.preventDefault();location.hash="#"+a.dataset.route;} const p=e.target.closest("[data-print-inline]");if(p){const id=$("#statementUnit")?.value;if(id)printStatement(id,$("#statementMonth").value);} const pdf=e.target.closest("[data-pdf-inline]");if(pdf){const id=$("#statementUnit")?.value;if(id)downloadStatementPdf(id,$("#statementMonth").value);} const html=e.target.closest("[data-html-inline]");if(html){const id=$("#statementUnit")?.value;if(id)downloadStatementHtml(id,$("#statementMonth").value);}});
