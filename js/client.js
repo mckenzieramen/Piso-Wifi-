@@ -513,7 +513,7 @@ function renderStatement(){
   $("#downloadPdf").onclick=()=>downloadStatementPdf(total,units,month);
   $("#printStatement").onclick=()=>printStatement(total,units,month);
 }
-function wifiLogo(){return `<svg viewBox="0 0 48 48" aria-hidden="true"><path d="M7 20c10-9 24-9 34 0M12 26c7-6 17-6 24 0M18 32c3.5-3 8.5-3 12 0" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"/><circle cx="24" cy="38" r="2.5" fill="currentColor"/></svg>`;}
+function wifiLogo(){return `<img src="/assets/piso-wifi-logo-clean.png" alt="PISO WIFI" style="width:120px;height:auto;display:block;object-fit:contain">`;}
 function statementHtmlForPdf(total,units,month){return {title:`PISO WIFI Client Statement — ${monthLabel(month)}`,lines:[["Client Name",clientName()],["Client ID",clientCode()],["Unit",units.map(u=>u.unitCode).join(", ")||"—"],["Location",units.length===1?units[0].location:"Multiple assigned units"],["Period",monthLabel(month)],["Status",paymentStatus(total)],["Gross Sales",money(total.gross)],["Internet Fee",money(total.internet)],[`Your Share (${settings.clientPercent}%)`,money(total.client)],["Amount Due",money(total.due)],["Amount Paid",money(total.paid)],["Balance",money(total.balance)]]};}
 function downloadStatementPdf(total,units,month){
   const api=window.jspdf;
