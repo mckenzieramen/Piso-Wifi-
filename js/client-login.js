@@ -117,9 +117,26 @@ form.addEventListener("submit", async e => {
 
     window.location.replace("/client/");
   } catch (err) {
+    const authEmail = authEmailFromUsername(username);
+    const debugDetails = [
+      `Username entered: ${username}`,
+      `Auth email generated: ${authEmail}`,
+      `Firebase project: piso-wifi-f2b5c`,
+      `Operation: signInWithEmailAndPassword → ${authEmail}`,
+      `Error code: ${err?.code || "(none)"}`,
+      `Error message: ${err?.message || String(err)}`
+    ].join("\n");
     console.error("[PISO WIFI CUSTOMER LOGIN]", err);
+    if (window.pisoDebug?.capture) {
+      window.pisoDebug.capture(err?.message || String(err), {
+        type: "CUSTOMER LOGIN",
+        operation: "signInWithEmailAndPassword",
+        context: debugDetails,
+        stack: err?.stack || ""
+      });
+    }
     message(
-      "Invalid username or password. If this is your first login, use the temporary password provided by Admin.",
+      "Login failed. Please check the temporary error popup for the exact Firebase error.",
       "error"
     );
     submit.disabled = false;

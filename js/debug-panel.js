@@ -6,7 +6,7 @@
   if (window.__PISO_DEBUG_PANEL__) return;
   window.__PISO_DEBUG_PANEL__ = true;
 
-  const state = { errors: [], hidden: false };
+  const state = { errors: [], hidden: true };
   const maxErrors = 20;
   const esc = (v) => String(v ?? "").replace(/[&<>"']/g, m => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#039;"}[m]));
 
@@ -16,8 +16,8 @@
     const style = document.createElement("style");
     style.id = "pisoDebugPanelStyle";
     style.textContent = `
-      #pisoDebugPanel{position:fixed;left:14px;right:14px;bottom:14px;z-index:2147483647;font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#fff;pointer-events:none}
-      #pisoDebugPanel .pdp-shell{max-width:980px;margin:0 auto;background:#3b0a0a;border:2px solid #ef4444;border-radius:14px;box-shadow:0 18px 50px rgba(0,0,0,.35);overflow:hidden;pointer-events:auto}
+      #pisoDebugPanel{position:fixed;inset:0;z-index:2147483647;font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#fff;pointer-events:none;background:rgba(3,10,20,.58);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center;padding:18px}
+      #pisoDebugPanel .pdp-shell{width:min(980px,100%);max-height:min(88vh,760px);margin:0 auto;background:#3b0a0a;border:2px solid #ef4444;border-radius:14px;box-shadow:0 24px 80px rgba(0,0,0,.5);overflow:hidden;pointer-events:auto}
       #pisoDebugPanel .pdp-head{display:flex;align-items:center;gap:10px;padding:11px 13px;background:#651313;border-bottom:1px solid rgba(255,255,255,.15)}
       #pisoDebugPanel .pdp-title{font-weight:800;font-size:14px;letter-spacing:.02em;flex:1}
       #pisoDebugPanel .pdp-badge{font-size:11px;font-weight:800;background:#ef4444;padding:4px 8px;border-radius:999px}
@@ -39,7 +39,7 @@
     root.innerHTML = `<div class="pdp-shell"><div class="pdp-head"><div class="pdp-title">⚠ PISO WIFI TEMPORARY ERROR DEBUG</div><span class="pdp-badge" id="pisoDebugCount">0 errors</span><button type="button" id="pisoDebugCopy">Copy</button><button type="button" id="pisoDebugClear">Clear</button><button type="button" id="pisoDebugHide">×</button></div><div class="pdp-body" id="pisoDebugBody"><div class="pdp-empty">No errors captured.</div></div></div></div>`;
     document.body.appendChild(root);
     root.querySelector("#pisoDebugCopy").onclick = async () => {
-      const text = state.errors.map(e => `[${e.time}] ${e.type}\n${e.message}${e.stack ? `\n${e.stack}` : ""}`).join("\n\n");
+      const text = state.errors.map(e => `[${e.time}] ${e.type}${e.operation ? ` | ${e.operation}` : ""}\n${e.context ? `Context: ${e.context}\n` : ""}${e.message}${e.stack ? `\n${e.stack}` : ""}`).join("\n\n");
       try { await navigator.clipboard.writeText(text || "No errors captured."); } catch (_) {}
     };
     root.querySelector("#pisoDebugClear").onclick = () => { state.errors.length = 0; state.hidden = false; render(); };
@@ -60,7 +60,7 @@
     body.innerHTML = state.errors.slice().reverse().map(e => {
       const permission = /permission|insufficient permissions|permission-denied/i.test(String(e.message||""));
       const next = permission ? `<div class="pdp-next"><b>Next step:</b> Firebase Firestore Rules are blocking this operation. Publish the current <code>firestore.rules</code> and repeat the action. The source above identifies the exact Firebase operation that was blocked.</div>` : "";
-      return `<div class="pdp-item"><div class="pdp-meta">${esc(e.time)} · ${esc(e.type)}${e.source ? ` · ${esc(e.source)}` : ""}</div><div class="pdp-message">${esc(e.message)}</div>${next}${e.stack ? `<div class="pdp-stack">${esc(e.stack)}</div>` : ""}</div>`;
+      return `<div class="pdp-item"><div class="pdp-meta">${esc(e.time)} · ${esc(e.type)}${e.source ? ` · ${esc(e.source)}` : ""}${e.operation ? ` · ${esc(e.operation)}` : ""}</div>${e.context ? `<div class="pdp-next" style="margin-top:0;margin-bottom:8px;color:#e2e8f0"><b>Context:</b><br>${esc(e.context)}</div>` : ""}<div class="pdp-message">${esc(e.message)}</div>${next}${e.stack ? `<div class="pdp-stack">${esc(e.stack)}</div>` : ""}</div>`;
     }).join("");
     body.scrollTop = 0;
     root.classList.remove("pdp-hidden");
@@ -68,7 +68,7 @@
 
   function capture(message, extra = {}) {
     const text = typeof message === "string" ? message : (() => { try { return JSON.stringify(message, null, 2); } catch (_) { return String(message); } })();
-    const entry = { time: new Date().toLocaleTimeString(), type: extra.type || "runtime", source: extra.source || "", message: text || "Unknown error", stack: extra.stack || "" };
+    const entry = { time: new Date().toLocaleTimeString(), type: extra.type || "runtime", source: extra.source || "", operation: extra.operation || "", context: extra.context || "", message: text || "Unknown error", stack: extra.stack || "" };
     state.errors.push(entry);
     if (state.errors.length > maxErrors) state.errors.shift();
     state.hidden = false;
