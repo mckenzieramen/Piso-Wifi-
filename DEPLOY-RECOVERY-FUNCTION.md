@@ -1,6 +1,6 @@
-# PISO WIFI — Account Recovery Temporary Password Function
+# PISO WIFI — Account Recovery Temporary Password
 
-The Admin recovery popup is already implemented in the website. The button calls this secure Firebase Cloud Function:
+The website already contains the Admin recovery popup. The secure password change is performed by the Firebase Cloud Function:
 
 `setClientTemporaryPassword`
 
@@ -12,19 +12,24 @@ Region:
 
 `us-central1`
 
-## Why “Failed to fetch” appeared
+The function uses Firebase Admin SDK to update the customer's Firebase Authentication password. It does **not** store the temporary password in Firestore and it sets `forcePasswordChange=true` on the customer unit record.
 
-The website calls the Cloud Function, but the current deployment does not have a reachable `setClientTemporaryPassword` endpoint. The frontend cannot securely change another user's Firebase password by itself; that operation must run through a trusted server-side Firebase Admin SDK function.
+## One-time deployment
 
-## Deploy
+On Windows, double-click:
 
-Run `DEPLOY-RECOVERY-FUNCTION.bat` on a machine with internet access, or from this project folder run:
+`DEPLOY-RECOVERY-FUNCTION.bat`
 
-```text
-npx firebase-tools@latest login
-npx firebase-tools@latest deploy --only functions:setClientTemporaryPassword --project piso-wifi-f2b5c
-```
+The script will:
 
-After deployment, reload the Admin page and use **Approve & Set Password** again.
+1. Check Node.js/npm.
+2. Open Firebase login.
+3. Deploy only `setClientTemporaryPassword` to `piso-wifi-f2b5c`.
 
-The temporary password is never written to Firestore. The function changes the Firebase Authentication password, marks the recovery request approved, and sets `forcePasswordChange=true`.
+The Google account used for login must have permission to deploy Cloud Functions in the Firebase project.
+
+After deployment, test:
+
+Admin → Notifications → Account Recovery Request → Review → Approve & Set Password
+
+The browser does not need to be given Firebase service-account credentials.
