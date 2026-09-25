@@ -52,7 +52,7 @@ async function googleAccessToken(env) {
   const header = b64url(JSON.stringify({ alg: "RS256", typ: "JWT" }));
   const claim = b64url(JSON.stringify({
     iss: sa.client_email,
-    scope: "https://www.googleapis.com/auth/cloud-platform https://www.googleapis.com/auth/datastore",
+    scope: "https://www.googleapis.com/auth/identitytoolkit https://www.googleapis.com/auth/cloud-platform https://www.googleapis.com/auth/datastore",
     aud: "https://oauth2.googleapis.com/token",
     iat: now,
     exp: now + 3600
@@ -132,6 +132,14 @@ async function firestoreCreate(token, collectionName, fields) {
 }
 
 async function generateResetLink(token, email, userIp) {
+  /*
+   * Ask Identity Platform for the one-time password-reset code without
+   * sending Firebase's default email. We intentionally do NOT pass
+   * continueUrl here. That URL is only needed when Firebase itself builds
+   * the action link, and it can fail if the domain is not separately listed
+   * as an authorized Firebase Auth domain. We construct our own PISO WIFI
+   * reset-page URL from the returned oobCode instead.
+   */
   const response = await fetch(
     `https://identitytoolkit.googleapis.com/v1/projects/${PROJECT_ID}/accounts:sendOobCode`,
     {
@@ -146,19 +154,35 @@ async function generateResetLink(token, email, userIp) {
         email,
         returnOobLink: true,
         targetProjectId: PROJECT_ID,
-        continueUrl: RESET_HANDLER_URL,
         userIp: userIp || "0.0.0.0"
       })
     }
   );
 
-  const data = await response.json();
-  if (!response.ok || !data.oobLink) {
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
     console.error("[PISO WIFI RESET LINK]", data);
-    throw new Error(data.error?.message || "Unable to generate the secure password-reset link.");
+    const message = data?.error?.message || "Unable to generate the secure password-reset link.";
+    const error = new Error(message);
+    error.code = String(data?.error?.status || data?.error?.message || "RESET_LINK_GENERATION_FAILED");
+    throw error;
   }
 
-  return data.oobLink;
+  let oobCode = String(data.oobCode || "").trim();
+  if (!oobCode && data.oobLink) {
+    try {
+      oobCode = new URL(data.oobLink).searchParams.get("oobCode") || "";
+    } catch (_) {}
+  }
+
+  if (!oobCode) {
+    console.error("[PISO WIFI RESET LINK] Missing oobCode", data);
+    const error = new Error("Firebase did not return a password-reset code.");
+    error.code = "RESET_CODE_MISSING";
+    throw error;
+  }
+
+  return `${RESET_HANDLER_URL}?oobCode=${encodeURIComponent(oobCode)}`;
 }
 
 async function sendCustomResetEmail({ email, clientId, firstName, resetLink }) {
@@ -269,6 +293,7 @@ export async function onRequestPost(context) {
     console.error("[PISO WIFI PASSWORD RESET]", error);
     return json({
       ok: false,
+      code: String(error?.code || "PASSWORD_RESET_FAILED"),
       error: error?.message || "We could not send the password-reset email right now."
     }, 500);
   }
