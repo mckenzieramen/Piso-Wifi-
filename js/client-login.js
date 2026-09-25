@@ -5,7 +5,6 @@ import {
   signOut,
   setPersistence,
   browserSessionPersistence,
-  sendPasswordResetEmail,
   signInWithCustomToken
 } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-auth.js";
 import { doc, getDoc, addDoc, collection, serverTimestamp } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-firestore.js";
@@ -223,25 +222,19 @@ async function submitResetRequest(e){
   if(!clientId||!email){msgEl.textContent="Complete all fields.";msgEl.className="client-login-message error";return;}
   btn.disabled=true; btn.textContent="Sending…"; msgEl.textContent="Checking your account…"; msgEl.className="client-login-message";
   try{
-    // Send the secure Firebase Auth reset email first. The Firestore request is an audit/notification record;
-    // a stale Firestore rule must never prevent the actual password-reset email from being sent.
-    const actionCodeSettings={
-      url:`${window.location.origin}/reset-password.html`,
-      handleCodeInApp:true
-    };
-    await sendPasswordResetEmail(auth,email,actionCodeSettings);
-
-    // Best-effort recovery notification record for Admin. The email has already been sent if this write fails.
-    try{
-      await addDoc(collection(db,"passwordResetRequests"),{
-        clientCode:clientId,
-        email,
-        status:"email_sent",
-        adminRead:false,
-        createdAt:serverTimestamp()
-      });
-    }catch(recordErr){
-      console.warn("[PISO WIFI PASSWORD RESET] Email sent, but recovery notification record could not be saved.",recordErr);
+    // The custom server creates the Firebase password-reset action link and
+    // sends the branded PISO WIFI HTML email. This replaces Firebase's
+    // default password-reset email while keeping the same secure reset flow.
+    const response=await fetch("/api/password-reset",{
+      method:"POST",
+      headers:{"content-type":"application/json"},
+      body:JSON.stringify({clientId,email})
+    });
+    const result=await response.json().catch(()=>({}));
+    if(!response.ok||!result.ok){
+      const serverError=new Error(String(result.error||"PASSWORD_RESET_FAILED"));
+      serverError.code=String(result.code||"PASSWORD_RESET_FAILED");
+      throw serverError;
     }
 
     const safeEmail=email.replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;", "'":"&#39;"}[c]));
