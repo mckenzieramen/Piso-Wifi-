@@ -197,31 +197,52 @@ async function submitResetRequest(e){
   if(!clientId||!email){msgEl.textContent="Complete all fields.";msgEl.className="client-login-message error";return;}
   btn.disabled=true; btn.textContent="Sending…"; msgEl.textContent="Checking your account…"; msgEl.className="client-login-message";
   try{
-    // Keep an audit/recovery record, then send the Firebase Auth reset email immediately.
-    const requestRef=await addDoc(collection(db,"passwordResetRequests"),{
-      clientCode:clientId,
-      email,
-      status:"email_sent",
-      adminRead:false,
-      createdAt:serverTimestamp()
-    });
-
+    // Send the secure Firebase Auth reset email first. The Firestore request is an audit/notification record;
+    // a stale Firestore rule must never prevent the actual password-reset email from being sent.
     const actionCodeSettings={
       url:`${window.location.origin}/reset-password.html`,
       handleCodeInApp:true
     };
     await sendPasswordResetEmail(auth,email,actionCodeSettings);
 
-    msgEl.className="client-login-message success";
-    msgEl.innerHTML=`<strong>Check your email</strong><br>We sent a secure password-reset link to <b>${email.replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;", "'":"&#39;"}[c]))}</b>.<br><span class="reset-success-sub">Open the email and click <b>Reset My Password</b> to continue.</span>`;
-    btn.textContent="Email Sent";
+    // Best-effort recovery notification record for Admin. The email has already been sent if this write fails.
+    try{
+      await addDoc(collection(db,"passwordResetRequests"),{
+        clientCode:clientId,
+        email,
+        status:"email_sent",
+        adminRead:false,
+        createdAt:serverTimestamp()
+      });
+    }catch(recordErr){
+      console.warn("[PISO WIFI PASSWORD RESET] Email sent, but recovery notification record could not be saved.",recordErr);
+    }
 
-    // Turn the form into a clear success state without exposing account details.
-    document.querySelector("#resetClientId").disabled=true;
-    document.querySelector("#resetEmail").disabled=true;
+    const safeEmail=email.replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;", "'":"&#39;"}[c]));
+    const card=wrapCard();
+    if(card){
+      card.innerHTML=`<button type="button" class="client-reset-close" data-close-reset aria-label="Close">×</button>
+        <div class="client-reset-icon success" aria-hidden="true">✓</div>
+        <span class="eyebrow">EMAIL SENT</span>
+        <h2>Check your email</h2>
+        <p class="reset-intro">We sent a secure password-reset link to <b>${safeEmail}</b>.</p>
+        <div class="client-reset-note success-note">Open the email and click <b>Reset My Password</b> to create your new private password. If you don't see it shortly, check your Spam or Promotions folder.</div>
+        <div class="client-reset-actions"><button class="client-secondary" type="button" data-close-reset>Close</button></div>`;
+      card.querySelectorAll("[data-close-reset]").forEach(el=>el.onclick=()=>wrap.remove());
+    }
+    function wrapCard(){ return document.querySelector("#forgotPasswordModal .client-reset-card"); }
   }catch(err){
     console.error("[PISO WIFI PASSWORD RESET]",err);
-    msgEl.textContent="We could not send the reset email. Make sure your registered Gmail is correct and try again.";
+    const code=String(err?.code||"");
+    let text="We could not send the reset email. Please verify your Client ID and registered Gmail and try again.";
+    if(code.includes("permission-denied")){
+      text="The Client ID and registered Gmail do not match our records. Please check both and try again.";
+    }else if(code.includes("user-not-found")){
+      text="We could not send the reset email. Please verify your registered Gmail and try again.";
+    }else if(code.includes("unauthorized-continue-uri")||code.includes("invalid-continue-uri")){
+      text="Password reset is not fully configured for this website yet. Please contact Admin.";
+    }
+    msgEl.textContent=text;
     msgEl.className="client-login-message error";
     btn.disabled=false; btn.textContent="Send Reset Link";
   }
