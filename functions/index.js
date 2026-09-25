@@ -179,8 +179,18 @@ async function sendCustomPasswordResetCallable(request){
     });
 
     const canonicalCodes=new Set(["cancelled","unknown","invalid-argument","deadline-exceeded","not-found","already-exists","permission-denied","resource-exhausted","failed-precondition","aborted","out-of-range","unimplemented","internal","unavailable","data-loss","unauthenticated"]);
-    if(err instanceof HttpsError || canonicalCodes.has(String(err?.code||""))){
-      if(err instanceof HttpsError)return err;
+    // IMPORTANT: Firebase callable internal errors must NOT be rethrown unchanged.
+    // Re-throwing an HttpsError("internal") hides the exact backend stage from the client.
+    // Preserve other intentional HttpsError responses, but wrap INTERNAL with the stage.
+    if(err instanceof HttpsError){
+      if(String(err.code||"") !== "internal") return err;
+      throw new HttpsError("internal", `PASSWORD RESET FAILED [${stage}]: ${err.message||"Unknown internal error."}`, {
+        stage,
+        clientCode:suppliedClientCode,
+        originalCode:err.code||"internal"
+      });
+    }
+    if(canonicalCodes.has(String(err?.code||""))){
       throw new HttpsError(String(err.code), `PASSWORD RESET FAILED [${stage}]: ${err.message||"Unknown error."}`, {stage,clientCode:suppliedClientCode});
     }
 
