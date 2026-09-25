@@ -1,6 +1,8 @@
 # PISO WIFI — Account Recovery Temporary Password
 
-The website already contains the Admin recovery popup. The secure password change is performed by the Firebase Cloud Function:
+The website already contains the Admin recovery popup. The password recovery backend uses these Firebase Cloud Functions:
+
+`sendCustomPasswordReset`
 
 `setClientTemporaryPassword`
 
@@ -24,7 +26,8 @@ The script will:
 
 1. Check Node.js/npm.
 2. Open Firebase login.
-3. Deploy only `setClientTemporaryPassword` to `piso-wifi-f2b5c`.
+3. Install the function dependencies.
+4. Deploy both password-recovery functions to `piso-wifi-f2b5c`.
 
 The Google account used for login must have permission to deploy Cloud Functions in the Firebase project.
 
