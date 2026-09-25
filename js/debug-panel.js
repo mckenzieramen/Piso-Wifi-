@@ -6,7 +6,7 @@
   if (window.__PISO_DEBUG_PANEL__) return;
   window.__PISO_DEBUG_PANEL__ = true;
 
-  const state = { errors: [], hidden: true };
+  const state = { errors: [], hidden: false };
   const maxErrors = 20;
   const esc = (v) => String(v ?? "").replace(/[&<>"']/g, m => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#039;"}[m]));
 
@@ -36,20 +36,19 @@
     document.head.appendChild(style);
     root = document.createElement("div");
     root.id = "pisoDebugPanel";
-    root.innerHTML = `<div class="pdp-shell"><div class="pdp-head"><div class="pdp-title">⚠ PISO WIFI TEMPORARY ERROR DEBUG</div><span class="pdp-badge" id="pisoDebugCount">0 errors</span><button type="button" id="pisoDebugCopy">Copy</button><button type="button" id="pisoDebugClear">Clear</button><button type="button" id="pisoDebugHide">×</button></div><div class="pdp-body" id="pisoDebugBody"><div class="pdp-empty">No errors captured.</div></div></div></div>`;
+    root.innerHTML = `<div class="pdp-shell"><div class="pdp-head"><div class="pdp-title">⚠ PISO WIFI ERROR DETAILS</div><span class="pdp-badge" id="pisoDebugCount">0 errors</span><button type="button" id="pisoDebugCopy">Copy</button><button type="button" id="pisoDebugClear">Clear</button></div><div class="pdp-body" id="pisoDebugBody"><div class="pdp-empty">No errors captured.</div></div></div></div>`;
     document.body.appendChild(root);
     root.querySelector("#pisoDebugCopy").onclick = async () => {
       const text = state.errors.map(e => `[${e.time}] ${e.type}${e.operation ? ` | ${e.operation}` : ""}\n${e.context ? `Context: ${e.context}\n` : ""}${e.message}${e.stack ? `\n${e.stack}` : ""}`).join("\n\n");
       try { await navigator.clipboard.writeText(text || "No errors captured."); } catch (_) {}
     };
     root.querySelector("#pisoDebugClear").onclick = () => { state.errors.length = 0; state.hidden = false; render(); };
-    root.querySelector("#pisoDebugHide").onclick = () => { state.hidden = true; render(); };
     return root;
   }
 
   function render() {
     const root = ensurePanel();
-    root.classList.toggle("pdp-hidden", state.hidden && state.errors.length === 0);
+    root.classList.remove("pdp-hidden");
     const count = root.querySelector("#pisoDebugCount");
     const body = root.querySelector("#pisoDebugBody");
     count.textContent = `${state.errors.length} error${state.errors.length === 1 ? "" : "s"}`;

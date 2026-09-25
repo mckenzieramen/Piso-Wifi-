@@ -293,7 +293,12 @@ async function submitResetRequest(e){
     }else if(code.includes("unauthorized-continue-uri")||code.includes("invalid-continue-uri")){
       text="Password reset is not fully configured for this website yet. Please contact Admin.";
     }
-    msgEl.textContent=text;
+    const technical = [
+      `ERROR CODE: ${err?.code || "(none)"}`,
+      `ERROR MESSAGE: ${err?.message || String(err)}`
+    ].join("\n");
+    msgEl.textContent=`${text}\n\n${technical}`;
+    msgEl.style.whiteSpace="pre-wrap";
     msgEl.className="client-login-message error";
     btn.disabled=false; btn.textContent="Send Reset Link";
   }
