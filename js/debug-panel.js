@@ -127,6 +127,24 @@
         status: "CODE PATH FIXED · DEPLOYMENT VERIFICATION REQUIRED"
       };
     }
+    const stageMatch = msg.match(/PASSWORD RESET FAILED \[([^\]]+)\]/i);
+    if (stageMatch && /password reset|sendcustompasswordreset/.test(hay)) {
+      const stage = stageMatch[1].toLowerCase();
+      const stageMap = {
+        input_validation: ["Input validation failed before the server attempted the reset operation.", "The submitted Client ID or Gmail did not pass the server-side format validation.", "Use a valid Client ID in CID-### format and the registered Gmail for that client.", "Correct the Client ID/Gmail values and submit again.", "INPUT VALIDATION FAILURE"],
+        customer_lookup: ["Firebase could not complete the customer record lookup.", "The server failed while reading the units/customerLoginDirectory records.", "Inspect the Firebase Function server error for the customer lookup and correct the specific Firestore/database failure.", "Redeploy the updated Firebase Function and use the exact server-stage error; do not change Firestore Rules unless the server log proves a rules/client access issue.", "CUSTOMER LOOKUP FAILURE"],
+        customer_validation: ["The customer record failed a server-side account validation check.", "The client record is inactive, has no registered Gmail, or the supplied Gmail does not match.", "Use the registered active client account information.", "Verify the CID and registered Gmail in the customer record.", "CUSTOMER VALIDATION FAILURE"],
+        firebase_auth_lookup: ["Firebase Authentication account lookup/validation failed.", "The unit is not linked to a valid Auth user or the Auth email does not match the registered Gmail.", "Link the client unit to the correct Firebase Authentication user and ensure the emails match.", "Check the client unit's authUserId and Firebase Authentication email before changing code.", "FIREBASE AUTH ACCOUNT FAILURE"],
+        recovery_request_lookup: ["The password-reset recovery record could not be read.", "The server failed while accessing passwordResetRequests.", "Inspect the server log for the Firestore failure before changing rules or client code.", "Use the exact Firebase server error at this stage as the source of truth.", "RECOVERY REQUEST LOOKUP FAILURE"],
+        generate_reset_link: ["Firebase could not generate the one-time password-reset link.", "Firebase Authentication failed during generatePasswordResetLink().", "Fix the Firebase Authentication/account configuration shown by the server error; the custom email HTML is not the failing component at this stage.", "Check the deployed Function log for the generatePasswordResetLink error and correct that exact condition.", "RESET LINK GENERATION FAILURE"],
+        build_reset_url: ["The generated Firebase reset link could not be converted into the PISO WIFI reset URL.", "The returned Firebase action link or configured reset page is invalid.", "Verify the configured PISO WIFI reset page URL and the generated Firebase action-link parameters.", "Use the server-stage error to correct the reset-link construction.", "RESET URL BUILD FAILURE"],
+        apps_script_fetch: ["Firebase could not reach the Apps Script custom-email service.", "The server-side request to the configured Apps Script Web App failed before receiving a response.", "Verify the Apps Script Web App deployment URL is active and publicly executable by the caller, then redeploy the Apps Script if necessary.", "Check the Apps Script Web App deployment/access settings and its execution log; do not change the custom HTML email design.", "CUSTOM EMAIL SERVICE CONNECTION FAILURE"],
+        apps_script_response: ["The Apps Script custom-email service returned an unsuccessful response.", "The mailer endpoint was reached, but it rejected the request or returned an invalid response.", "Fix the Apps Script Web App deployment, secret/configuration, or mailer error identified by the returned response.", "Open the Apps Script execution log for the same test and correct the exact returned error; keep the HTML template unchanged.", "CUSTOM EMAIL SERVICE RESPONSE FAILURE"],
+        firestore_write: ["The email service completed, but Firebase could not record the password-reset request/status.", "The final passwordResetRequests Firestore write failed.", "Fix the Firestore write failure shown in the Firebase Function log; do not change the email flow.", "Inspect the server log for the firestore_write stage and correct only that database issue.", "FIRESTORE RECORDING FAILURE"]
+      };
+      const d = stageMap[stage];
+      if (d) return {match:"DETERMINISTIC", issue:d[0], root:d[1], resolution:d[2], action:d[3], status:d[4]};
+    }
     if (/permission-denied|insufficient permissions|permission denied/.test(hay) || code === "permission-denied") {
       return {
         match: "DETERMINISTIC",

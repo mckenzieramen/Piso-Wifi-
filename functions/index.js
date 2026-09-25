@@ -40,23 +40,24 @@ async function findCustomerByClientCode(code){
 
 async function sendCustomPasswordResetCallable(request){
   const body=request.data||{};
+  let stage="input_validation";
+  let suppliedClientCode="";
   try{
     const requestId=String(body.requestId||"").trim();
-    const suppliedClientCode=String(body.clientCode||"").trim().toUpperCase();
+    suppliedClientCode=String(body.clientCode||"").trim().toUpperCase();
     const suppliedEmail=normalizeEmail(body.email);
 
     if(!/^CID-\d{3,}$/.test(suppliedClientCode)||!suppliedEmail){
       throw new HttpsError("invalid-argument", "Please enter a valid Client ID and registered Gmail.");
     }
 
-    // The customer portal no longer writes directly to passwordResetRequests.
-    // This keeps validation server-side and prevents Firestore Security Rules
-    // from exposing a generic "Missing or insufficient permissions" message.
+    stage="customer_lookup";
     const customer=await findCustomerByClientCode(suppliedClientCode);
     if(!customer){
       throw new HttpsError("not-found", `Client ID ${suppliedClientCode} was not found. Please check the Client ID and try again.`);
     }
 
+    stage="customer_validation";
     const unit=customer.data||{};
     if(unit.active===false){
       throw new HttpsError("permission-denied", `Client ID ${suppliedClientCode} is inactive. Please contact PISO WIFI Admin.`);
@@ -70,6 +71,7 @@ async function sendCustomPasswordResetCallable(request){
       throw new HttpsError("permission-denied", `The registered Gmail does not match ${suppliedClientCode}. Please use the Gmail registered for this Client ID.`);
     }
 
+    stage="firebase_auth_lookup";
     const authUserId=String(unit.authUserId||"").trim();
     if(!authUserId){
       throw new HttpsError("invalid-argument", `${suppliedClientCode} is not linked to a Firebase Authentication account.`);
@@ -80,9 +82,7 @@ async function sendCustomPasswordResetCallable(request){
       throw new HttpsError("failed-precondition", `The Firebase Authentication email does not match the registered Gmail for ${suppliedClientCode}.`);
     }
 
-    // Reuse the request only when the caller supplied an existing request ID.
-    // Normally the customer portal lets this function create the request after
-    // the server-side identity checks above have passed.
+    stage="recovery_request_lookup";
     let requestRef=null;
     if(requestId){
       requestRef=db.doc(`passwordResetRequests/${requestId}`);
@@ -95,26 +95,27 @@ async function sendCustomPasswordResetCallable(request){
     }
     if(!requestRef)requestRef=db.collection("passwordResetRequests").doc();
 
-    // Firebase Admin SDK creates the one-time action link without sending
-    // Firebase's default email. We then extract the OOB code and point the
-    // customer's email directly to our PISO WIFI reset page.
+    stage="generate_reset_link";
     const firebaseActionLink=await admin.auth().generatePasswordResetLink(registeredEmail);
     const parsed=new URL(firebaseActionLink);
     const oobCode=parsed.searchParams.get("oobCode");
     const apiKey=parsed.searchParams.get("apiKey");
     if(!oobCode)throw new Error("Firebase did not return a password-reset action code.");
 
+    stage="build_reset_url";
     const resetUrl=new URL(CLIENT_RESET_PAGE);
     resetUrl.searchParams.set("mode","resetPassword");
     resetUrl.searchParams.set("oobCode",oobCode);
     if(apiKey)resetUrl.searchParams.set("apiKey",apiKey);
 
+    stage="apps_script_fetch";
     let mailerResponse;
     let mailerText="";
     let mailerData={};
     try{
       mailerResponse=await fetch(APPS_SCRIPT_MAILER_URL,{
         method:"POST",
+        redirect:"follow",
         headers:{"content-type":"application/json","accept":"application/json"},
         body:JSON.stringify({
           secret:APPS_SCRIPT_MAILER_SECRET,
@@ -128,22 +129,24 @@ async function sendCustomPasswordResetCallable(request){
       try{ mailerData=mailerText?JSON.parse(mailerText):{}; }catch{}
     }catch(mailErr){
       throw new HttpsError("failed-precondition",
-        `CUSTOM EMAIL SERVICE CONNECTION FAILED: ${mailErr?.message||"Unable to reach the Apps Script mailer."}`,
-        {stage:"apps_script_fetch",clientCode:suppliedClientCode});
+        `CUSTOM EMAIL SERVICE CONNECTION FAILED [${stage}]: ${mailErr?.message||"Unable to reach the Apps Script mailer."}`,
+        {stage,clientCode:suppliedClientCode,errorName:mailErr?.name||"Error"});
     }
 
+    stage="apps_script_response";
     if(!mailerResponse.ok){
       throw new HttpsError("failed-precondition",
         `CUSTOM EMAIL SERVICE HTTP ERROR ${mailerResponse.status}: ${mailerData.error||mailerText.slice(0,300)||"No response body."}`,
-        {stage:"apps_script_http",httpStatus:mailerResponse.status,clientCode:suppliedClientCode});
+        {stage,httpStatus:mailerResponse.status,clientCode:suppliedClientCode});
     }
     if(mailerData.ok!==true){
       const bodyHint=mailerData.error||mailerText.slice(0,300)||"The mailer returned no JSON success response.";
       throw new HttpsError("failed-precondition",
         `CUSTOM EMAIL SERVICE REJECTED THE REQUEST: ${bodyHint}`,
-        {stage:"apps_script_response",clientCode:suppliedClientCode});
+        {stage,clientCode:suppliedClientCode});
     }
 
+    stage="firestore_write";
     const now=admin.firestore.FieldValue.serverTimestamp();
     if(!requestId){
       await requestRef.set({
@@ -165,11 +168,25 @@ async function sendCustomPasswordResetCallable(request){
 
     return {ok:true,emailSent:true};
   }catch(err){
-    console.error("sendCustomPasswordReset",err);
-    if(err instanceof HttpsError) throw err;
+    console.error("sendCustomPasswordReset",{
+      stage,
+      clientCode:suppliedClientCode,
+      errorName:err?.name||"Error",
+      errorCode:err?.code||"",
+      errorMessage:err?.message||String(err),
+      errorDetails:err?.details||null,
+      stack:err?.stack||""
+    });
+
+    const canonicalCodes=new Set(["cancelled","unknown","invalid-argument","deadline-exceeded","not-found","already-exists","permission-denied","resource-exhausted","failed-precondition","aborted","out-of-range","unimplemented","internal","unavailable","data-loss","unauthenticated"]);
+    if(err instanceof HttpsError || canonicalCodes.has(String(err?.code||""))){
+      if(err instanceof HttpsError)return err;
+      throw new HttpsError(String(err.code), `PASSWORD RESET FAILED [${stage}]: ${err.message||"Unknown error."}`, {stage,clientCode:suppliedClientCode});
+    }
+
     throw new HttpsError("internal",
-      `PASSWORD RESET SERVER ERROR: ${err?.message||"Unable to send the password-reset email."}`,
-      {stage:"sendCustomPasswordReset",name:err?.name||"Error"});
+      `PASSWORD RESET FAILED [${stage}]: ${err?.message||"Unknown server error."}`,
+      {stage,clientCode:suppliedClientCode,errorName:err?.name||"Error"});
   }
 }
 exports.sendCustomPasswordReset=onCall({region:"us-central1"},sendCustomPasswordResetCallable);
