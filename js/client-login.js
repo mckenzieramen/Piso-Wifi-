@@ -4,7 +4,8 @@ import {
   onAuthStateChanged,
   signOut,
   setPersistence,
-  browserSessionPersistence
+  browserSessionPersistence,
+  sendPasswordResetEmail
 } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-auth.js";
 import { doc, getDoc, addDoc, collection, serverTimestamp } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-firestore.js";
 
@@ -164,16 +165,16 @@ function openForgotPasswordModal(){
       </div>
       <span class="eyebrow">ACCOUNT RECOVERY</span>
       <h2 id="forgotTitle">Recover your account</h2>
-      <p id="forgotDescription" class="reset-intro">Enter your Client ID and registered Gmail. We’ll send your recovery request to the PISO WIFI Admin for verification.</p>
+      <p id="forgotDescription" class="reset-intro">Enter your Client ID and registered Gmail. We’ll send a secure password-reset link to your registered Gmail.</p>
       <form id="forgotPasswordForm">
         <label class="client-field"><span>Client ID</span><input id="resetClientId" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="CID-0001" required></label>
         <label class="client-field"><span>Registered Gmail</span><input id="resetEmail" type="email" autocomplete="email" inputmode="email" placeholder="yourname@gmail.com" required></label>
         <div id="resetMessage" class="client-login-message" role="status" aria-live="polite"></div>
         <div class="client-reset-actions">
           <button class="client-secondary" id="resetCancel" type="button">Cancel</button>
-          <button class="client-primary" id="resetSubmit" type="submit">Send Recovery Request</button>
+          <button class="client-primary" id="resetSubmit" type="submit">Send Reset Link</button>
         </div>
-        <div class="client-reset-note">For your security, your password is never displayed to Admin. Admin only receives the recovery request and can approve the next recovery step.</div>
+        <div class="client-reset-note">For your security, your password is never displayed to Admin. The reset link is sent only to the registered Gmail for this Customer Account.</div>
       </form>
     </section>`;
   document.body.appendChild(wrap);
@@ -194,24 +195,34 @@ async function submitResetRequest(e){
   const msgEl=document.querySelector("#resetMessage");
   const btn=document.querySelector("#resetSubmit");
   if(!clientId||!email){msgEl.textContent="Complete all fields.";msgEl.className="client-login-message error";return;}
-  btn.disabled=true; btn.textContent="Sending…"; msgEl.textContent="Verifying your account details…"; msgEl.className="client-login-message";
+  btn.disabled=true; btn.textContent="Sending…"; msgEl.textContent="Checking your account…"; msgEl.className="client-login-message";
   try{
-    // The security rules verify these details against the admin-created customer directory.
-    await addDoc(collection(db,"passwordResetRequests"),{
+    // Keep an audit/recovery record, then send the Firebase Auth reset email immediately.
+    const requestRef=await addDoc(collection(db,"passwordResetRequests"),{
       clientCode:clientId,
       email,
-      status:"pending",
+      status:"email_sent",
       adminRead:false,
       createdAt:serverTimestamp()
     });
-    msgEl.textContent="Recovery request sent. Your Admin will review it. If approved, a secure password-reset link will be sent to your registered Gmail.";
+
+    const actionCodeSettings={
+      url:`${window.location.origin}/reset-password.html`,
+      handleCodeInApp:true
+    };
+    await sendPasswordResetEmail(auth,email,actionCodeSettings);
+
     msgEl.className="client-login-message success";
-    btn.textContent="Request Sent";
-    btn.disabled=true;
+    msgEl.innerHTML=`<strong>Check your email</strong><br>We sent a secure password-reset link to <b>${email.replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;", "'":"&#39;"}[c]))}</b>.<br><span class="reset-success-sub">Open the email and click <b>Reset My Password</b> to continue.</span>`;
+    btn.textContent="Email Sent";
+
+    // Turn the form into a clear success state without exposing account details.
+    document.querySelector("#resetClientId").disabled=true;
+    document.querySelector("#resetEmail").disabled=true;
   }catch(err){
     console.error("[PISO WIFI PASSWORD RESET]",err);
-    msgEl.textContent="We could not verify those details. Check your Client ID and registered Gmail, then try again.";
+    msgEl.textContent="We could not send the reset email. Make sure your registered Gmail is correct and try again.";
     msgEl.className="client-login-message error";
-    btn.disabled=false; btn.textContent="Send Reset Request";
+    btn.disabled=false; btn.textContent="Send Reset Link";
   }
 }

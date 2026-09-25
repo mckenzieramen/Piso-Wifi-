@@ -1,7 +1,7 @@
 import { auth, db } from "./firebase.js";
 import { firebaseConfig } from "./firebase-config.js";
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-app.js";
-import { getAuth, createUserWithEmailAndPassword, sendPasswordResetEmail } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-auth.js";
+import { getAuth, createUserWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-auth.js";
 import { calculateFinancialRecord } from "./finance.js";
 import { onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-auth.js";
 import {
@@ -388,26 +388,16 @@ async function markAllNotificationsRead(){const jobs=[...notifications.filter(n=
 function openRecoveryRequestModal(request){
   if(!request)return;
   const status=String(request.status||"pending");
-  const statusText=status==="pending"?"Pending Review":status==="approved"?"Approved — Reset Email Sent":"Rejected";
-  const html=`<div class="recovery-review"><div class="recovery-review-status ${esc(status)}">${esc(statusText)}</div><div class="recovery-review-grid"><div><small>Customer</small><strong>${esc(request.customerName||request.clientCode||"Customer")}</strong></div><div><small>Client ID</small><strong>${esc(request.clientCode||"—")}</strong></div><div><small>Registered Gmail</small><strong>${esc(request.email||"—")}</strong></div><div><small>Unit</small><strong>${esc(request.unitCode||"—")}</strong></div><div><small>Requested</small><strong>${dateTimeLabel(request.createdAt)}</strong></div></div><div class="recovery-review-note">${status==="pending"?"Approve this request to send a secure password-reset email to the customer's registered Gmail. The customer will create their own new password; Admin will never see it.":status==="approved"?"The secure password-reset email was sent to the registered Gmail. The customer must use the link to create a new private password.":"This recovery request was rejected."}</div></div>`;
-  openModal("Account Recovery Request",html,status==="pending"?"Approve & Send Reset Email":"Close",async()=>{
-    if(status!=="pending"){closeModal();return;}
-    const btn=document.querySelector("#modalRoot .modal-actions .primary-btn");
-    if(btn){btn.disabled=true;btn.textContent="Sending…";}
-    try{
-      const email=String(request.email||"").trim().toLowerCase();
-      if(!email) throw new Error("No registered Gmail is attached to this recovery request.");
-      await sendPasswordResetEmail(auth,email);
-      await updateDoc(doc(db,"passwordResetRequests",request.id),{status:"approved",adminRead:true,reviewedAt:serverTimestamp(),reviewedBy:currentUser?.email||"Admin",resetEmailSentAt:serverTimestamp()});
-      closeModal(); await loadData(); render();
-      notify("Recovery approved. Password reset email sent to the registered Gmail.");
-    }catch(e){
-      console.error("[PISO WIFI RECOVERY EMAIL]",e);
-      notify(e?.message||"Unable to send the password reset email.","error");
-      if(btn){btn.disabled=false;btn.textContent="Approve & Send Reset Email";}
-    }
-  });
-  if(status==="pending")setTimeout(()=>{const actions=document.querySelector("#modalRoot .modal-actions");if(!actions)return;const reject=document.createElement("button");reject.className="danger-outline-btn";reject.textContent="Reject Request";reject.onclick=async()=>{try{await updateDoc(doc(db,"passwordResetRequests",request.id),{status:"rejected",adminRead:true,reviewedAt:serverTimestamp(),reviewedBy:currentUser?.email||"Admin"});closeModal();await loadData();render();notify("Recovery request rejected.");}catch(e){notify(e?.message||"Unable to reject recovery request.","error");}};actions.insertBefore(reject,actions.firstChild);},0);
+  const statusText=status==="pending"?"Pending Review":(status==="approved"||status==="email_sent")?"Reset Email Sent":"Rejected";
+  const note=status==="pending"?"A secure password-reset email is sent automatically when the customer submits a valid recovery request. The customer creates their own new password; Admin never sees it.":status==="approved"||status==="email_sent"?"The secure password-reset email was sent to the registered Gmail. The customer must open the email and use the PISO WIFI reset page to create a new private password.":"This recovery request was rejected.";
+  const html=`<div class="recovery-review"><div class="recovery-review-status ${esc(status)}">${esc(statusText)}</div><div class="recovery-review-grid"><div><small>Customer</small><strong>${esc(request.customerName||request.clientCode||"Customer")}</strong></div><div><small>Client ID</small><strong>${esc(request.clientCode||"—")}</strong></div><div><small>Registered Gmail</small><strong>${esc(request.email||"—")}</strong></div><div><small>Unit</small><strong>${esc(request.unitCode||"—")}</strong></div><div><small>Requested</small><strong>${dateTimeLabel(request.createdAt)}</strong></div></div><div class="recovery-review-note">${note}</div></div>`;
+  openModal("Account Recovery Request",html,"Close",async()=>{closeModal();});
+  if(status==="pending")setTimeout(()=>{
+    const actions=document.querySelector("#modalRoot .modal-actions");if(!actions)return;
+    const reject=document.createElement("button");reject.className="danger-outline-btn";reject.textContent="Reject Request";
+    reject.onclick=async()=>{try{await updateDoc(doc(db,"passwordResetRequests",request.id),{status:"rejected",adminRead:true,reviewedAt:serverTimestamp(),reviewedBy:currentUser?.email||"Admin"});closeModal();await loadData();render();notify("Recovery request rejected.");}catch(e){notify(e?.message||"Unable to reject recovery request.","error");}};
+    actions.insertBefore(reject,actions.firstChild);
+  },0);
 }
 
 function renderActivity(){
