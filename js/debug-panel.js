@@ -18,8 +18,8 @@
     const style = document.createElement("style");
     style.id = "pisoDebugPanelStyle";
     style.textContent = `
-      #pisoDebugPanel{position:fixed;right:18px;bottom:18px;z-index:2147483647;font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#fff;pointer-events:none}
-      #pisoDebugPanel .pdp-shell{width:min(620px,calc(100vw - 36px));max-height:min(72vh,620px);background:#3b0a0a;border:2px solid #ef4444;border-radius:14px;box-shadow:0 24px 80px rgba(0,0,0,.45);overflow:hidden;pointer-events:auto}
+      #pisoDebugPanel{position:relative;width:calc(100% - 36px);max-width:1400px;margin:28px auto 24px;z-index:1000;font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#fff;pointer-events:none}
+      #pisoDebugPanel .pdp-shell{width:100%;max-height:min(72vh,620px);background:#3b0a0a;border:2px solid #ef4444;border-radius:14px;box-shadow:0 24px 80px rgba(0,0,0,.45);overflow:hidden;pointer-events:auto}
       #pisoDebugPanel .pdp-head{display:flex;align-items:center;gap:8px;padding:10px 12px;background:#651313;border-bottom:1px solid rgba(255,255,255,.15)}
       #pisoDebugPanel .pdp-title{font-weight:800;font-size:13px;letter-spacing:.02em;flex:1;min-width:0}
       #pisoDebugPanel .pdp-type{font-size:10px;font-weight:900;text-transform:uppercase;background:#ef4444;padding:4px 7px;border-radius:999px;white-space:nowrap}
@@ -36,13 +36,13 @@
       #pisoDebugPanel .pdp-stack{margin-top:6px;color:#fecaca;font:500 10px/1.4 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;white-space:pre-wrap;word-break:break-word}
       #pisoDebugPanel .pdp-context{margin-top:7px;padding:8px 9px;border-radius:8px;background:rgba(255,255,255,.06);color:#dbeafe;font:500 10px/1.45 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;white-space:pre-wrap;word-break:break-word}
       #pisoDebugPanel.pdp-minimized .pdp-body{display:none}
-      #pisoDebugPanel.pdp-maximized{inset:12px;right:auto;bottom:auto;display:flex;align-items:stretch;justify-content:stretch;background:rgba(3,10,20,.58);backdrop-filter:blur(4px);padding:12px;pointer-events:auto}
+      #pisoDebugPanel.pdp-maximized{position:fixed;left:12px;right:12px;top:12px;bottom:12px;width:auto;max-width:none;margin:0;display:flex;align-items:stretch;justify-content:stretch;background:rgba(3,10,20,.58);backdrop-filter:blur(4px);padding:12px;pointer-events:auto}
       #pisoDebugPanel.pdp-maximized .pdp-shell{width:100%;max-width:none;height:100%;max-height:none}
       #pisoDebugPanel.pdp-maximized .pdp-body{max-height:none;height:calc(100% - 52px)}
       #pisoDebugPanel.pdp-empty .pdp-shell{display:none}
       @media(max-width:600px){
-        #pisoDebugPanel{right:10px;bottom:10px}
-        #pisoDebugPanel .pdp-shell{width:calc(100vw - 20px)}
+        #pisoDebugPanel{width:calc(100% - 20px);margin:22px auto 16px}
+        #pisoDebugPanel .pdp-shell{width:100%}
         #pisoDebugPanel .pdp-head{flex-wrap:wrap}
         #pisoDebugPanel .pdp-title{min-width:145px}
         #pisoDebugPanel.pdp-maximized{inset:6px;padding:6px}
