@@ -101,7 +101,22 @@ form.addEventListener("submit", async e => {
 
     window.location.replace("/admin/dashboard.html");
   } catch (err) {
+    const debugDetails = [
+      `Admin email entered: ${email}`,
+      `Firebase project: piso-wifi-f2b5c`,
+      `Operation: admin login → ${email}`,
+      `Error code: ${err?.code || "(none)"}`,
+      `Error message: ${err?.message || String(err)}`
+    ].join("\n");
     console.error("[PISO WIFI ADMIN LOGIN]", err);
+    if (window.pisoDebug?.capture) {
+      window.pisoDebug.capture(err?.message || String(err), {
+        type: "ADMIN LOGIN",
+        operation: "signInWithEmailAndPassword",
+        context: debugDetails,
+        stack: err?.stack || ""
+      });
+    }
     showMessage("Login failed. Please check your Admin email and password.", "error");
   }
 });
