@@ -5,7 +5,8 @@ import {
   signOut,
   setPersistence,
   browserSessionPersistence,
-  sendPasswordResetEmail
+  sendPasswordResetEmail,
+  signInWithCustomToken
 } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-auth.js";
 import { doc, getDoc, addDoc, collection, serverTimestamp } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-firestore.js";
 
@@ -93,11 +94,32 @@ form.addEventListener("submit", async e => {
   try {
     await setPersistence(auth, browserSessionPersistence);
 
-    const cred = await signInWithEmailAndPassword(
-      auth,
-      email,
-      password
-    );
+    let cred;
+
+    // Normal path: registered Gmail.
+    if (email.includes("@")) {
+      cred = await signInWithEmailAndPassword(auth, email, password);
+    } else {
+      // Compatibility path: also allow the Admin-generated Username / Client ID
+      // (for example SandyCID-021 or CID-021) without exposing the customer
+      // directory to unauthenticated Firestore reads. The server resolves the
+      // identifier and returns a short-lived Firebase custom token only after
+      // the password is verified.
+      const response = await fetch("/api/client-login", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ identifier: email, password })
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok || !result.customToken) {
+        const code = String(result.error || "INVALID_LOGIN_CREDENTIALS");
+        const e = new Error(code);
+        e.code = code;
+        throw e;
+      }
+      const userCredential = await signInWithCustomToken(auth, result.customToken);
+      cred = userCredential;
+    }
 
     const profile = await getRole(cred.user);
 
@@ -117,7 +139,7 @@ form.addEventListener("submit", async e => {
     const debugDetails = [
       `Registered Gmail entered: ${email}`,
       `Firebase project: piso-wifi-f2b5c`,
-      `Operation: signInWithEmailAndPassword → ${email}`,
+      `Operation: customer login → ${email}`,
       `Error code: ${err?.code || "(none)"}`,
       `Error message: ${err?.message || String(err)}`
     ].join("\n");
@@ -130,10 +152,14 @@ form.addEventListener("submit", async e => {
         stack: err?.stack || ""
       });
     }
-    message(
-      "Login failed. Please check the temporary error popup for the exact Firebase error.",
-      "error"
-    );
+    const code = String(err?.code || "");
+    let loginMessage = "Invalid login credentials. Use your Registered Gmail, Username, or Client ID with the temporary password provided by Admin.";
+    if (code === "CLIENT_ACCOUNT_NOT_FOUND") {
+      loginMessage = "Customer account not found. Check your Registered Gmail, Username, or Client ID.";
+    } else if (code === "CLIENT_ACCOUNT_NOT_AVAILABLE" || code === "CLIENT_ACCOUNT_MISMATCH") {
+      loginMessage = "This Customer Account is inactive or not fully linked. Please contact Admin.";
+    }
+    message(loginMessage, "error");
     submit.disabled = false;
     submit.textContent = "Login";
   }
