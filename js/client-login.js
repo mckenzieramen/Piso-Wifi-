@@ -254,8 +254,23 @@ async function submitResetRequest(e){
     btn.disabled=true;
     btn.textContent="Reset Email Sent";
   }catch(err){
-    console.error("[PISO WIFI PASSWORD RESET]",err);
     const detail=String(err?.message||"Unable to send the password-reset email.").trim();
+    const debugDetails=[
+      `Client ID entered: ${clientId}`,
+      `Registered Gmail entered: ${email}`,
+      `Operation: sendCustomPasswordReset`,
+      `HTTP status: ${err?.status || "(unknown)"}`,
+      `Error code: ${err?.code || "(none)"}`,
+      `Error message: ${detail}`
+    ].join("\n");
+    console.error("[PISO WIFI PASSWORD RESET]",err);
+    window.pisoDebug?.capture(detail,{
+      type:"PASSWORD RESET ERROR",
+      source:"client-login.js → sendCustomPasswordReset",
+      operation:"POST /sendCustomPasswordReset",
+      context:debugDetails,
+      stack:err?.stack||""
+    });
     msgEl.textContent=detail;
     msgEl.className="client-login-message error";
     btn.disabled=false;
