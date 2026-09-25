@@ -262,7 +262,8 @@ async function submitResetRequest(e){
       `Operation: sendCustomPasswordReset`,
       `HTTP status: ${err?.status || "(callable)"}`,
       `Error code: ${err?.code || "(none)"}`,
-      `Error message: ${detail}`
+      `Error message: ${detail}`,
+      `Error details: ${typeof err?.details === "string" ? err.details : JSON.stringify(err?.details || {})}`
     ].join("\n");
     console.error("[PISO WIFI PASSWORD RESET]",err);
     window.pisoDebug?.capture(detail,{

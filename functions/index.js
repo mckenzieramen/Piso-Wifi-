@@ -109,21 +109,39 @@ async function sendCustomPasswordResetCallable(request){
     resetUrl.searchParams.set("oobCode",oobCode);
     if(apiKey)resetUrl.searchParams.set("apiKey",apiKey);
 
-    const mailerResponse=await fetch(APPS_SCRIPT_MAILER_URL,{
-      method:"POST",
-      headers:{"content-type":"application/json"},
-      body:JSON.stringify({
-        secret:APPS_SCRIPT_MAILER_SECRET,
-        email:registeredEmail,
-        clientId:suppliedClientCode,
-        firstName:firstNameFromUnit(unit),
-        resetLink:resetUrl.toString()
-      })
-    });
+    let mailerResponse;
+    let mailerText="";
+    let mailerData={};
+    try{
+      mailerResponse=await fetch(APPS_SCRIPT_MAILER_URL,{
+        method:"POST",
+        headers:{"content-type":"application/json","accept":"application/json"},
+        body:JSON.stringify({
+          secret:APPS_SCRIPT_MAILER_SECRET,
+          email:registeredEmail,
+          clientId:suppliedClientCode,
+          firstName:firstNameFromUnit(unit),
+          resetLink:resetUrl.toString()
+        })
+      });
+      mailerText=await mailerResponse.text();
+      try{ mailerData=mailerText?JSON.parse(mailerText):{}; }catch{}
+    }catch(mailErr){
+      throw new HttpsError("failed-precondition",
+        `CUSTOM EMAIL SERVICE CONNECTION FAILED: ${mailErr?.message||"Unable to reach the Apps Script mailer."}`,
+        {stage:"apps_script_fetch",clientCode:suppliedClientCode});
+    }
 
-    const mailerData=await mailerResponse.json().catch(()=>({}));
-    if(!mailerResponse.ok||mailerData.ok!==true){
-      throw new Error(mailerData.error||"The PISO WIFI mail service could not send the reset email.");
+    if(!mailerResponse.ok){
+      throw new HttpsError("failed-precondition",
+        `CUSTOM EMAIL SERVICE HTTP ERROR ${mailerResponse.status}: ${mailerData.error||mailerText.slice(0,300)||"No response body."}`,
+        {stage:"apps_script_http",httpStatus:mailerResponse.status,clientCode:suppliedClientCode});
+    }
+    if(mailerData.ok!==true){
+      const bodyHint=mailerData.error||mailerText.slice(0,300)||"The mailer returned no JSON success response.";
+      throw new HttpsError("failed-precondition",
+        `CUSTOM EMAIL SERVICE REJECTED THE REQUEST: ${bodyHint}`,
+        {stage:"apps_script_response",clientCode:suppliedClientCode});
     }
 
     const now=admin.firestore.FieldValue.serverTimestamp();
@@ -149,7 +167,9 @@ async function sendCustomPasswordResetCallable(request){
   }catch(err){
     console.error("sendCustomPasswordReset",err);
     if(err instanceof HttpsError) throw err;
-    throw new HttpsError("internal", err?.message||"Unable to send the password-reset email.");
+    throw new HttpsError("internal",
+      `PASSWORD RESET SERVER ERROR: ${err?.message||"Unable to send the password-reset email."}`,
+      {stage:"sendCustomPasswordReset",name:err?.name||"Error"});
   }
 }
 exports.sendCustomPasswordReset=onCall({region:"us-central1"},sendCustomPasswordResetCallable);
