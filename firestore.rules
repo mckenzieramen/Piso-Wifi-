@@ -91,9 +91,8 @@ service cloud.firestore {
       // and registered Gmail exactly match the Admin-created directory record.
       // The customer does not need to know or submit the assigned Unit Code.
       allow create: if
-        request.resource.data.status in ["pending", "email_sent"]
+        request.resource.data.status == "email_sent"
         && request.resource.data.adminRead == false
-        && request.resource.data.emailSent == false
         && request.resource.data.clientCode is string
         && request.resource.data.email is string
         && request.resource.data.createdAt == request.time

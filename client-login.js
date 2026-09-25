@@ -1,4 +1,4 @@
-import { auth, db, functions } from "./firebase.js";
+import { auth, db } from "./firebase.js";
 import {
   signInWithEmailAndPassword,
   onAuthStateChanged,
@@ -7,7 +7,6 @@ import {
   browserSessionPersistence
 } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-auth.js";
 import { doc, getDoc, addDoc, collection, serverTimestamp } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-firestore.js";
-import { httpsCallable } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-functions.js";
 
 const form = document.querySelector("#clientLoginForm");
 const msg = document.querySelector("#clientLoginMessage");
@@ -151,12 +150,12 @@ function openForgotPasswordModal(){
       <button type="button" class="client-reset-close" data-close-reset aria-label="Close">×</button>
       <span class="eyebrow">ACCOUNT RECOVERY</span>
       <h2 id="forgotTitle">Forgot your password?</h2>
-      <p>Enter your Client ID and registered Gmail. We’ll send a secure password-reset link to your registered Gmail.</p>
+      <p>Verify your Client ID and registered Gmail. We will notify Admin to process the reset.</p>
       <form id="forgotPasswordForm">
-        <label class="client-field"><span>Client ID</span><input id="resetClientId" autocomplete="off" placeholder="CID-001" required></label>
+        <label class="client-field"><span>Client ID</span><input id="resetClientId" autocomplete="off" placeholder="CID-0001" required></label>
         <label class="client-field"><span>Registered Gmail</span><input id="resetEmail" type="email" autocomplete="email" placeholder="yourname@gmail.com" required></label>
         <div id="resetMessage" class="client-login-message" role="status" aria-live="polite"></div>
-        <button class="client-primary login-submit" id="resetSubmit" type="submit">Send Reset Link</button>
+        <button class="client-primary login-submit" id="resetSubmit" type="submit">Send Reset Request</button>
       </form>
     </section>`;
   document.body.appendChild(wrap);
@@ -174,49 +173,33 @@ async function submitResetRequest(e){
   const email=document.querySelector("#resetEmail").value.trim().toLowerCase();
   const msgEl=document.querySelector("#resetMessage");
   const btn=document.querySelector("#resetSubmit");
-  if(!clientId||!email){msgEl.textContent="Please enter your Client ID and registered Gmail.";msgEl.className="client-login-message error";return;}
-  btn.disabled=true;
-  btn.textContent="Sending…";
-  msgEl.textContent="Verifying your Client ID and registered Gmail…";
-  msgEl.className="client-login-message";
-
+  if(!clientId||!email){msgEl.textContent="Complete all fields.";msgEl.className="client-login-message error";return;}
+  btn.disabled=true; btn.textContent="Sending…"; msgEl.textContent="Verifying your account details…"; msgEl.className="client-login-message";
   try{
-    // Validation and recovery-request creation are handled server-side.
-    // This prevents Firestore Security Rules from returning the generic
-    // "Missing or insufficient permissions" error when the credentials do not match.
-    const response=await fetch("/api/sendCustomPasswordReset",{
-      method:"POST",
-      headers:{"content-type":"application/json"},
-      body:JSON.stringify({clientCode:clientId,email})
+    // The security rules verify these details against the admin-created customer directory.
+    await addDoc(collection(db,"passwordResetRequests"),{
+      clientCode:clientId,
+      email,
+      status:"pending",
+      createdAt:serverTimestamp()
     });
-    const result=await response.json().catch(()=>({}));
-    if(!response.ok||result.ok!==true){
-      const error=new Error(result.error||`Password reset request failed (HTTP ${response.status}).`);
-      error.status=response.status;
-      error.code=result.errorCode||result.code||"(none)";
-      throw error;
-    }
-
-    const safeEmail=email.replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;", "'":"&#39;"}[c]));
-    const card=wrapCard();
-    if(card){
-      card.innerHTML=`<button type="button" class="client-reset-close" data-close-reset aria-label="Close confirmation">×</button>
-        <div class="client-reset-icon success" aria-hidden="true">✓</div>
-        <span class="eyebrow">EMAIL SENT</span>
-        <h2>Check your email</h2>
-        <p class="reset-intro">We sent a secure password-reset link to <b>${safeEmail}</b>.</p>
-        <div class="client-reset-note success-note">Open the email and click <b>Reset My Password</b> to create your new private password. If you don't see it shortly, check your Spam or Promotions folder.</div>
-        <div class="client-reset-actions"><button class="client-primary" type="button" data-close-reset>Close &amp; Return to Login</button></div>`;
-      card.querySelectorAll("[data-close-reset]").forEach(el=>el.onclick=()=>document.querySelector("#forgotPasswordModal")?.remove());
-    }
-    btn.disabled=true;
-    btn.textContent="Reset Email Sent";
+    await addDoc(collection(db,"notifications"),{
+      type:"password-reset",
+      title:"Customer password reset requested",
+      message:`Reset requested for ${clientId} (${email}). Review the customer record and process the password reset.`,
+      relatedId:"",
+      clientCode:clientId,
+      email,
+      read:false,
+      createdAt:serverTimestamp()
+    });
+    msgEl.textContent="Request sent. Admin has been notified. Once Admin provides a temporary password, log in and create your new private password.";
+    msgEl.className="client-login-message success";
+    setTimeout(()=>document.querySelector("#forgotPasswordModal")?.remove(),2200);
   }catch(err){
     console.error("[PISO WIFI PASSWORD RESET]",err);
-    const detail=String(err?.message||"Unable to send the password-reset email.").trim();
-    msgEl.textContent=detail;
+    msgEl.textContent="We could not verify those details. Check your Client ID and registered Gmail, then try again.";
     msgEl.className="client-login-message error";
-    btn.disabled=false;
-    btn.textContent="Send Reset Link";
+    btn.disabled=false; btn.textContent="Send Reset Request";
   }
 }
