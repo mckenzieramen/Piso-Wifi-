@@ -221,13 +221,13 @@ async function submitResetRequest(e){
     const safeEmail=email.replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;", "'":"&#39;"}[c]));
     const card=wrapCard();
     if(card){
-      card.innerHTML=`<button type="button" class="client-reset-close" data-close-reset aria-label="Close">×</button>
+      card.innerHTML=`<button type="button" class="client-reset-close" data-close-reset aria-label="Close confirmation">×</button>
         <div class="client-reset-icon success" aria-hidden="true">✓</div>
         <span class="eyebrow">EMAIL SENT</span>
         <h2>Check your email</h2>
         <p class="reset-intro">We sent a secure password-reset link to <b>${safeEmail}</b>.</p>
         <div class="client-reset-note success-note">Open the email and click <b>Reset My Password</b> to create your new private password. If you don't see it shortly, check your Spam or Promotions folder.</div>
-        <div class="client-reset-actions"><button class="client-secondary" type="button" data-close-reset>Close</button></div>
+        <div class="client-reset-actions"><button class="client-primary" type="button" data-close-reset>Close &amp; Return to Login</button></div>
         <div class="reset-auto-close" aria-live="polite">This message will close automatically in <b>5 seconds</b>.</div>`;
       let remaining=5;
       const autoCloseEl=card.querySelector(".reset-auto-close");
