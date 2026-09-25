@@ -52,7 +52,7 @@
 
     root = document.createElement("div");
     root.id = "pisoDebugPanel";
-    root.className = "pdp-empty";
+    root.className = "";
     root.innerHTML = `
       <div class="pdp-shell">
         <div class="pdp-head">
@@ -105,15 +105,16 @@
 
   function render() {
     const root = ensurePanel();
-    if (!state.errors.length) {
-      root.className = "pdp-empty";
-      return;
-    }
     root.classList.remove("pdp-empty");
     const latest = state.errors[state.errors.length - 1];
-    root.querySelector("#pisoDebugType").textContent = latest.type || "ERROR";
-    root.querySelector("#pisoDebugCount").textContent = `${state.errors.length} error${state.errors.length === 1 ? "" : "s"}`;
+    root.querySelector("#pisoDebugType").textContent = latest?.type || "NO ERROR";
+    root.querySelector("#pisoDebugCount").textContent = state.errors.length ? `${state.errors.length} error${state.errors.length === 1 ? "" : "s"}` : "0 errors";
     const body = root.querySelector("#pisoDebugBody");
+    if (!state.errors.length) {
+      body.innerHTML = `<div class="pdp-item"><div class="pdp-meta">SYSTEM STATUS · MONITORING</div><div class="pdp-message" style="color:#bbf7d0"><b>NO ERRORS CAPTURED</b></div><div class="pdp-context">The PISO WIFI Error Details panel is active and monitoring this page. When an error occurs, its exact error type, message, operation, source, and stack will appear here automatically.</div></div>`;
+      applyState();
+      return;
+    }
     body.innerHTML = state.errors.slice().reverse().map(e => {
       const permission = /permission|insufficient permissions|permission-denied/i.test(String(e.message||""));
       const next = permission ? `<div class="pdp-next"><b>Next step:</b> Firebase Firestore Rules are blocking this operation. Publish the current <code>firestore.rules</code> and repeat the action.</div>` : "";
