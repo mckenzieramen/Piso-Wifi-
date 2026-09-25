@@ -12,7 +12,6 @@ const form = document.querySelector("#clientLoginForm");
 const msg = document.querySelector("#clientLoginMessage");
 const submit = document.querySelector("#clientLoginButton");
 const remember = document.querySelector("#clientRememberMe");
-const UNIT_AUTH_DOMAIN = "@client-login.pisowifi.local";
 const CLIENT_REMEMBER_KEY = "pisoWifi.rememberedUsername";
 
 function message(text, type = "") {
@@ -32,9 +31,6 @@ try {
   }
 } catch {}
 
-function authEmailFromUsername(username) {
-  return `${username.toLowerCase().replace(/[^a-z0-9]+/g, "-")}${UNIT_AUTH_DOMAIN}`;
-}
 
 async function getRole(user) {
   const snap = await getDoc(doc(db, "users", user.uid));
@@ -81,11 +77,11 @@ onAuthStateChanged(auth, user => {
 form.addEventListener("submit", async e => {
   e.preventDefault();
 
-  const username = normalizeUsername(document.querySelector("#clientEmail").value);
+  const email = normalizeUsername(document.querySelector("#clientEmail").value).toLowerCase();
   const password = document.querySelector("#clientPassword").value;
 
-  if (!username || !password) {
-    message("Enter your username and password.", "error");
+  if (!email || !password) {
+    message("Enter your registered Gmail and password.", "error");
     return;
   }
 
@@ -98,7 +94,7 @@ form.addEventListener("submit", async e => {
 
     const cred = await signInWithEmailAndPassword(
       auth,
-      authEmailFromUsername(username),
+      email,
       password
     );
 
@@ -117,12 +113,10 @@ form.addEventListener("submit", async e => {
 
     window.location.replace("/client/");
   } catch (err) {
-    const authEmail = authEmailFromUsername(username);
     const debugDetails = [
-      `Username entered: ${username}`,
-      `Auth email generated: ${authEmail}`,
+      `Registered Gmail entered: ${email}`,
       `Firebase project: piso-wifi-f2b5c`,
-      `Operation: signInWithEmailAndPassword → ${authEmail}`,
+      `Operation: signInWithEmailAndPassword → ${email}`,
       `Error code: ${err?.code || "(none)"}`,
       `Error message: ${err?.message || String(err)}`
     ].join("\n");
@@ -210,7 +204,7 @@ async function submitResetRequest(e){
       adminRead:false,
       createdAt:serverTimestamp()
     });
-    msgEl.textContent="Recovery request sent. Your Admin has received the request for verification. Once it is approved, follow the recovery instructions provided by Admin.";
+    msgEl.textContent="Recovery request sent. Your Admin will review it. If approved, a secure password-reset link will be sent to your registered Gmail.";
     msgEl.className="client-login-message success";
     btn.textContent="Request Sent";
     btn.disabled=true;

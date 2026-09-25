@@ -1,7 +1,7 @@
 import { auth, db } from "./firebase.js";
 import { firebaseConfig } from "./firebase-config.js";
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-app.js";
-import { getAuth, createUserWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-auth.js";
+import { getAuth, createUserWithEmailAndPassword, sendPasswordResetEmail } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-auth.js";
 import { calculateFinancialRecord } from "./finance.js";
 import { onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-auth.js";
 import {
@@ -33,10 +33,8 @@ let unitSearch = "", unitStatus = "", unitPaymentStatus = "";
 // TEMPORARY ADMIN FEATURE: keep true while client deletion is needed.
 // Set to false later to remove the Delete Client button without changing the rest of the system.
 const ENABLE_CLIENT_DELETE = true;
-const CLIENT_AUTH_DOMAIN="@client-login.pisowifi.local";
 const clientProvisionerApp=initializeApp(firebaseConfig,"clientProvisioner");
 const clientProvisionerAuth=getAuth(clientProvisionerApp);
-const clientAuthEmailFromUsername=(username)=>`${String(username||"").trim().toLowerCase().replace(/[^a-z0-9]+/g,"-")}${CLIENT_AUTH_DOMAIN}`;
 const firstNameFromFullName=(name)=>String(name||"").trim().split(/\s+/)[0]||"Client";
 const sanitizeUsernamePart=(name)=>firstNameFromFullName(name).replace(/[^A-Za-z0-9]/g,"")||"Client";
 async function nextClientId(){
@@ -64,6 +62,7 @@ async function syncCustomerDirectory(){
       clientCode:String(u.clientCode).toUpperCase(),
       unitCode:String(u.unitCode).toUpperCase(),
       email:String(u.email).trim().toLowerCase(),
+      username:String(u.username||""),
       unitDocId:u.id,
       authUserId:u.authUserId||"",
       active:u.active!==false,
@@ -387,23 +386,28 @@ function renderNotifications(){
 async function openNotification(id){const n=allAdminNotifications().find(x=>x.id===id);if(!n)return;if(n.source==="passwordResetRequest"){const r=passwordResetRequests.find(x=>x.id===n.requestId);if(!r)return;if(r.adminRead!==true)await updateDoc(doc(db,"passwordResetRequests",r.id),{adminRead:true});openRecoveryRequestModal(r);return;}if(n.read!==true){await updateDoc(doc(db,"notifications",id),{read:true});await loadData();}if(n.relatedId&&units.some(u=>u.id===n.relatedId))openProfile(n.relatedId);else render();}
 async function markAllNotificationsRead(){const jobs=[...notifications.filter(n=>n.read!==true).map(n=>updateDoc(doc(db,"notifications",n.id),{read:true})),...passwordResetRequests.filter(r=>r.adminRead!==true).map(r=>updateDoc(doc(db,"passwordResetRequests",r.id),{adminRead:true}))];await Promise.all(jobs);await loadData();render();notify("All notifications marked as read.");}
 function openRecoveryRequestModal(request){
- if(!request){notify("Recovery request not found.","error");return;}
- const status=String(request.status||"pending").toLowerCase();
- const statusText=status==="pending"?"Pending Review":status==="approved"?"Approved":"Rejected";
- const html=`<div class="recovery-review"><div class="recovery-review-status ${esc(status)}">${esc(statusText)}</div><div class="recovery-review-grid"><div><small>Customer</small><strong>${esc(request.customerName||request.clientCode||"Customer")}</strong></div><div><small>Client ID</small><strong>${esc(request.clientCode||"—")}</strong></div><div><small>Registered Gmail</small><strong>${esc(request.email||"—")}</strong></div><div><small>Unit</small><strong>${esc(request.unitCode||"—")}</strong></div><div><small>Requested</small><strong>${dateTimeLabel(request.createdAt)}</strong></div></div><div class="recovery-review-note">${status==="pending"?"Approve this request by setting a new temporary password. The customer must use it once, then create a private password. The final private password is never shown to Admin.":status==="approved"?"A temporary password has been set. The customer must create a private password after signing in.":"This recovery request was rejected."}</div></div>`;
- openModal("Account Recovery Request",html,status==="pending"?"Approve & Set Temporary Password":"Close",async()=>{
-   if(status!=="pending")return;
-   const existing=document.querySelector("#recoveryTempPasswordModal"); if(existing)existing.remove();
-   const wrap=document.createElement("div"); wrap.id="recoveryTempPasswordModal"; wrap.className="recovery-temp-modal";
-   wrap.innerHTML=`<div class="recovery-temp-backdrop"></div><section class="recovery-temp-card" role="dialog" aria-modal="true"><button type="button" class="recovery-temp-close" aria-label="Close">×</button><div class="recovery-temp-icon">🔐</div><span class="eyebrow">SET TEMPORARY PASSWORD</span><h2>Approve & Set Password</h2><p>Enter the temporary password that the customer will use for the next login.</p><label class="recovery-password-field"><span>Temporary Password</span><div><input id="recoveryTempPassword" type="password" minlength="8" autocomplete="new-password" placeholder="Enter temporary password"><button type="button" data-toggle-temp>Show</button></div></label><label class="recovery-password-field"><span>Confirm Temporary Password</span><div><input id="recoveryTempPasswordConfirm" type="password" minlength="8" autocomplete="new-password" placeholder="Re-enter temporary password"><button type="button" data-toggle-temp-confirm>Show</button></div></label><div id="recoveryTempMessage" class="recovery-temp-message"></div><div class="recovery-temp-actions"><button type="button" class="secondary-btn" data-temp-cancel>Cancel</button><button type="button" class="primary-btn" data-temp-save>Approve & Set Password</button></div><small class="recovery-temp-security">The temporary password is not stored in Firestore. After login, the customer must create a private password that Admin cannot see.</small></section>`;
-   document.body.appendChild(wrap);
-   const close=()=>wrap.remove(); wrap.querySelector(".recovery-temp-close").onclick=close; wrap.querySelector("[data-temp-cancel]").onclick=close;
-   wrap.querySelector("[data-toggle-temp]").onclick=()=>{const i=wrap.querySelector("#recoveryTempPassword");i.type=i.type==="password"?"text":"password";};
-   wrap.querySelector("[data-toggle-temp-confirm]").onclick=()=>{const i=wrap.querySelector("#recoveryTempPasswordConfirm");i.type=i.type==="password"?"text":"password";};
-   wrap.querySelector("[data-temp-save]").onclick=async()=>{const a=wrap.querySelector("#recoveryTempPassword").value,b=wrap.querySelector("#recoveryTempPasswordConfirm").value,m=wrap.querySelector("#recoveryTempMessage"),btn=wrap.querySelector("[data-temp-save]");if(a.length<8){m.textContent="Use at least 8 characters.";m.className="recovery-temp-message error";return;}if(a!==b){m.textContent="Passwords do not match.";m.className="recovery-temp-message error";return;}btn.disabled=true;btn.textContent="Saving…";m.textContent="Setting temporary password securely…";try{const token=await currentUser.getIdToken(true);let res;try{res=await fetch("/api/set-client-temporary-password",{method:"POST",headers:{"Content-Type":"application/json","Authorization":`Bearer ${token}`},body:JSON.stringify({requestId:request.id,temporaryPassword:a})});}catch(fetchErr){throw new Error("Temporary password service is not configured on this site yet. Please complete the one-time Cloudflare recovery setup, then try again.");}const data=await res.json().catch(()=>({}));if(!res.ok||data.error)throw new Error(data.error||"Unable to set the temporary password.");close();closeModal();await loadData();render();notify("Recovery approved. Temporary password has been set.");}catch(e){console.error("[PISO WIFI RECOVERY]",e);m.textContent=e?.message||"Unable to set the temporary password.";m.className="recovery-temp-message error";btn.disabled=false;btn.textContent="Approve & Set Password";}};
-   wrap.querySelector("#recoveryTempPassword").focus();
- });
- if(status==="pending")setTimeout(()=>{const actions=document.querySelector("#modalRoot .modal-actions");if(!actions)return;const reject=document.createElement("button");reject.className="danger-outline-btn";reject.textContent="Reject Request";reject.onclick=async()=>{try{await updateDoc(doc(db,"passwordResetRequests",request.id),{status:"rejected",adminRead:true,reviewedAt:serverTimestamp(),reviewedBy:currentUser?.email||"Admin"});closeModal();await loadData();render();notify("Recovery request rejected.");}catch(e){notify(e?.message||"Unable to reject recovery request.","error");}};actions.insertBefore(reject,actions.firstChild);},0);
+  if(!request)return;
+  const status=String(request.status||"pending");
+  const statusText=status==="pending"?"Pending Review":status==="approved"?"Approved — Reset Email Sent":"Rejected";
+  const html=`<div class="recovery-review"><div class="recovery-review-status ${esc(status)}">${esc(statusText)}</div><div class="recovery-review-grid"><div><small>Customer</small><strong>${esc(request.customerName||request.clientCode||"Customer")}</strong></div><div><small>Client ID</small><strong>${esc(request.clientCode||"—")}</strong></div><div><small>Registered Gmail</small><strong>${esc(request.email||"—")}</strong></div><div><small>Unit</small><strong>${esc(request.unitCode||"—")}</strong></div><div><small>Requested</small><strong>${dateTimeLabel(request.createdAt)}</strong></div></div><div class="recovery-review-note">${status==="pending"?"Approve this request to send a secure password-reset email to the customer's registered Gmail. The customer will create their own new password; Admin will never see it.":status==="approved"?"The secure password-reset email was sent to the registered Gmail. The customer must use the link to create a new private password.":"This recovery request was rejected."}</div></div>`;
+  openModal("Account Recovery Request",html,status==="pending"?"Approve & Send Reset Email":"Close",async()=>{
+    if(status!=="pending"){closeModal();return;}
+    const btn=document.querySelector("#modalRoot .modal-actions .primary-btn");
+    if(btn){btn.disabled=true;btn.textContent="Sending…";}
+    try{
+      const email=String(request.email||"").trim().toLowerCase();
+      if(!email) throw new Error("No registered Gmail is attached to this recovery request.");
+      await sendPasswordResetEmail(auth,email);
+      await updateDoc(doc(db,"passwordResetRequests",request.id),{status:"approved",adminRead:true,reviewedAt:serverTimestamp(),reviewedBy:currentUser?.email||"Admin",resetEmailSentAt:serverTimestamp()});
+      closeModal(); await loadData(); render();
+      notify("Recovery approved. Password reset email sent to the registered Gmail.");
+    }catch(e){
+      console.error("[PISO WIFI RECOVERY EMAIL]",e);
+      notify(e?.message||"Unable to send the password reset email.","error");
+      if(btn){btn.disabled=false;btn.textContent="Approve & Send Reset Email";}
+    }
+  });
+  if(status==="pending")setTimeout(()=>{const actions=document.querySelector("#modalRoot .modal-actions");if(!actions)return;const reject=document.createElement("button");reject.className="danger-outline-btn";reject.textContent="Reject Request";reject.onclick=async()=>{try{await updateDoc(doc(db,"passwordResetRequests",request.id),{status:"rejected",adminRead:true,reviewedAt:serverTimestamp(),reviewedBy:currentUser?.email||"Admin"});closeModal();await loadData();render();notify("Recovery request rejected.");}catch(e){notify(e?.message||"Unable to reject recovery request.","error");}};actions.insertBefore(reject,actions.firstChild);},0);
 }
 
 function renderActivity(){
@@ -626,7 +630,7 @@ function openUnitModal(id=null){
         await logActivity("Clients",`Edited ${unitCode} — ${name}`,id);
         await addNotification("client","Client profile updated.",`${name} (${clientCode}) was updated.`,id);
       }else{
-        const authEmail=clientAuthEmailFromUsername(username);
+        const authEmail=email;
         const temporaryPassword=clientCode;
         let cred;
         try{ cred=await createUserWithEmailAndPassword(clientProvisionerAuth,authEmail,temporaryPassword); }
