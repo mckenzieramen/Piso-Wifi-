@@ -44,7 +44,7 @@ cd /d "%~dp0"
 
 echo.
 echo STEP 3/4 - Deploying BOTH password-recovery functions
-call npx --yes firebase-tools@latest deploy --only functions:sendCustomPasswordReset,functions:setClientTemporaryPassword --project piso-wifi-f2b5c
+call npx --yes firebase-tools@latest deploy --only functions:sendCustomPasswordReset,functions:sendCustomPasswordResetHttp,functions:setClientTemporaryPassword --project piso-wifi-f2b5c
 if errorlevel 1 goto :error
 
 echo.

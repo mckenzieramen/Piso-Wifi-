@@ -1,4 +1,4 @@
-import { auth, db } from "./firebase.js";
+import { auth, db, functions } from "./firebase.js";
 import {
   signInWithEmailAndPassword,
   onAuthStateChanged,
@@ -7,6 +7,7 @@ import {
   browserSessionPersistence
 } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-auth.js";
 import { doc, getDoc, addDoc, collection, serverTimestamp } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-firestore.js";
+import { httpsCallable } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-functions.js";
 
 const form = document.querySelector("#clientLoginForm");
 const msg = document.querySelector("#clientLoginMessage");

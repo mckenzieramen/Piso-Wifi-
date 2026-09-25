@@ -1,4 +1,4 @@
-const {onRequest}=require("firebase-functions/v2/https");
+const {onRequest,onCall,HttpsError}=require("firebase-functions/v2/https");
 const admin=require("firebase-admin");
 
 admin.initializeApp();
@@ -38,17 +38,15 @@ async function findCustomerByClientCode(code){
   return null;
 }
 
-async function sendCustomPasswordReset(req,res){
-  if(req.method!=="POST")return json(res,{error:"Method not allowed."},405);
-
+async function sendCustomPasswordResetCallable(request){
+  const body=request.data||{};
   try{
-    const body=req.body||{};
     const requestId=String(body.requestId||"").trim();
     const suppliedClientCode=String(body.clientCode||"").trim().toUpperCase();
     const suppliedEmail=normalizeEmail(body.email);
 
     if(!/^CID-\d{3,}$/.test(suppliedClientCode)||!suppliedEmail){
-      return json(res,{error:"Please enter a valid Client ID and registered Gmail."},400);
+      throw new HttpsError("invalid-argument", "Please enter a valid Client ID and registered Gmail.");
     }
 
     // The customer portal no longer writes directly to passwordResetRequests.
@@ -56,30 +54,30 @@ async function sendCustomPasswordReset(req,res){
     // from exposing a generic "Missing or insufficient permissions" message.
     const customer=await findCustomerByClientCode(suppliedClientCode);
     if(!customer){
-      return json(res,{error:`Client ID ${suppliedClientCode} was not found. Please check the Client ID and try again.`},404);
+      throw new HttpsError("not-found", `Client ID ${suppliedClientCode} was not found. Please check the Client ID and try again.`);
     }
 
     const unit=customer.data||{};
     if(unit.active===false){
-      return json(res,{error:`Client ID ${suppliedClientCode} is inactive. Please contact PISO WIFI Admin.`},403);
+      throw new HttpsError("permission-denied", `Client ID ${suppliedClientCode} is inactive. Please contact PISO WIFI Admin.`);
     }
 
     const registeredEmail=normalizeEmail(unit.email);
     if(!registeredEmail){
-      return json(res,{error:`Client ID ${suppliedClientCode} does not have a registered Gmail address.`},409);
+      throw new HttpsError("failed-precondition", `Client ID ${suppliedClientCode} does not have a registered Gmail address.`);
     }
     if(registeredEmail!==suppliedEmail){
-      return json(res,{error:`The registered Gmail does not match ${suppliedClientCode}. Please use the Gmail registered for this Client ID.`},403);
+      throw new HttpsError("permission-denied", `The registered Gmail does not match ${suppliedClientCode}. Please use the Gmail registered for this Client ID.`);
     }
 
     const authUserId=String(unit.authUserId||"").trim();
     if(!authUserId){
-      return json(res,{error:`${suppliedClientCode} is not linked to a Firebase Authentication account.`},400);
+      throw new HttpsError("invalid-argument", `${suppliedClientCode} is not linked to a Firebase Authentication account.`);
     }
 
     const authUser=await admin.auth().getUser(authUserId);
     if(normalizeEmail(authUser.email)!==registeredEmail){
-      return json(res,{error:`The Firebase Authentication email does not match the registered Gmail for ${suppliedClientCode}.`},409);
+      throw new HttpsError("failed-precondition", `The Firebase Authentication email does not match the registered Gmail for ${suppliedClientCode}.`);
     }
 
     // Reuse the request only when the caller supplied an existing request ID.
@@ -91,8 +89,8 @@ async function sendCustomPasswordReset(req,res){
       const existing=await requestRef.get();
       if(existing.exists){
         const recovery=existing.data()||{};
-        if(recovery.status!=="pending")return json(res,{error:"This recovery request is no longer available."},409);
-        if(recovery.emailSent===true)return json(res,{ok:true,alreadySent:true});
+        if(recovery.status!=="pending")throw new HttpsError("failed-precondition", "This recovery request is no longer available.");
+        if(recovery.emailSent===true)return {ok:true,alreadySent:true};
       }
     }
     if(!requestRef)requestRef=db.collection("passwordResetRequests").doc();
@@ -147,13 +145,27 @@ async function sendCustomPasswordReset(req,res){
       adminRead:false
     });
 
-    return json(res,{ok:true,emailSent:true});
+    return {ok:true,emailSent:true};
   }catch(err){
     console.error("sendCustomPasswordReset",err);
-    return json(res,{error:err?.message||"Unable to send the password-reset email."},500);
+    if(err instanceof HttpsError) throw err;
+    throw new HttpsError("internal", err?.message||"Unable to send the password-reset email.");
   }
 }
-exports.sendCustomPasswordReset=onRequest({region:"us-central1",cors:true},sendCustomPasswordReset);
+exports.sendCustomPasswordReset=onCall({region:"us-central1"},sendCustomPasswordResetCallable);
+
+async function sendCustomPasswordResetHttp(req,res){
+  if(req.method!=="POST")return json(res,{error:"Method not allowed."},405);
+  try{
+    const result=await sendCustomPasswordResetCallable({data:req.body||{}});
+    return json(res,result,200);
+  }catch(err){
+    console.error("sendCustomPasswordResetHttp",err);
+    const status=Number(err?.httpErrorCode?.status||500);
+    return json(res,{error:err?.message||"Unable to send the password-reset email.",errorCode:err?.code||"internal"},status);
+  }
+}
+exports.sendCustomPasswordResetHttp=onRequest({region:"us-central1",cors:true},sendCustomPasswordResetHttp);
 
 exports.setClientTemporaryPassword=onRequest({region:"us-central1",cors:true},async(req,res)=>{
   if(req.method!=="POST") return res.status(405).json({error:"Method not allowed."});

@@ -42,7 +42,7 @@ if errorlevel 1 goto :error
 
 echo.
 echo STEP 2/3 - Deploying password-reset and recovery functions
-call npx --yes firebase-tools@latest deploy --only functions:sendCustomPasswordReset,functions:setClientTemporaryPassword --project piso-wifi-f2b5c
+call npx --yes firebase-tools@latest deploy --only functions:sendCustomPasswordReset,functions:sendCustomPasswordResetHttp,functions:setClientTemporaryPassword --project piso-wifi-f2b5c
 if errorlevel 1 goto :error
 
 echo.

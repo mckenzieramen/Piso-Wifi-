@@ -19,7 +19,7 @@ The custom password-reset email is a server-side flow. GitHub Pages/Cloudflare a
 
 ## Final flow
 
-Customer → Firebase `sendCustomPasswordReset` → Firebase Admin generates one-time reset link → Google Apps Script `MailApp` sends the branded PISO WIFI HTML email → `reset-password.html`.
+Customer → Firebase callable `sendCustomPasswordReset` → Firebase Admin generates one-time reset link → Google Apps Script `MailApp` sends the branded PISO WIFI HTML email → `reset-password.html`.
 
 ## Important
 

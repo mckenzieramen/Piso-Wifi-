@@ -1,4 +1,4 @@
-import { auth, db } from "./firebase.js";
+import { auth, db, functions } from "./firebase.js";
 import {
   signInWithEmailAndPassword,
   onAuthStateChanged,
@@ -8,13 +8,14 @@ import {
   signInWithCustomToken
 } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-auth.js";
 import { doc, getDoc, addDoc, collection, serverTimestamp } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-firestore.js";
+import { httpsCallable } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-functions.js";
 
 const form = document.querySelector("#clientLoginForm");
 const msg = document.querySelector("#clientLoginMessage");
 const submit = document.querySelector("#clientLoginButton");
 const remember = document.querySelector("#clientRememberMe");
 const CLIENT_REMEMBER_KEY = "pisoWifi.rememberedUsername";
-const CUSTOM_PASSWORD_RESET_FUNCTION = "https://us-central1-piso-wifi-f2b5c.cloudfunctions.net/sendCustomPasswordReset";
+const sendCustomPasswordReset = httpsCallable(functions, "sendCustomPasswordReset");
 
 function message(text, type = "") {
   msg.textContent = text;
@@ -227,19 +228,14 @@ async function submitResetRequest(e){
   msgEl.className="client-login-message";
 
   try{
-    // Validation, Firebase reset-link generation, and the custom PISO WIFI HTML email
-    // are handled server-side by the Firebase HTTPS function. We call the function
-    // directly so the customer flow does not depend on a Cloudflare Pages Function
-    // route being deployed.
-    const response=await fetch(CUSTOM_PASSWORD_RESET_FUNCTION,{
-      method:"POST",
-      headers:{"content-type":"application/json"},
-      body:JSON.stringify({clientCode:clientId,email})
-    });
-    const result=await response.json().catch(()=>({}));
-    if(!response.ok||result.ok!==true){
-      const error=new Error(result.error||`Password reset request failed (HTTP ${response.status}).`);
-      error.status=response.status;
+    // Use Firebase's callable protocol. This avoids browser CORS/preflight failures
+    // that can occur when fetch() calls a regional HTTPS function directly.
+    // The server still performs ALL identity checks, generates the one-time Firebase
+    // reset link, and sends the existing custom PISO WIFI HTML email via Apps Script.
+    const callableResult = await sendCustomPasswordReset({clientCode:clientId,email});
+    const result = callableResult?.data || {};
+    if(result.ok!==true){
+      const error=new Error(result.error||"Password reset request was not completed.");
       error.code=result.errorCode||result.code||"(none)";
       throw error;
     }
@@ -264,7 +260,7 @@ async function submitResetRequest(e){
       `Client ID entered: ${clientId}`,
       `Registered Gmail entered: ${email}`,
       `Operation: sendCustomPasswordReset`,
-      `HTTP status: ${err?.status || "(unknown)"}`,
+      `HTTP status: ${err?.status || "(callable)"}`,
       `Error code: ${err?.code || "(none)"}`,
       `Error message: ${detail}`
     ].join("\n");
@@ -272,7 +268,9 @@ async function submitResetRequest(e){
     window.pisoDebug?.capture(detail,{
       type:"PASSWORD RESET ERROR",
       source:"client-login.js → sendCustomPasswordReset",
-      operation:"POST Firebase sendCustomPasswordReset",
+      operation:"Firebase callable sendCustomPasswordReset",
+      status:err?.status||"",
+      code:err?.code||"",
       context:debugDetails,
       stack:err?.stack||""
     });

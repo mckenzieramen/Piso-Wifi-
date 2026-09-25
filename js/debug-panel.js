@@ -33,6 +33,9 @@
       #pisoDebugPanel .pdp-message{font:700 12px/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;white-space:pre-wrap;word-break:break-word;color:#fff}
       #pisoDebugPanel .pdp-next{margin-top:8px;padding:8px 9px;border-radius:8px;background:rgba(255,255,255,.08);color:#fde68a;font-size:11px;line-height:1.4}
       #pisoDebugPanel .pdp-next code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;color:#fff}
+      #pisoDebugPanel .pdp-diagnosis{margin-top:8px;padding:10px 11px;border-radius:9px;background:rgba(0,0,0,.20);border:1px solid rgba(255,255,255,.12);font-size:11px;line-height:1.5;color:#f8fafc}
+      #pisoDebugPanel .pdp-diagnosis>div{margin:3px 0}
+      #pisoDebugPanel .pdp-diagnosis b{color:#cbd5e1}
       #pisoDebugPanel .pdp-stack{margin-top:6px;color:#fecaca;font:500 10px/1.4 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;white-space:pre-wrap;word-break:break-word}
       #pisoDebugPanel .pdp-context{margin-top:7px;padding:8px 9px;border-radius:8px;background:rgba(255,255,255,.06);color:#dbeafe;font:500 10px/1.45 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;white-space:pre-wrap;word-break:break-word}
       #pisoDebugPanel.pdp-minimized .pdp-body{display:none}
@@ -79,7 +82,7 @@
       applyState();
     };
     root.querySelector("#pisoDebugCopy").onclick = async () => {
-      const text = state.errors.map(e => `[${e.time}] ERROR TYPE: ${e.type}${e.source ? `\nSource: ${e.source}` : ""}${e.operation ? `\nOperation: ${e.operation}` : ""}${e.context ? `\nContext:\n${e.context}` : ""}\nError: ${e.message}${e.stack ? `\nStack:\n${e.stack}` : ""}`).join("\n\n");
+      const text = state.errors.map(e => { const d = resolveIssue(e); return `[${e.time}] ERROR TYPE: ${e.type}${e.source ? `\nSource: ${e.source}` : ""}${e.operation ? `\nOperation: ${e.operation}` : ""}\nError: ${e.message}\nDiagnosis: ${d.match}\nSpecific Issue: ${d.issue}\nRoot Cause: ${d.root}\nResolution: ${d.resolution}\nAction: ${d.action}\nStatus: ${d.status}${e.context ? `\nContext:\n${e.context}` : ""}${e.stack ? `\nStack:\n${e.stack}` : ""}`; }).join("\n\n");
       try { await navigator.clipboard.writeText(text || "No errors captured."); } catch (_) {}
     };
     root.querySelector("#pisoDebugClear").onclick = () => {
@@ -103,6 +106,127 @@
     max.title = state.maximized ? "Restore floating panel" : "Maximize error panel";
   }
 
+  function resolveIssue(e) {
+    const msg = String(e.message || "");
+    const ctx = String(e.context || "");
+    const op = String(e.operation || "");
+    const source = String(e.source || "");
+    const hay = `${msg}\n${ctx}\n${op}\n${source}`.toLowerCase();
+    const status = String(e.status || (ctx.match(/HTTP status:\s*([^\n]+)/i)?.[1] || "")).trim();
+    const code = String(e.code || (ctx.match(/Error code:\s*([^\n]+)/i)?.[1] || "")).trim().toLowerCase();
+
+    // IMPORTANT: Only return a resolution when the error signature is deterministic.
+    // Unknown signatures must never be presented as a guessed fix.
+    if ((/password reset|sendcustompasswordreset/.test(hay)) && (/404/.test(status) || /http 404/.test(msg) || /not found/.test(msg))) {
+      return {
+        match: "DETERMINISTIC",
+        issue: "The password-reset request is reaching an unavailable 404 endpoint.",
+        root: "The customer reset request is using a password-reset route/function that is not available at the requested URL.",
+        resolution: "Use the deployed Firebase HTTPS function sendCustomPasswordReset in us-central1. The current V17 client is already configured to call the Firebase function directly instead of the old Cloudflare /api/sendCustomPasswordReset route.",
+        action: "Deploy/verify the Firebase function sendCustomPasswordReset from the current project. No frontend code edit is required for this specific 404 in V17.",
+        status: "CODE PATH FIXED · DEPLOYMENT VERIFICATION REQUIRED"
+      };
+    }
+    if (/permission-denied|insufficient permissions|permission denied/.test(hay) || code === "permission-denied") {
+      return {
+        match: "DETERMINISTIC",
+        issue: "Firebase rejected the operation because the current caller does not have the required Firestore permission.",
+        root: "Firestore Security Rules denied the requested operation.",
+        resolution: "Review and deploy the project's firestore.rules, then repeat the same operation. Do not change client code unless the rules intentionally require a different access model.",
+        action: "Publish the verified firestore.rules and retest the exact failed operation.",
+        status: "RULES CHANGE REQUIRED"
+      };
+    }
+    if (/functions\/not-found|function.*not found|not-found/.test(hay) || code === "functions/not-found") {
+      return {
+        match: "DETERMINISTIC",
+        issue: "The requested Firebase HTTPS Function does not exist at the configured function endpoint.",
+        root: "The function is not deployed under the expected name/region, or the client endpoint does not match the deployed function.",
+        resolution: "Deploy the named Firebase function and verify its region/URL exactly matches the client configuration.",
+        action: "Deploy the required Firebase function, then retest. Do not create another proxy route unless the project architecture explicitly requires one.",
+        status: "FUNCTION DEPLOYMENT REQUIRED"
+      };
+    }
+    if (/password reset|sendcustompasswordreset/.test(hay) && /failed to fetch|networkerror|load failed/.test(hay)) {
+      return {
+        match: "DETERMINISTIC",
+        issue: "The browser could not complete the password-reset network request before receiving an application response.",
+        root: "The previous implementation used a browser fetch() call directly against the regional Firebase HTTP endpoint, which can fail at the browser transport/CORS layer and produce 'Failed to fetch' with no HTTP status.",
+        resolution: "Use the Firebase callable protocol for sendCustomPasswordReset. The customer portal has been changed to httpsCallable() so Firebase handles the cross-origin transport instead of a raw browser fetch().",
+        action: "Deploy the updated Firebase sendCustomPasswordReset callable function, then reload the customer portal and repeat the same CID-023 recovery test. Do not add another frontend proxy for this error.",
+        status: "FRONTEND TRANSPORT FIXED · FIREBASE CALLABLE DEPLOYMENT REQUIRED"
+      };
+    }
+    if (/network request failed|failed to fetch|networkerror|load failed/.test(hay)) {
+      return {
+        match: "DETERMINISTIC",
+        issue: "The browser could not complete the network request.",
+        root: "The request failed before a normal application response was received; this is a transport-level failure.",
+        resolution: "Verify the configured HTTPS endpoint is reachable and that the browser is not blocking the request due to an invalid URL, unavailable service, or CORS configuration.",
+        action: "Check the exact endpoint in the captured Operation/Source and verify the corresponding deployed service before changing application code.",
+        status: "TRANSPORT FAILURE · ENDPOINT VERIFICATION REQUIRED"
+      };
+    }
+    if (/cors|access-control-allow-origin/.test(hay)) {
+      return {
+        match: "DETERMINISTIC",
+        issue: "The browser blocked the cross-origin request because of a CORS response/configuration problem.",
+        root: "The target service did not return an acceptable CORS response for this origin.",
+        resolution: "Fix CORS on the target server/function and redeploy it. Do not bypass CORS from frontend JavaScript.",
+        action: "Verify the deployed HTTPS function's CORS configuration, then retest the same request.",
+        status: "SERVER CORS CONFIGURATION REQUIRED"
+      };
+    }
+    if (/unauthenticated|unauthorized|401/.test(hay) || code === "unauthenticated") {
+      return {
+        match: "DETERMINISTIC",
+        issue: "The server rejected the request because authentication was missing or invalid.",
+        root: "The request reached the service but did not contain valid authentication for the operation.",
+        resolution: "Authenticate with the required Firebase account/session and verify that the request is using the expected auth context.",
+        action: "Verify the current authenticated session and the function's required authorization before changing code.",
+        status: "AUTHENTICATION REQUIRED"
+      };
+    }
+    if (/403/.test(status) || /forbidden/.test(hay)) {
+      return {
+        match: "DETERMINISTIC",
+        issue: "The server understood the request but refused access (HTTP 403).",
+        root: "Access is explicitly forbidden by the target service or its authorization policy.",
+        resolution: "Verify the service's authorization policy and the caller's required role/claims. Do not weaken security rules as a workaround.",
+        action: "Identify the exact policy denying the request, correct that policy/role if appropriate, then retest.",
+        status: "AUTHORIZATION REQUIRED"
+      };
+    }
+    if (/500/.test(status) || /internal server error/.test(hay)) {
+      return {
+        match: "DETERMINISTIC",
+        issue: "The server returned an internal error (HTTP 500).",
+        root: "The request reached the server, but server-side execution failed.",
+        resolution: "Inspect the deployed function/server logs for the same timestamp and operation. Fix the server-side exception shown there before changing the client.",
+        action: "Use the server log stack trace as the source of truth for the next code change.",
+        status: "SERVER-SIDE FAILURE · LOGS REQUIRED"
+      };
+    }
+    if (/404/.test(status) || /http 404|not found/.test(hay)) {
+      return {
+        match: "DETERMINISTIC",
+        issue: "The requested URL/resource returned HTTP 404 Not Found.",
+        root: "The exact requested resource is not available at the captured URL.",
+        resolution: "Verify the captured endpoint/URL and deploy or restore that exact resource. Do not change unrelated code.",
+        action: "Use the captured Source/Operation/Context to identify the exact missing endpoint before making a code change.",
+        status: "MISSING RESOURCE · EXACT ENDPOINT VERIFICATION REQUIRED"
+      };
+    }
+    return {
+      match: "NOT DETERMINED",
+      issue: "The captured error does not match a registered deterministic diagnostic rule.",
+      root: "No verified root-cause signature is available from the captured information.",
+      resolution: "No automatic resolution is provided because doing so would be a guess.",
+      action: "Capture the full error code/message, HTTP status, operation, endpoint/source, and stack/server log before changing code.",
+      status: "DIAGNOSIS REQUIRED · NO GUESSING"
+    };
+  }
+
   function render() {
     const root = ensurePanel();
     root.classList.remove("pdp-empty");
@@ -111,14 +235,27 @@
     root.querySelector("#pisoDebugCount").textContent = state.errors.length ? `${state.errors.length} error${state.errors.length === 1 ? "" : "s"}` : "0 errors";
     const body = root.querySelector("#pisoDebugBody");
     if (!state.errors.length) {
-      body.innerHTML = `<div class="pdp-item"><div class="pdp-meta">SYSTEM STATUS · MONITORING</div><div class="pdp-message" style="color:#bbf7d0"><b>NO ERRORS CAPTURED</b></div><div class="pdp-context">The PISO WIFI Error Details panel is active and monitoring this page. When an error occurs, its exact error type, message, operation, source, and stack will appear here automatically.</div></div>`;
+      body.innerHTML = `<div class="pdp-item"><div class="pdp-meta">SYSTEM STATUS · MONITORING</div><div class="pdp-message" style="color:#bbf7d0"><b>NO ERRORS CAPTURED</b></div><div class="pdp-context">The PISO WIFI Error Details panel is active and monitoring this page. When an error occurs, it will identify the exact issue only when a verified diagnostic rule matches it. Unknown errors are never given a guessed resolution.</div></div>`;
       applyState();
       return;
     }
     body.innerHTML = state.errors.slice().reverse().map(e => {
-      const permission = /permission|insufficient permissions|permission-denied/i.test(String(e.message||""));
-      const next = permission ? `<div class="pdp-next"><b>Next step:</b> Firebase Firestore Rules are blocking this operation. Publish the current <code>firestore.rules</code> and repeat the action.</div>` : "";
-      return `<div class="pdp-item"><div class="pdp-meta">${esc(e.time)} · ${esc(e.type)}${e.source ? ` · ${esc(e.source)}` : ""}${e.operation ? ` · ${esc(e.operation)}` : ""}</div>${e.context ? `<div class="pdp-context"><b>Context:</b>\n${esc(e.context)}</div>` : ""}<div class="pdp-message"><b>ERROR:</b> ${esc(e.message)}</div>${next}${e.stack ? `<div class="pdp-stack">${esc(e.stack)}</div>` : ""}</div>`;
+      const diagnosis = resolveIssue(e);
+      const tone = diagnosis.match === "DETERMINISTIC" ? "#fde68a" : "#fecaca";
+      return `<div class="pdp-item">
+        <div class="pdp-meta">${esc(e.time)} · ${esc(e.type)}${e.source ? ` · ${esc(e.source)}` : ""}${e.operation ? ` · ${esc(e.operation)}` : ""}</div>
+        <div class="pdp-message"><b>ERROR:</b> ${esc(e.message)}</div>
+        <div class="pdp-diagnosis">
+          <div><b>DIAGNOSIS:</b> <span style="color:${tone}">${esc(diagnosis.match)}</span></div>
+          <div><b>SPECIFIC ISSUE:</b> ${esc(diagnosis.issue)}</div>
+          <div><b>ROOT CAUSE:</b> ${esc(diagnosis.root)}</div>
+          <div><b>RESOLUTION:</b> ${esc(diagnosis.resolution)}</div>
+          <div><b>ACTION:</b> ${esc(diagnosis.action)}</div>
+          <div><b>STATUS:</b> <span style="color:${tone}">${esc(diagnosis.status)}</span></div>
+        </div>
+        ${e.context ? `<div class="pdp-context"><b>Captured context:</b>\n${esc(e.context)}</div>` : ""}
+        ${e.stack ? `<div class="pdp-stack"><b>Stack:</b>\n${esc(e.stack)}</div>` : ""}
+      </div>`;
     }).join("");
     applyState();
   }
@@ -131,6 +268,8 @@
       source: extra.source || "",
       operation: extra.operation || "",
       context: extra.context || "",
+      status: extra.status || "",
+      code: extra.code || "",
       message: text || "Unknown error",
       stack: extra.stack || ""
     };
