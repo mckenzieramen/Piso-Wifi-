@@ -183,14 +183,17 @@ async function submitResetRequest(e){
     // Validation and recovery-request creation are handled server-side.
     // This prevents Firestore Security Rules from returning the generic
     // "Missing or insufficient permissions" error when the credentials do not match.
-    const response=await fetch("https://us-central1-piso-wifi-f2b5c.cloudfunctions.net/sendCustomPasswordReset",{
+    const response=await fetch("/api/sendCustomPasswordReset",{
       method:"POST",
       headers:{"content-type":"application/json"},
       body:JSON.stringify({clientCode:clientId,email})
     });
     const result=await response.json().catch(()=>({}));
     if(!response.ok||result.ok!==true){
-      throw new Error(result.error||`Password reset request failed (HTTP ${response.status}).`);
+      const error=new Error(result.error||`Password reset request failed (HTTP ${response.status}).`);
+      error.status=response.status;
+      error.code=result.errorCode||result.code||"(none)";
+      throw error;
     }
 
     const safeEmail=email.replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;", "'":"&#39;"}[c]));

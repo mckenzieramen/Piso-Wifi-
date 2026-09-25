@@ -43,3 +43,7 @@ and the registered Gmail for that client.
 Expected result:
 
 Client Login → Forgot Password → Send Reset Link → PISO WIFI HTML email → Reset My Password → `/reset-password.html` → new password saved.
+
+
+## V14 transport fix
+The customer browser now calls the same-origin Cloudflare Pages endpoint `/api/sendCustomPasswordReset`. That Pages Function securely proxies the request to the Firebase HTTPS function. This prevents browser-side CORS/network failures from masking the actual Firebase response and keeps the Firebase function URL out of the client-side request.
