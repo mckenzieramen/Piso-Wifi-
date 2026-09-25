@@ -8,6 +8,108 @@ const db = admin.firestore();
 // It is not a service-account credential.
 const FIREBASE_WEB_API_KEY = "AIzaSyAfX3sSDkJwX9u9dxEDBhG8RU3iP_k6EdI";
 
+
+
+const APPS_SCRIPT_MAILER_URL="https://script.google.com/macros/s/AKfycbzcBLoOP6LoXwTE8rhUUxd1q68ykDgVj-f4o-TD7YGPYmtXrepvhJ8dbPWdeCqQt9fM/exec";
+const APPS_SCRIPT_MAILER_SECRET="-P4NqUwISia-WpONGB2WipjobxXOC0Jnh9bdnyQMF2zNsOrWo-ERoChulEGfY14D";
+const CLIENT_RESET_PAGE="https://piso-wifi.pages.dev/reset-password.html";
+
+function normalizeEmail(value){ return String(value||"").trim().toLowerCase(); }
+function firstNameFromUnit(unit){
+  return String(unit?.firstName || String(unit?.name || "Customer").trim().split(/\s+/)[0] || "Customer").trim() || "Customer";
+}
+
+async function findCustomerByClientCode(code){
+  const upper=String(code||"").trim().toUpperCase();
+  const q=await db.collection("units").where("clientCode","==",upper).limit(1).get();
+  if(!q.empty) return {ref:q.docs[0].ref,data:q.docs[0].data()};
+  const dir=await db.doc(`customerLoginDirectory/${upper}`).get();
+  if(dir.exists){
+    const d=dir.data()||{};
+    const unitId=String(d.unitDocId||d.unitId||d.clientUnitId||"").trim();
+    if(unitId){
+      const unit=await db.doc(`units/${unitId}`).get();
+      if(unit.exists) return {ref:unit.ref,data:unit.data()};
+    }
+  }
+  return null;
+}
+
+async function sendCustomPasswordResetCallable(request){
+  const body=request.data||{};
+  let stage="input_validation";
+  let clientCode="";
+  try{
+    clientCode=String(body.clientCode||"").trim().toUpperCase();
+    const email=normalizeEmail(body.email);
+    if(!/^CID-\d{3,}$/.test(clientCode) || !email){
+      throw new HttpsError("invalid-argument","Please enter a valid Client ID and registered Gmail.");
+    }
+
+    stage="customer_lookup";
+    const customer=await findCustomerByClientCode(clientCode);
+    if(!customer) throw new HttpsError("not-found",`Client ID ${clientCode} was not found.`);
+
+    stage="customer_validation";
+    const unit=customer.data||{};
+    if(unit.active===false) throw new HttpsError("permission-denied",`Client ID ${clientCode} is inactive. Please contact PISO WIFI Admin.`);
+    const registeredEmail=normalizeEmail(unit.email || unit.authEmail);
+    if(!registeredEmail) throw new HttpsError("failed-precondition",`Client ID ${clientCode} does not have a registered Gmail address.`);
+    if(registeredEmail!==email) throw new HttpsError("permission-denied",`The registered Gmail does not match ${clientCode}. Please use the Gmail registered for this Client ID.`);
+
+    stage="firebase_auth_lookup";
+    const authUserId=String(unit.authUserId||"").trim();
+    if(!authUserId) throw new HttpsError("failed-precondition",`${clientCode} is not linked to a Firebase Authentication account.`);
+    const authUser=await admin.auth().getUser(authUserId);
+    if(normalizeEmail(authUser.email)!==registeredEmail) throw new HttpsError("failed-precondition",`The Firebase Authentication email does not match the registered Gmail for ${clientCode}.`);
+
+    stage="generate_reset_link";
+    const firebaseActionLink=await admin.auth().generatePasswordResetLink(registeredEmail);
+    const parsed=new URL(firebaseActionLink);
+    const oobCode=parsed.searchParams.get("oobCode");
+    const apiKey=parsed.searchParams.get("apiKey");
+    if(!oobCode) throw new Error("Firebase did not return a password-reset action code.");
+
+    stage="build_reset_url";
+    const resetUrl=new URL(CLIENT_RESET_PAGE);
+    resetUrl.searchParams.set("mode","resetPassword");
+    resetUrl.searchParams.set("oobCode",oobCode);
+    if(apiKey) resetUrl.searchParams.set("apiKey",apiKey);
+
+    stage="apps_script_fetch";
+    let response, responseText="", responseData={};
+    try{
+      response=await fetch(APPS_SCRIPT_MAILER_URL,{
+        method:"POST",
+        redirect:"follow",
+        headers:{"content-type":"application/json","accept":"application/json"},
+        body:JSON.stringify({secret:APPS_SCRIPT_MAILER_SECRET,email:registeredEmail,clientId:clientCode,firstName:firstNameFromUnit(unit),resetLink:resetUrl.toString()})
+      });
+      responseText=await response.text();
+      try{responseData=responseText?JSON.parse(responseText):{};}catch{}
+    }catch(error){
+      throw new HttpsError("failed-precondition",`CUSTOM EMAIL SERVICE CONNECTION FAILED [${stage}]: ${error?.message||"Unable to reach the Apps Script mailer."}`,{stage,clientCode});
+    }
+
+    stage="apps_script_response";
+    if(!response.ok) throw new HttpsError("failed-precondition",`CUSTOM EMAIL SERVICE HTTP ERROR ${response.status}: ${responseData.error||responseText.slice(0,300)||"No response body."}`,{stage,httpStatus:response.status,clientCode});
+    if(responseData.ok!==true) throw new HttpsError("failed-precondition",`CUSTOM EMAIL SERVICE REJECTED THE REQUEST: ${responseData.error||responseText.slice(0,300)||"No JSON success response."}`,{stage,clientCode});
+
+    stage="firestore_write";
+    await db.collection("passwordResetRequests").add({
+      clientCode,email:registeredEmail,status:"email_sent",adminRead:false,emailSent:true,emailSentAt:admin.firestore.FieldValue.serverTimestamp(),createdAt:admin.firestore.FieldValue.serverTimestamp(),resetEmailSentTo:registeredEmail,resetEmailStatus:"sent"
+    });
+
+    return {ok:true,emailSent:true};
+  }catch(error){
+    console.error("sendCustomPasswordReset",{stage,clientCode,errorName:error?.name||"Error",errorCode:error?.code||"",errorMessage:error?.message||String(error),errorDetails:error?.details||null,stack:error?.stack||""});
+    if(error instanceof HttpsError && String(error.code||"")!=="internal") return error;
+    throw new HttpsError("internal",`PASSWORD RESET FAILED [${stage}]: ${error?.message||"Unknown server error."}`,{stage,clientCode});
+  }
+}
+
+exports.sendCustomPasswordReset=onCall({region:"us-central1"},sendCustomPasswordResetCallable);
+
 function clean(value) {
   return String(value || "").trim();
 }

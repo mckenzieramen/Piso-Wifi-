@@ -4,14 +4,14 @@ import {
   onAuthStateChanged,
   signOut,
   setPersistence,
-  browserSessionPersistence,
-  sendPasswordResetEmail
+  browserSessionPersistence
 } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-auth.js";
 import { doc, getDoc, addDoc, collection, serverTimestamp } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-firestore.js";
 import { getFunctions, httpsCallable } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-functions.js";
 
 const functions = getFunctions();
 const clientLogin = httpsCallable(functions, "clientLogin");
+const sendCustomPasswordReset = httpsCallable(functions, "sendCustomPasswordReset");
 
 const form = document.querySelector("#clientLoginForm");
 const msg = document.querySelector("#clientLoginMessage");
@@ -213,25 +213,11 @@ async function submitResetRequest(e){
   if(!clientId||!email){msgEl.textContent="Complete all fields.";msgEl.className="client-login-message error";return;}
   btn.disabled=true; btn.textContent="Sending…"; msgEl.textContent="Checking your account…"; msgEl.className="client-login-message";
   try{
-    // Send the secure Firebase Auth reset email first. The Firestore request is an audit/notification record;
-    // a stale Firestore rule must never prevent the actual password-reset email from being sent.
-    const actionCodeSettings={
-      url:`${window.location.origin}/reset-password.html`,
-      handleCodeInApp:true
-    };
-    await sendPasswordResetEmail(auth,email,actionCodeSettings);
-
-    // Best-effort recovery notification record for Admin. The email has already been sent if this write fails.
-    try{
-      await addDoc(collection(db,"passwordResetRequests"),{
-        clientCode:clientId,
-        email,
-        status:"email_sent",
-        adminRead:false,
-        createdAt:serverTimestamp()
-      });
-    }catch(recordErr){
-      console.warn("[PISO WIFI PASSWORD RESET] Email sent, but recovery notification record could not be saved.",recordErr);
+    // The custom Firebase callable generates the Firebase action code server-side
+    // and sends our PISO WIFI HTML email through the Apps Script mailer.
+    const result=await sendCustomPasswordReset({clientCode:clientId,email});
+    if(result?.data?.emailSent!==true){
+      throw new Error("PASSWORD RESET FAILED [email_delivery]: The custom mailer did not confirm delivery.");
     }
 
     const safeEmail=email.replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;", "'":"&#39;"}[c]));
@@ -274,17 +260,30 @@ async function submitResetRequest(e){
     function wrapCard(){ return document.querySelector("#forgotPasswordModal .client-reset-card"); }
   }catch(err){
     console.error("[PISO WIFI PASSWORD RESET]",err);
+    const debugDetails=[
+      `Client ID entered: ${clientId}`,
+      `Registered Gmail entered: ${email}`,
+      `Operation: Firebase callable → sendCustomPasswordReset`,
+      `Error code: ${err?.code||"(none)"}`,
+      `Error message: ${err?.message||String(err)}`,
+      `Error details: ${JSON.stringify(err?.details||{})}`
+    ].join("\n");
+    if(window.pisoDebug?.capture){
+      window.pisoDebug.capture(err?.message||String(err),{
+        type:"PASSWORD RESET ERROR",
+        source:"client-login.js → sendCustomPasswordReset",
+        operation:"Firebase callable sendCustomPasswordReset",
+        context:debugDetails,
+        stack:err?.stack||""
+      });
+    }
     const code=String(err?.code||"");
-    let text="We could not send the reset email. Please verify your Client ID and registered Gmail and try again.";
+    let text=err?.message||"We could not send the reset email. Please try again.";
     if(code.includes("permission-denied")){
       text="The Client ID and registered Gmail do not match our records. Please check both and try again.";
-    }else if(code.includes("user-not-found")){
-      text="We could not send the reset email. Please verify your registered Gmail and try again.";
-    }else if(code.includes("unauthorized-continue-uri")||code.includes("invalid-continue-uri")){
-      text="Password reset is not fully configured for this website yet. Please contact Admin.";
     }
     msgEl.textContent=text;
     msgEl.className="client-login-message error";
     btn.disabled=false; btn.textContent="Send Reset Link";
   }
-}
+}}
