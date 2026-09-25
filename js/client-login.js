@@ -231,17 +231,29 @@ async function submitResetRequest(e){
         <div class="reset-auto-close" aria-live="polite">This message will close automatically in <b>5 seconds</b>.</div>`;
       let remaining=5;
       const autoCloseEl=card.querySelector(".reset-auto-close");
-      const successTimer=setInterval(()=>{
-        remaining-=1;
-        if(!autoCloseEl) return;
-        if(remaining<=0){
-          clearInterval(successTimer);
-          wrap.remove();
-          return;
-        }
-        autoCloseEl.innerHTML=`This message will close automatically in <b>${remaining} second${remaining===1?"":"s"}</b>.`;
-      },1000);
-      card.querySelectorAll("[data-close-reset]").forEach(el=>el.onclick=()=>{ clearInterval(successTimer); wrap.remove(); });
+      let successTimer=null;
+      const closeAndReturnToLogin=()=>{
+        if(successTimer) clearTimeout(successTimer);
+        wrap.remove();
+        // Always return to the official Customer Login route.
+        if(window.location.pathname !== "/") window.location.replace("/");
+      };
+      card.querySelectorAll("[data-close-reset]").forEach(el=>{
+        el.addEventListener("click", closeAndReturnToLogin);
+      });
+      // Reliable one-shot auto-close. This avoids interval/timer drift and uses the same
+      // navigation path as the X and Close & Return to Login controls.
+      successTimer=setTimeout(closeAndReturnToLogin,5000);
+      if(autoCloseEl){
+        const countdownTimer=setInterval(()=>{
+          remaining-=1;
+          if(remaining<=0){
+            clearInterval(countdownTimer);
+            return;
+          }
+          autoCloseEl.innerHTML=`This message will close automatically in <b>${remaining} second${remaining===1?"":"s"}</b>.`;
+        },1000);
+      }
     }
     function wrapCard(){ return document.querySelector("#forgotPasswordModal .client-reset-card"); }
   }catch(err){
