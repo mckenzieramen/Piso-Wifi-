@@ -227,8 +227,21 @@ async function submitResetRequest(e){
         <h2>Check your email</h2>
         <p class="reset-intro">We sent a secure password-reset link to <b>${safeEmail}</b>.</p>
         <div class="client-reset-note success-note">Open the email and click <b>Reset My Password</b> to create your new private password. If you don't see it shortly, check your Spam or Promotions folder.</div>
-        <div class="client-reset-actions"><button class="client-secondary" type="button" data-close-reset>Close</button></div>`;
-      card.querySelectorAll("[data-close-reset]").forEach(el=>el.onclick=()=>wrap.remove());
+        <div class="client-reset-actions"><button class="client-secondary" type="button" data-close-reset>Close</button></div>
+        <div class="reset-auto-close" aria-live="polite">This message will close automatically in <b>5 seconds</b>.</div>`;
+      let remaining=5;
+      const autoCloseEl=card.querySelector(".reset-auto-close");
+      const successTimer=setInterval(()=>{
+        remaining-=1;
+        if(!autoCloseEl) return;
+        if(remaining<=0){
+          clearInterval(successTimer);
+          wrap.remove();
+          return;
+        }
+        autoCloseEl.innerHTML=`This message will close automatically in <b>${remaining} second${remaining===1?"":"s"}</b>.`;
+      },1000);
+      card.querySelectorAll("[data-close-reset]").forEach(el=>el.onclick=()=>{ clearInterval(successTimer); wrap.remove(); });
     }
     function wrapCard(){ return document.querySelector("#forgotPasswordModal .client-reset-card"); }
   }catch(err){
