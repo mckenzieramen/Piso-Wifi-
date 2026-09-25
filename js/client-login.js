@@ -14,33 +14,7 @@ const msg = document.querySelector("#clientLoginMessage");
 const submit = document.querySelector("#clientLoginButton");
 const remember = document.querySelector("#clientRememberMe");
 const CLIENT_REMEMBER_KEY = "pisoWifi.rememberedUsername";
-// Cloudflare Pages may not have the /api proxy deployed on every build.
-// Keep the Firebase callable HTTP endpoint as the direct fallback so password
-// recovery is not blocked by a missing Pages Function.
-const PASSWORD_RESET_PROXY_URL = "/api/sendCustomPasswordReset";
-const PASSWORD_RESET_FIREBASE_URL = "https://us-central1-piso-wifi-f2b5c.cloudfunctions.net/sendCustomPasswordReset";
-
-async function requestCustomPasswordReset(payload) {
-  const requestBody = JSON.stringify(payload);
-
-  // Primary route: same-origin Cloudflare Pages Function.
-  const proxyResponse = await fetch(PASSWORD_RESET_PROXY_URL, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: requestBody
-  });
-
-  // A live site can temporarily return 404 when the Pages Function has not
-  // been included in that deployment. Fall back directly to the Firebase
-  // HTTPS function, which already enables CORS server-side.
-  if (proxyResponse.status !== 404) return proxyResponse;
-
-  return fetch(PASSWORD_RESET_FIREBASE_URL, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: requestBody
-  });
-}
+const CUSTOM_PASSWORD_RESET_FUNCTION = "https://us-central1-piso-wifi-f2b5c.cloudfunctions.net/sendCustomPasswordReset";
 
 function message(text, type = "") {
   msg.textContent = text;
@@ -253,10 +227,15 @@ async function submitResetRequest(e){
   msgEl.className="client-login-message";
 
   try{
-    // Validation and recovery-request creation are handled server-side.
-    // This prevents Firestore Security Rules from returning the generic
-    // "Missing or insufficient permissions" error when the credentials do not match.
-    const response=await requestCustomPasswordReset({clientCode:clientId,email});
+    // Validation, Firebase reset-link generation, and the custom PISO WIFI HTML email
+    // are handled server-side by the Firebase HTTPS function. We call the function
+    // directly so the customer flow does not depend on a Cloudflare Pages Function
+    // route being deployed.
+    const response=await fetch(CUSTOM_PASSWORD_RESET_FUNCTION,{
+      method:"POST",
+      headers:{"content-type":"application/json"},
+      body:JSON.stringify({clientCode:clientId,email})
+    });
     const result=await response.json().catch(()=>({}));
     if(!response.ok||result.ok!==true){
       const error=new Error(result.error||`Password reset request failed (HTTP ${response.status}).`);
@@ -293,7 +272,7 @@ async function submitResetRequest(e){
     window.pisoDebug?.capture(detail,{
       type:"PASSWORD RESET ERROR",
       source:"client-login.js → sendCustomPasswordReset",
-      operation:"POST /sendCustomPasswordReset",
+      operation:"POST Firebase sendCustomPasswordReset",
       context:debugDetails,
       stack:err?.stack||""
     });

@@ -1,26 +1,26 @@
-# PISO WIFI — OUTSIDE-GITHUB PASSWORD RESET DEPLOYMENT
+# PISO WIFI — PASSWORD RESET OUTSIDE-GITHUB SETUP
 
-The GitHub/Cloudflare website alone is not enough for the custom password-reset email. The live site calls `/api/sendCustomPasswordReset`, which forwards to the Firebase Cloud Function `sendCustomPasswordReset`.
+The custom password-reset email is a server-side flow. GitHub Pages/Cloudflare alone cannot generate the Firebase Admin reset link or safely call the Apps Script mailer.
 
-The previous deployment script only deployed `setClientTemporaryPassword`. That left `sendCustomPasswordReset` potentially undeployed and produced the browser `TypeError: Failed to fetch`.
+## Required outside GitHub
 
-## One-time backend deployment
+1. **Firebase Cloud Functions**
+   Deploy both:
+   - `sendCustomPasswordReset`
+   - `setClientTemporaryPassword`
 
-Run:
+   Use `DEPLOY-PASSWORD-RESET-AND-RECOVERY.bat`.
 
-`DEPLOY-PASSWORD-RESET-AND-RECOVERY.bat`
+2. **Google Apps Script**
+   The Web App used by the Firebase function must contain the supplied custom HTML mailer (`Piso_WiFi_Backend_CUSTOM_RESET_FULL.gs`) and remain deployed as a Web App.
 
-The script logs into Firebase, installs the function dependencies, and deploys both:
+3. **Cloudflare Pages**
+   No password-reset proxy deployment is required for this version. The browser calls the Firebase HTTPS function directly.
 
-- `sendCustomPasswordReset`
-- `setClientTemporaryPassword`
+## Final flow
 
-Firebase project: `piso-wifi-f2b5c`
+Customer → Firebase `sendCustomPasswordReset` → Firebase Admin generates one-time reset link → Google Apps Script `MailApp` sends the branded PISO WIFI HTML email → `reset-password.html`.
 
-The Cloudflare Pages Function remains responsible for forwarding `/api/sendCustomPasswordReset` to Firebase. The Google Apps Script Web App remains the custom HTML mailer.
+## Important
 
-## Expected live flow
-
-Client Login → Forgot Password → Cloudflare `/api/sendCustomPasswordReset` → Firebase `sendCustomPasswordReset` → Firebase Admin SDK generates the one-time reset link → Google Apps Script sends the PISO WIFI HTML email → `reset-password.html`.
-
-Do not put the Firebase service-account JSON into GitHub or frontend files.
+Do not put the Apps Script mailer secret or any service-account JSON in the client-side website.

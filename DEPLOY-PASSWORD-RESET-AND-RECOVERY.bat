@@ -52,8 +52,8 @@ echo STEP 4/4 - Backend deployment finished
 
 echo.
 echo IMPORTANT:
-echo The website calls Cloudflare Pages /api/sendCustomPasswordReset,
-echo which forwards to the Firebase sendCustomPasswordReset function.
+echo The customer website now calls the Firebase sendCustomPasswordReset HTTPS function directly.
+echo Cloudflare Pages no longer needs the password-reset proxy route.
 echo Both functions are now deployed by this script.
 echo.
 echo Next test:

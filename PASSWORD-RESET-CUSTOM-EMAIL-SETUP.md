@@ -46,4 +46,4 @@ Client Login → Forgot Password → Send Reset Link → PISO WIFI HTML email �
 
 
 ## V14 transport fix
-The customer browser now calls the same-origin Cloudflare Pages endpoint `/api/sendCustomPasswordReset`. That Pages Function securely proxies the request to the Firebase HTTPS function. This prevents browser-side CORS/network failures from masking the actual Firebase response and keeps the Firebase function URL out of the client-side request.
+The customer browser now calls the Firebase HTTPS function `sendCustomPasswordReset` directly. The Cloudflare Pages proxy is no longer required for the customer password-reset request.
