@@ -173,48 +173,44 @@ async function submitResetRequest(e){
   const email=document.querySelector("#resetEmail").value.trim().toLowerCase();
   const msgEl=document.querySelector("#resetMessage");
   const btn=document.querySelector("#resetSubmit");
-  if(!clientId||!email){msgEl.textContent="Complete all fields.";msgEl.className="client-login-message error";return;}
+  if(!clientId||!email){msgEl.textContent="Please enter your Client ID and registered Gmail.";msgEl.className="client-login-message error";return;}
   btn.disabled=true;
   btn.textContent="Sending…";
-  msgEl.textContent="Verifying your account and preparing your secure reset link…";
+  msgEl.textContent="Verifying your Client ID and registered Gmail…";
   msgEl.className="client-login-message";
 
   try{
-    // Create the recovery request first. Firestore rules verify the supplied
-    // Client ID and registered Gmail against the Admin-created directory.
-    const requestRef=await addDoc(collection(db,"passwordResetRequests"),{
-      clientCode:clientId,
-      email,
-      status:"pending",
-      adminRead:false,
-      emailSent:false,
-      createdAt:serverTimestamp()
-    });
-
-    // The Firebase Admin SDK generates the one-time password-reset action link
-    // server-side. The Cloud Function then asks the Google Apps Script mailer
-    // to send the branded PISO WIFI HTML email. No password is exposed here.
+    // Validation and recovery-request creation are handled server-side.
+    // This prevents Firestore Security Rules from returning the generic
+    // "Missing or insufficient permissions" error when the credentials do not match.
     const response=await fetch("https://us-central1-piso-wifi-f2b5c.cloudfunctions.net/sendCustomPasswordReset",{
       method:"POST",
       headers:{"content-type":"application/json"},
-      body:JSON.stringify({
-        requestId:requestRef.id,
-        clientCode:clientId,
-        email
-      })
+      body:JSON.stringify({clientCode:clientId,email})
     });
     const result=await response.json().catch(()=>({}));
     if(!response.ok||result.ok!==true){
-      throw new Error(result.error||"Unable to send the password-reset email.");
+      throw new Error(result.error||`Password reset request failed (HTTP ${response.status}).`);
     }
 
-    msgEl.textContent="Password-reset email sent. Please check your registered Gmail and click Reset My Password.";
-    msgEl.className="client-login-message success";
+    const safeEmail=email.replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;", "'":"&#39;"}[c]));
+    const card=wrapCard();
+    if(card){
+      card.innerHTML=`<button type="button" class="client-reset-close" data-close-reset aria-label="Close confirmation">×</button>
+        <div class="client-reset-icon success" aria-hidden="true">✓</div>
+        <span class="eyebrow">EMAIL SENT</span>
+        <h2>Check your email</h2>
+        <p class="reset-intro">We sent a secure password-reset link to <b>${safeEmail}</b>.</p>
+        <div class="client-reset-note success-note">Open the email and click <b>Reset My Password</b> to create your new private password. If you don't see it shortly, check your Spam or Promotions folder.</div>
+        <div class="client-reset-actions"><button class="client-primary" type="button" data-close-reset>Close &amp; Return to Login</button></div>`;
+      card.querySelectorAll("[data-close-reset]").forEach(el=>el.onclick=()=>document.querySelector("#forgotPasswordModal")?.remove());
+    }
+    btn.disabled=true;
     btn.textContent="Reset Email Sent";
-    setTimeout(()=>document.querySelector("#forgotPasswordModal")?.remove(),3200);
   }catch(err){
     console.error("[PISO WIFI PASSWORD RESET]",err);
-    msgEl.textContent=err?.message||"We could not send the reset email. Check your Client ID and registered Gmail, then try again.";
+    const detail=String(err?.message||"Unable to send the password-reset email.").trim();
+    msgEl.textContent=detail;
     msgEl.className="client-login-message error";
     btn.disabled=false;
     btn.textContent="Send Reset Link";

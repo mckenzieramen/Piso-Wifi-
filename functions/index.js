@@ -47,41 +47,55 @@ async function sendCustomPasswordReset(req,res){
     const suppliedClientCode=String(body.clientCode||"").trim().toUpperCase();
     const suppliedEmail=normalizeEmail(body.email);
 
-    if(!requestId||!/^CID-\d{3,}$/.test(suppliedClientCode)||!suppliedEmail){
-      return json(res,{error:"Client ID, registered Gmail and recovery request are required."},400);
+    if(!/^CID-\d{3,}$/.test(suppliedClientCode)||!suppliedEmail){
+      return json(res,{error:"Please enter a valid Client ID and registered Gmail."},400);
     }
 
-    const requestRef=db.doc(`passwordResetRequests/${requestId}`);
-    const requestSnap=await requestRef.get();
-    if(!requestSnap.exists)return json(res,{error:"Recovery request not found."},404);
-
-    const recovery=requestSnap.data()||{};
-    const requestClientCode=String(recovery.clientCode||"").trim().toUpperCase();
-    const requestEmail=normalizeEmail(recovery.email);
-
-    if(recovery.status!=="pending")return json(res,{error:"This recovery request is no longer available."},409);
-    if(recovery.emailSent===true)return json(res,{ok:true,alreadySent:true});
-    if(requestClientCode!==suppliedClientCode||requestEmail!==suppliedEmail){
-      return json(res,{error:"The recovery details do not match the submitted request."},403);
+    // The customer portal no longer writes directly to passwordResetRequests.
+    // This keeps validation server-side and prevents Firestore Security Rules
+    // from exposing a generic "Missing or insufficient permissions" message.
+    const customer=await findCustomerByClientCode(suppliedClientCode);
+    if(!customer){
+      return json(res,{error:`Client ID ${suppliedClientCode} was not found. Please check the Client ID and try again.`},404);
     }
-
-    const customer=await findCustomerByClientCode(requestClientCode);
-    if(!customer)return json(res,{error:"Customer account was not found for this Client ID."},404);
 
     const unit=customer.data||{};
-    if(unit.active===false)return json(res,{error:"This Customer Account is inactive."},403);
+    if(unit.active===false){
+      return json(res,{error:`Client ID ${suppliedClientCode} is inactive. Please contact PISO WIFI Admin.`},403);
+    }
+
     const registeredEmail=normalizeEmail(unit.email);
-    if(!registeredEmail||registeredEmail!==requestEmail){
-      return json(res,{error:"The Client ID and registered Gmail do not match."},403);
+    if(!registeredEmail){
+      return json(res,{error:`Client ID ${suppliedClientCode} does not have a registered Gmail address.`},409);
+    }
+    if(registeredEmail!==suppliedEmail){
+      return json(res,{error:`The registered Gmail does not match ${suppliedClientCode}. Please use the Gmail registered for this Client ID.`},403);
     }
 
     const authUserId=String(unit.authUserId||"").trim();
-    if(!authUserId)return json(res,{error:"Customer account is not linked to Firebase Authentication."},400);
+    if(!authUserId){
+      return json(res,{error:`${suppliedClientCode} is not linked to a Firebase Authentication account.`},400);
+    }
 
     const authUser=await admin.auth().getUser(authUserId);
     if(normalizeEmail(authUser.email)!==registeredEmail){
-      return json(res,{error:"The Firebase Authentication email does not match the registered Gmail."},409);
+      return json(res,{error:`The Firebase Authentication email does not match the registered Gmail for ${suppliedClientCode}.`},409);
     }
+
+    // Reuse the request only when the caller supplied an existing request ID.
+    // Normally the customer portal lets this function create the request after
+    // the server-side identity checks above have passed.
+    let requestRef=null;
+    if(requestId){
+      requestRef=db.doc(`passwordResetRequests/${requestId}`);
+      const existing=await requestRef.get();
+      if(existing.exists){
+        const recovery=existing.data()||{};
+        if(recovery.status!=="pending")return json(res,{error:"This recovery request is no longer available."},409);
+        if(recovery.emailSent===true)return json(res,{ok:true,alreadySent:true});
+      }
+    }
+    if(!requestRef)requestRef=db.collection("passwordResetRequests").doc();
 
     // Firebase Admin SDK creates the one-time action link without sending
     // Firebase's default email. We then extract the OOB code and point the
@@ -103,7 +117,7 @@ async function sendCustomPasswordReset(req,res){
       body:JSON.stringify({
         secret:APPS_SCRIPT_MAILER_SECRET,
         email:registeredEmail,
-        clientId:requestClientCode,
+        clientId:suppliedClientCode,
         firstName:firstNameFromUnit(unit),
         resetLink:resetUrl.toString()
       })
@@ -115,6 +129,16 @@ async function sendCustomPasswordReset(req,res){
     }
 
     const now=admin.firestore.FieldValue.serverTimestamp();
+    if(!requestId){
+      await requestRef.set({
+        clientCode:suppliedClientCode,
+        email:registeredEmail,
+        status:"pending",
+        adminRead:false,
+        emailSent:false,
+        createdAt:now
+      });
+    }
     await requestRef.update({
       emailSent:true,
       emailSentAt:now,
@@ -129,7 +153,6 @@ async function sendCustomPasswordReset(req,res){
     return json(res,{error:err?.message||"Unable to send the password-reset email."},500);
   }
 }
-
 exports.sendCustomPasswordReset=onRequest({region:"us-central1",cors:true},sendCustomPasswordReset);
 
 exports.setClientTemporaryPassword=onRequest({region:"us-central1",cors:true},async(req,res)=>{

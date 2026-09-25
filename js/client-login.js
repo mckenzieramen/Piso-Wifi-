@@ -219,30 +219,24 @@ async function submitResetRequest(e){
   const email=document.querySelector("#resetEmail").value.trim().toLowerCase();
   const msgEl=document.querySelector("#resetMessage");
   const btn=document.querySelector("#resetSubmit");
-  if(!clientId||!email){msgEl.textContent="Complete all fields.";msgEl.className="client-login-message error";return;}
+  if(!clientId||!email){msgEl.textContent="Please enter your Client ID and registered Gmail.";msgEl.className="client-login-message error";return;}
   btn.disabled=true;
   btn.textContent="Sending…";
-  msgEl.textContent="Verifying your account and preparing your secure reset link…";
+  msgEl.textContent="Verifying your Client ID and registered Gmail…";
   msgEl.className="client-login-message";
 
   try{
-    const requestRef=await addDoc(collection(db,"passwordResetRequests"),{
-      clientCode:clientId,
-      email,
-      status:"pending",
-      adminRead:false,
-      emailSent:false,
-      createdAt:serverTimestamp()
-    });
-
+    // Validation and recovery-request creation are handled server-side.
+    // This prevents Firestore Security Rules from returning the generic
+    // "Missing or insufficient permissions" error when the credentials do not match.
     const response=await fetch("https://us-central1-piso-wifi-f2b5c.cloudfunctions.net/sendCustomPasswordReset",{
       method:"POST",
       headers:{"content-type":"application/json"},
-      body:JSON.stringify({requestId:requestRef.id,clientCode:clientId,email})
+      body:JSON.stringify({clientCode:clientId,email})
     });
     const result=await response.json().catch(()=>({}));
     if(!response.ok||result.ok!==true){
-      throw new Error(result.error||"Unable to send the password-reset email.");
+      throw new Error(result.error||`Password reset request failed (HTTP ${response.status}).`);
     }
 
     const safeEmail=email.replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;", "'":"&#39;"}[c]));
@@ -254,22 +248,14 @@ async function submitResetRequest(e){
         <h2>Check your email</h2>
         <p class="reset-intro">We sent a secure password-reset link to <b>${safeEmail}</b>.</p>
         <div class="client-reset-note success-note">Open the email and click <b>Reset My Password</b> to create your new private password. If you don't see it shortly, check your Spam or Promotions folder.</div>
-        <div class="client-reset-actions"><button class="client-primary" type="button" data-close-reset>Close &amp; Return to Login</button></div>
-        <div class="reset-auto-close" aria-live="polite">This message will close automatically in <b>5 seconds</b>.</div>`;
-      let remaining=5;
-      const autoCloseEl=card.querySelector(".reset-auto-close");
-      const successTimer=setInterval(()=>{
-        remaining-=1;
-        if(autoCloseEl)autoCloseEl.innerHTML=`This message will close automatically in <b>${remaining} seconds</b>.`;
-        if(remaining<=0){clearInterval(successTimer);document.querySelector("#forgotPasswordModal")?.remove();}
-      },1000);
-      card.querySelectorAll("[data-close-reset]").forEach(el=>el.onclick=()=>{clearInterval(successTimer);document.querySelector("#forgotPasswordModal")?.remove();});
+        <div class="client-reset-actions"><button class="client-primary" type="button" data-close-reset>Close &amp; Return to Login</button></div>`;
+      card.querySelectorAll("[data-close-reset]").forEach(el=>el.onclick=()=>document.querySelector("#forgotPasswordModal")?.remove());
     }
     btn.disabled=true;
     btn.textContent="Reset Email Sent";
   }catch(err){
     console.error("[PISO WIFI PASSWORD RESET]",err);
-    const detail=err?.message||"Unable to send the password-reset email.";
+    const detail=String(err?.message||"Unable to send the password-reset email.").trim();
     msgEl.textContent=detail;
     msgEl.className="client-login-message error";
     btn.disabled=false;
