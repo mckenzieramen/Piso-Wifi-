@@ -1,7 +1,7 @@
 /* PISO WIFI ERROR DETAILS PANEL
- * Persistent floating error inspector for troubleshooting.
- * It appears only when an error is captured, stays until Clear is pressed,
- * and can be minimized or maximized for screenshots/details.
+ * Persistent bottom-of-page error inspector for troubleshooting.
+ * Always visible as a normal page section. It can be minimized/restored,
+ * maximized for screenshots/details, and cleared manually.
  */
 (() => {
   if (window.__PISO_DEBUG_PANEL__) return;
@@ -18,7 +18,7 @@
     const style = document.createElement("style");
     style.id = "pisoDebugPanelStyle";
     style.textContent = `
-      #pisoDebugPanel{position:relative;width:calc(100% - 36px);max-width:1400px;margin:28px auto 24px;z-index:1000;font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#fff;pointer-events:none}
+      #pisoDebugPanel{position:relative;display:block;width:calc(100% - 36px);max-width:1400px;margin:28px auto 24px;z-index:1000;font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#fff;pointer-events:none;order:9999;flex:0 0 auto}
       #pisoDebugPanel .pdp-shell{width:100%;max-height:min(72vh,620px);background:#3b0a0a;border:2px solid #ef4444;border-radius:14px;box-shadow:0 24px 80px rgba(0,0,0,.45);overflow:hidden;pointer-events:auto}
       #pisoDebugPanel .pdp-head{display:flex;align-items:center;gap:8px;padding:10px 12px;background:#651313;border-bottom:1px solid rgba(255,255,255,.15)}
       #pisoDebugPanel .pdp-title{font-weight:800;font-size:13px;letter-spacing:.02em;flex:1;min-width:0}
@@ -39,7 +39,6 @@
       #pisoDebugPanel.pdp-maximized{position:fixed;left:12px;right:12px;top:12px;bottom:12px;width:auto;max-width:none;margin:0;display:flex;align-items:stretch;justify-content:stretch;background:rgba(3,10,20,.58);backdrop-filter:blur(4px);padding:12px;pointer-events:auto}
       #pisoDebugPanel.pdp-maximized .pdp-shell{width:100%;max-width:none;height:100%;max-height:none}
       #pisoDebugPanel.pdp-maximized .pdp-body{max-height:none;height:calc(100% - 52px)}
-      #pisoDebugPanel.pdp-empty .pdp-shell{display:none}
       @media(max-width:600px){
         #pisoDebugPanel{width:calc(100% - 20px);margin:22px auto 16px}
         #pisoDebugPanel .pdp-shell{width:100%}
@@ -53,6 +52,7 @@
     root = document.createElement("div");
     root.id = "pisoDebugPanel";
     root.className = "";
+    root.setAttribute("aria-label", "PISO WIFI Error Details");
     root.innerHTML = `
       <div class="pdp-shell">
         <div class="pdp-head">
@@ -84,7 +84,7 @@
     };
     root.querySelector("#pisoDebugClear").onclick = () => {
       state.errors.length = 0;
-      state.minimized = false;
+      state.minimized = true;
       state.maximized = false;
       render();
     };
