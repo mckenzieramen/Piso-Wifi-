@@ -40,9 +40,19 @@ service cloud.firestore {
       allow read: if isAdmin() || isClientUnit(resource.data);
 
       // Admin owns all client/unit administration.
-      // Password-reset requests are handled by the server-side recovery endpoint,
-      // not by unauthenticated browser writes to the units collection.
-      allow create: if isAdmin();
+      allow create: if isAdmin()
+        || (
+          request.resource.data.type == "password-reset"
+          && request.resource.data.read == false
+          && request.resource.data.title == "Customer password reset requested"
+          && request.resource.data.clientCode is string
+          && request.resource.data.unitCode is string
+          && request.resource.data.email is string
+          && exists(/databases/$(database)/documents/customerLoginDirectory/$(request.resource.data.clientCode))
+          && get(/databases/$(database)/documents/customerLoginDirectory/$(request.resource.data.clientCode)).data.unitCode == request.resource.data.unitCode
+          && get(/databases/$(database)/documents/customerLoginDirectory/$(request.resource.data.clientCode)).data.email == request.resource.data.email
+          && get(/databases/$(database)/documents/customerLoginDirectory/$(request.resource.data.clientCode)).data.active == true
+        );
 
       allow delete: if isAdmin();
 
@@ -77,9 +87,18 @@ service cloud.firestore {
     }
 
     match /passwordResetRequests/{requestId} {
-      // Recovery requests are created only by the server-side password-reset
-      // endpoint after it verifies Client ID + registered Gmail.
-      allow create: if isAdmin();
+      // Customer can submit a recovery request only when the supplied Client ID
+      // and registered Gmail exactly match the Admin-created directory record.
+      // The customer does not need to know or submit the assigned Unit Code.
+      allow create: if
+        request.resource.data.status == "email_sent"
+        && request.resource.data.adminRead == false
+        && request.resource.data.clientCode is string
+        && request.resource.data.email is string
+        && request.resource.data.createdAt == request.time
+        && exists(/databases/$(database)/documents/customerLoginDirectory/$(request.resource.data.clientCode))
+        && get(/databases/$(database)/documents/customerLoginDirectory/$(request.resource.data.clientCode)).data.email == request.resource.data.email
+        && get(/databases/$(database)/documents/customerLoginDirectory/$(request.resource.data.clientCode)).data.active == true;
 
       allow read, update, delete: if isAdmin();
     }

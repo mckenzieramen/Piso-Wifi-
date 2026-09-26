@@ -1,54 +1,156 @@
-const {onRequest}=require("firebase-functions/v2/https");
-const admin=require("firebase-admin");
+const { onCall, HttpsError } = require("firebase-functions/v2/https");
+const admin = require("firebase-admin");
+
 admin.initializeApp();
-const db=admin.firestore();
-exports.setClientTemporaryPassword=onRequest({region:"us-central1",cors:true},async(req,res)=>{
-  if(req.method!=="POST") return res.status(405).json({error:"Method not allowed."});
-  try{
-    const h=String(req.headers.authorization||"");
-    if(!h.startsWith("Bearer ")) return res.status(401).json({error:"Authentication required."});
-    const decoded=await admin.auth().verifyIdToken(h.slice(7));
-    const adminProfile=await db.doc(`users/${decoded.uid}`).get();
-    if(!adminProfile.exists||adminProfile.data().role!=="admin"||adminProfile.data().active===false)return res.status(403).json({error:"Admin authorization required."});
-    const {requestId,temporaryPassword}=req.body||{};
-    if(!requestId||typeof temporaryPassword!=="string"||temporaryPassword.length<8)return res.status(400).json({error:"Temporary password must be at least 8 characters."});
-    const requestRef=db.doc(`passwordResetRequests/${requestId}`), requestSnap=await requestRef.get();
-    if(!requestSnap.exists)return res.status(404).json({error:"Recovery request not found."});
-    const recovery=requestSnap.data();
-    if(recovery.status!=="pending")return res.status(409).json({error:"This recovery request has already been reviewed."});
-    const code=String(recovery.clientCode||"").trim().toUpperCase();
-    if(!/^CID-\d{3,}$/.test(code))return res.status(400).json({error:"Invalid Client ID in the recovery request."});
+const db = admin.firestore();
 
-    // The Client ID is the permanent account identifier. Prefer the units
-    // collection, then fall back to the login directory if the unit record
-    // has not yet been indexed there. Never rely on the customer's name.
-    let unitRef=null, unit=null;
-    const q=await db.collection("units").where("clientCode","==",code).limit(1).get();
-    if(!q.empty){ unitRef=q.docs[0].ref; unit=q.docs[0].data(); }
-    if(!unitRef){
-      const dirSnap=await db.doc(`customerLoginDirectory/${code}`).get();
-      if(dirSnap.exists){
-        const directory=dirSnap.data()||{};
-        const unitId=String(directory.unitId||directory.clientUnitId||"").trim();
-        if(unitId){
-          const candidate=await db.doc(`units/${unitId}`).get();
-          if(candidate.exists){ unitRef=candidate.ref; unit=candidate.data(); }
-        }
-      }
+// This is the public Firebase Web API key from the client configuration.
+// It is not a service-account credential.
+const FIREBASE_WEB_API_KEY = "AIzaSyAfX3sSDkJwX9u9dxEDBhG8RU3iP_k6EdI";
+
+function clean(value) {
+  return String(value || "").trim();
+}
+
+async function findCustomer(identifier) {
+  const value = clean(identifier);
+  if (!value) return null;
+
+  const upper = value.toUpperCase();
+  const lower = value.toLowerCase();
+
+  // Registered Gmail can be used directly.
+  if (lower.includes("@")) {
+    const emailSnap = await db.collection("units")
+      .where("email", "==", lower)
+      .limit(1)
+      .get();
+    if (!emailSnap.empty) {
+      const doc = emailSnap.docs[0];
+      return { id: doc.id, ...doc.data() };
     }
-    if(!unitRef||!unit)return res.status(404).json({error:"Customer account was not found for this Client ID."});
+    return { email: lower };
+  }
 
-    const authUserId=String(unit.authUserId||"");
-    if(!authUserId)return res.status(400).json({error:"Customer account is not linked to Firebase Authentication."});
+  // Username login: e.g. CliffCID-023 / JuanCID-0001.
+  const usernameSnap = await db.collection("units")
+    .where("username", "==", value)
+    .limit(1)
+    .get();
+  if (!usernameSnap.empty) {
+    const doc = usernameSnap.docs[0];
+    return { id: doc.id, ...doc.data() };
+  }
 
-    // Change the Firebase Authentication password server-side. The password
-    // is never written to Firestore or returned to the browser.
-    await admin.auth().updateUser(authUserId,{password:temporaryPassword});
+  // Client ID login: e.g. CID-023 / CID-0001.
+  const codeSnap = await db.collection("units")
+    .where("clientCode", "==", upper)
+    .limit(1)
+    .get();
+  if (!codeSnap.empty) {
+    const doc = codeSnap.docs[0];
+    return { id: doc.id, ...doc.data() };
+  }
 
-    const ts=admin.firestore.FieldValue.serverTimestamp(), batch=db.batch();
-    batch.update(requestRef,{status:"approved",adminRead:true,reviewedAt:ts,reviewedBy:decoded.email||decoded.uid,temporaryPasswordSetAt:ts});
-    batch.update(unitRef,{forcePasswordChange:true,passwordChangedAt:null,updatedAt:ts});
-    await batch.commit();
-    return res.json({ok:true});
-  }catch(err){console.error("setClientTemporaryPassword",err);return res.status(500).json({error:err?.message||"Unable to set the temporary password."});}
+  return null;
+}
+
+exports.clientLogin = onCall({ region: "us-central1" }, async (request) => {
+  const identifier = clean(request.data?.identifier);
+  const password = String(request.data?.password || "");
+
+  if (!identifier || !password) {
+    throw new HttpsError("invalid-argument", "Username, Client ID, or registered Gmail and password are required.");
+  }
+
+  let customer;
+  try {
+    customer = await findCustomer(identifier);
+  } catch (error) {
+    console.error("[CLIENT LOGIN] Customer lookup failed", error);
+    throw new HttpsError("internal", "CLIENT LOGIN FAILED [customer_lookup]");
+  }
+
+  if (!customer) {
+    throw new HttpsError("unauthenticated", "Invalid customer login credentials.");
+  }
+
+  if (customer.active === false) {
+    throw new HttpsError("permission-denied", "This customer account is inactive.");
+  }
+
+  const authEmail = clean(customer.authEmail || customer.email).toLowerCase();
+  if (!authEmail || !authEmail.includes("@")) {
+    console.error("[CLIENT LOGIN] Missing auth email", { identifier, unitId: customer.id });
+    throw new HttpsError("failed-precondition", "CLIENT LOGIN FAILED [auth_email_missing]");
+  }
+
+  let authResponse;
+  try {
+    authResponse = await fetch(
+      `https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${encodeURIComponent(FIREBASE_WEB_API_KEY)}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: authEmail, password, returnSecureToken: true })
+      }
+    );
+  } catch (error) {
+    console.error("[CLIENT LOGIN] Firebase Identity Toolkit request failed", error);
+    throw new HttpsError("internal", "CLIENT LOGIN FAILED [firebase_auth_request]");
+  }
+
+  let authPayload = {};
+  try {
+    authPayload = await authResponse.json();
+  } catch (error) {
+    console.error("[CLIENT LOGIN] Firebase Identity Toolkit response was not JSON", error);
+    throw new HttpsError("internal", "CLIENT LOGIN FAILED [firebase_auth_response]");
+  }
+
+  if (!authResponse.ok) {
+    const authError = authPayload?.error?.message || "AUTHENTICATION_FAILED";
+    console.warn("[CLIENT LOGIN] Authentication rejected", { authError, identifier });
+
+    if (["INVALID_PASSWORD", "EMAIL_NOT_FOUND", "INVALID_LOGIN_CREDENTIALS"].includes(authError)) {
+      throw new HttpsError("unauthenticated", "Invalid customer login credentials.");
+    }
+    if (authError === "USER_DISABLED") {
+      throw new HttpsError("permission-denied", "This customer account is disabled.");
+    }
+    throw new HttpsError("internal", `CLIENT LOGIN FAILED [firebase_auth_response]: ${authError}`);
+  }
+
+  const localId = clean(authPayload.localId);
+  if (!localId) {
+    throw new HttpsError("internal", "CLIENT LOGIN FAILED [firebase_auth_response]: missing localId");
+  }
+
+  let profile;
+  try {
+    const profileSnap = await db.doc(`users/${localId}`).get();
+    profile = profileSnap.exists ? profileSnap.data() : null;
+  } catch (error) {
+    console.error("[CLIENT LOGIN] Role lookup failed", error);
+    throw new HttpsError("internal", "CLIENT LOGIN FAILED [role_lookup]");
+  }
+
+  if (!profile || profile.role !== "client" || profile.active === false) {
+    throw new HttpsError("permission-denied", "This account is not authorized for the Customer Account.");
+  }
+
+  let customToken;
+  try {
+    customToken = await admin.auth().createCustomToken(localId);
+  } catch (error) {
+    console.error("[CLIENT LOGIN] Custom token creation failed", error);
+    throw new HttpsError("internal", "CLIENT LOGIN FAILED [custom_token]");
+  }
+
+  return {
+    customToken,
+    username: profile.username || customer.username || "",
+    clientCode: profile.clientCode || customer.clientCode || "",
+    forcePasswordChange: customer.forcePasswordChange === true,
+  };
 });
