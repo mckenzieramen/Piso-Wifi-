@@ -653,8 +653,27 @@ async function maybeShowFirstLoginPasswordSetup(){
       await updatePassword(currentUser,a);
       await updateDoc(doc(db,"units",unit.id),{forcePasswordChange:false,passwordChangedAt:serverTimestamp(),updatedAt:serverTimestamp()});
       unit.forcePasswordChange=false;
-      modal.classList.add("hidden"); modal.setAttribute("aria-hidden","true");
-      toast("Your new password has been saved.");
+      try { localStorage.setItem("pisoWifi.passwordSetupCompleted","1"); } catch {}
+
+      // Password setup is complete. Do NOT reopen the form or leave the
+      // customer inside the dashboard. Show a final confirmation instead.
+      const card = modal.querySelector(".client-password-card");
+      if(card){
+        card.innerHTML = `
+          <div class="client-password-icon">✓</div>
+          <span class="eyebrow">PASSWORD UPDATED</span>
+          <h2 id="clientPasswordTitle">Congratulations!</h2>
+          <p>Your password was changed successfully. You can now sign in using your new password.</p>
+          <button class="client-primary" id="passwordSetupReturnLogin" type="button">Go Back to Login</button>
+        `;
+        const doneBtn = card.querySelector("#passwordSetupReturnLogin");
+        if(doneBtn){
+          doneBtn.onclick = async ()=>{
+            try { await signOut(auth); } catch {}
+            location.replace("/");
+          };
+        }
+      }
     }catch(err){
       console.error(err); msg.textContent="Unable to update your password. Please sign in again and try once more.";msg.className="client-login-message error";
       btn.disabled=false;btn.textContent="Save My Password";
