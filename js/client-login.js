@@ -231,7 +231,7 @@ async function submitResetRequest(e){
     // a stale Firestore rule must never prevent the actual password-reset email from being sent.
     const actionCodeSettings={
       url:`${window.location.origin}/reset-password.html`,
-      handleCodeInApp:true
+      handleCodeInApp:false
     };
     await sendPasswordResetEmail(auth,email,actionCodeSettings);
 
