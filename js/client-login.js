@@ -1,16 +1,13 @@
 import { auth, db } from "./firebase.js";
 import {
-  signInWithCustomToken,
+  signInWithEmailAndPassword,
   onAuthStateChanged,
   signOut,
   setPersistence,
   browserSessionPersistence,
+  signInWithCustomToken
 } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-auth.js";
 import { doc, getDoc, addDoc, collection, serverTimestamp } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-firestore.js";
-import { getFunctions, httpsCallable } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-functions.js";
-
-const functions = getFunctions();
-const clientLogin = httpsCallable(functions, "clientLogin");
 
 const form = document.querySelector("#clientLoginForm");
 const msg = document.querySelector("#clientLoginMessage");
@@ -85,7 +82,7 @@ form.addEventListener("submit", async e => {
   const password = document.querySelector("#clientPassword").value;
 
   if (!email || !password) {
-    message("Enter your registered Gmail, Username, or Client ID and password.", "error");
+    message("Enter your registered Gmail and password.", "error");
     return;
   }
 
@@ -96,23 +93,32 @@ form.addEventListener("submit", async e => {
   try {
     await setPersistence(auth, browserSessionPersistence);
 
-    // The Admin portal stores the customer's real registered Gmail in the
-    // customer record, while the customer-facing login also accepts the
-    // generated Username (e.g. CliffCID-023) or Client ID (e.g. CID-023).
-    // The callable resolves that identifier privately on the server and
-    // returns a Firebase custom token. No customer Gmail is exposed to the
-    // browser just to perform a username/Client ID lookup.
-    const result = await clientLogin({
-      identifier: email,
-      password
-    });
+    let cred;
 
-    const customToken = String(result?.data?.customToken || "").trim();
-    if (!customToken) {
-      throw new Error("CLIENT LOGIN FAILED [custom_token_missing]");
+    // Normal path: registered Gmail.
+    if (email.includes("@")) {
+      cred = await signInWithEmailAndPassword(auth, email, password);
+    } else {
+      // Compatibility path: also allow the Admin-generated Username / Client ID
+      // (for example SandyCID-021 or CID-021) without exposing the customer
+      // directory to unauthenticated Firestore reads. The server resolves the
+      // identifier and returns a short-lived Firebase custom token only after
+      // the password is verified.
+      const response = await fetch("/api/client-login", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ identifier: email, password })
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok || !result.customToken) {
+        const code = String(result.error || "INVALID_LOGIN_CREDENTIALS");
+        const e = new Error(code);
+        e.code = code;
+        throw e;
+      }
+      const userCredential = await signInWithCustomToken(auth, result.customToken);
+      cred = userCredential;
     }
-
-    const cred = await signInWithCustomToken(auth, customToken);
 
     const profile = await getRole(cred.user);
 
@@ -132,7 +138,7 @@ form.addEventListener("submit", async e => {
     const debugDetails = [
       `Registered Gmail entered: ${email}`,
       `Firebase project: piso-wifi-f2b5c`,
-      `Operation: Firebase callable → clientLogin`,
+      `Operation: customer login → ${email}`,
       `Error code: ${err?.code || "(none)"}`,
       `Error message: ${err?.message || String(err)}`
     ].join("\n");
@@ -145,10 +151,14 @@ form.addEventListener("submit", async e => {
         stack: err?.stack || ""
       });
     }
-    message(
-      "Login failed. Please check the temporary error popup for the exact Firebase error.",
-      "error"
-    );
+    const code = String(err?.code || "");
+    let loginMessage = "Invalid login credentials. Use your Registered Gmail, Username, or Client ID with the temporary password provided by Admin.";
+    if (code === "CLIENT_ACCOUNT_NOT_FOUND") {
+      loginMessage = "Customer account not found. Check your Registered Gmail, Username, or Client ID.";
+    } else if (code === "CLIENT_ACCOUNT_NOT_AVAILABLE" || code === "CLIENT_ACCOUNT_MISMATCH") {
+      loginMessage = "This Customer Account is inactive or not fully linked. Please contact Admin.";
+    }
+    message(loginMessage, "error");
     submit.disabled = false;
     submit.textContent = "Login";
   }
@@ -209,30 +219,25 @@ async function submitResetRequest(e){
   const email=document.querySelector("#resetEmail").value.trim().toLowerCase();
   const msgEl=document.querySelector("#resetMessage");
   const btn=document.querySelector("#resetSubmit");
-  if(!clientId||!email){
-    msgEl.textContent="Complete all fields.";
-    msgEl.className="client-login-message error";
-    return;
-  }
-
-  btn.disabled=true;
-  btn.textContent="Sending…";
-  msgEl.textContent="Checking your account…";
-  msgEl.className="client-login-message";
-
+  if(!clientId||!email){msgEl.textContent="Complete all fields.";msgEl.className="client-login-message error";return;}
+  btn.disabled=true; btn.textContent="Sending…"; msgEl.textContent="Checking your account…"; msgEl.className="client-login-message";
   try{
-    // IMPORTANT: This is intentionally NOT Firebase's browser sendPasswordResetEmail().
-    // The callable generates the Firebase action code server-side and hands it to the
-    // Google Apps Script mailer, which sends the PISO WIFI custom HTML email.
-    const functions = getFunctions();
-    const sendCustomPasswordReset = httpsCallable(functions,"sendCustomPasswordReset");
-    const result = await sendCustomPasswordReset({clientCode:clientId,email});
-
-    if(result?.data?.emailSent!==true){
-      throw new Error("PASSWORD RESET FAILED [email_delivery]: The custom mailer did not confirm delivery.");
+    // The custom server creates the Firebase password-reset action link and
+    // sends the branded PISO WIFI HTML email. This replaces Firebase's
+    // default password-reset email while keeping the same secure reset flow.
+    const response=await fetch("/api/password-reset",{
+      method:"POST",
+      headers:{"content-type":"application/json"},
+      body:JSON.stringify({clientId,email})
+    });
+    const result=await response.json().catch(()=>({}));
+    if(!response.ok||!result.ok){
+      const serverError=new Error(String(result.error||"PASSWORD_RESET_FAILED"));
+      serverError.code=String(result.code||"PASSWORD_RESET_FAILED");
+      throw serverError;
     }
 
-    const safeEmail=email.replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+    const safeEmail=email.replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;", "'":"&#39;"}[c]));
     const card=wrapCard();
     if(card){
       card.innerHTML=`<button type="button" class="client-reset-close" data-close-reset aria-label="Close confirmation">×</button>
@@ -249,11 +254,14 @@ async function submitResetRequest(e){
       const closeAndReturnToLogin=()=>{
         if(successTimer) clearTimeout(successTimer);
         wrap.remove();
+        // Always return to the official Customer Login route.
         if(window.location.pathname !== "/") window.location.replace("/");
       };
       card.querySelectorAll("[data-close-reset]").forEach(el=>{
         el.addEventListener("click", closeAndReturnToLogin);
       });
+      // Reliable one-shot auto-close. This avoids interval/timer drift and uses the same
+      // navigation path as the X and Close & Return to Login controls.
       successTimer=setTimeout(closeAndReturnToLogin,5000);
       if(autoCloseEl){
         const countdownTimer=setInterval(()=>{
@@ -262,41 +270,24 @@ async function submitResetRequest(e){
             clearInterval(countdownTimer);
             return;
           }
-          autoCloseEl.innerHTML=`This message will close automatically in <b>${remaining} second${remaining===1?"":"s"}.</b>`;
+          autoCloseEl.innerHTML=`This message will close automatically in <b>${remaining} second${remaining===1?"":"s"}</b>.`;
         },1000);
       }
     }
-
-    function wrapCard(){
-      return document.querySelector("#forgotPasswordModal .client-reset-card");
-    }
+    function wrapCard(){ return document.querySelector("#forgotPasswordModal .client-reset-card"); }
   }catch(err){
     console.error("[PISO WIFI PASSWORD RESET]",err);
-    const debugDetails=[
-      `Client ID entered: ${clientId}`,
-      `Registered Gmail entered: ${email}`,
-      `Operation: Firebase callable → sendCustomPasswordReset`,
-      `Error code: ${err?.code||"(none)"}`,
-      `Error message: ${err?.message||String(err)}`,
-      `Error details: ${JSON.stringify(err?.details||{})}`
-    ].join("\n");
-    if(window.pisoDebug?.capture){
-      window.pisoDebug.capture(err?.message||String(err),{
-        type:"PASSWORD RESET ERROR",
-        source:"client-login.js → sendCustomPasswordReset",
-        operation:"Firebase callable sendCustomPasswordReset",
-        context:debugDetails,
-        stack:err?.stack||""
-      });
-    }
     const code=String(err?.code||"");
-    let text=err?.message||"We could not send the reset email. Please try again.";
+    let text="We could not send the reset email. Please verify your Client ID and registered Gmail and try again.";
     if(code.includes("permission-denied")){
       text="The Client ID and registered Gmail do not match our records. Please check both and try again.";
+    }else if(code.includes("user-not-found")){
+      text="We could not send the reset email. Please verify your registered Gmail and try again.";
+    }else if(code.includes("unauthorized-continue-uri")||code.includes("invalid-continue-uri")){
+      text="Password reset is not fully configured for this website yet. Please contact Admin.";
     }
     msgEl.textContent=text;
     msgEl.className="client-login-message error";
-    btn.disabled=false;
-    btn.textContent="Send Reset Link";
+    btn.disabled=false; btn.textContent="Send Reset Link";
   }
 }

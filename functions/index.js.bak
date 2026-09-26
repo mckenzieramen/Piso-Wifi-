@@ -16,38 +16,15 @@ exports.setClientTemporaryPassword=onRequest({region:"us-central1",cors:true},as
     if(!requestSnap.exists)return res.status(404).json({error:"Recovery request not found."});
     const recovery=requestSnap.data();
     if(recovery.status!=="pending")return res.status(409).json({error:"This recovery request has already been reviewed."});
-    const code=String(recovery.clientCode||"").trim().toUpperCase();
-    if(!/^CID-\d{3,}$/.test(code))return res.status(400).json({error:"Invalid Client ID in the recovery request."});
-
-    // The Client ID is the permanent account identifier. Prefer the units
-    // collection, then fall back to the login directory if the unit record
-    // has not yet been indexed there. Never rely on the customer's name.
-    let unitRef=null, unit=null;
+    const code=String(recovery.clientCode||"").toUpperCase();
     const q=await db.collection("units").where("clientCode","==",code).limit(1).get();
-    if(!q.empty){ unitRef=q.docs[0].ref; unit=q.docs[0].data(); }
-    if(!unitRef){
-      const dirSnap=await db.doc(`customerLoginDirectory/${code}`).get();
-      if(dirSnap.exists){
-        const directory=dirSnap.data()||{};
-        const unitId=String(directory.unitId||directory.clientUnitId||"").trim();
-        if(unitId){
-          const candidate=await db.doc(`units/${unitId}`).get();
-          if(candidate.exists){ unitRef=candidate.ref; unit=candidate.data(); }
-        }
-      }
-    }
-    if(!unitRef||!unit)return res.status(404).json({error:"Customer account was not found for this Client ID."});
-
-    const authUserId=String(unit.authUserId||"");
+    if(q.empty)return res.status(404).json({error:"Customer account was not found."});
+    const unit=q.docs[0].data(), authUserId=String(unit.authUserId||"");
     if(!authUserId)return res.status(400).json({error:"Customer account is not linked to Firebase Authentication."});
-
-    // Change the Firebase Authentication password server-side. The password
-    // is never written to Firestore or returned to the browser.
     await admin.auth().updateUser(authUserId,{password:temporaryPassword});
-
     const ts=admin.firestore.FieldValue.serverTimestamp(), batch=db.batch();
     batch.update(requestRef,{status:"approved",adminRead:true,reviewedAt:ts,reviewedBy:decoded.email||decoded.uid,temporaryPasswordSetAt:ts});
-    batch.update(unitRef,{forcePasswordChange:true,passwordChangedAt:null,updatedAt:ts});
+    batch.update(q.docs[0].ref,{forcePasswordChange:true,passwordChangedAt:null,updatedAt:ts});
     await batch.commit();
     return res.json({ok:true});
   }catch(err){console.error("setClientTemporaryPassword",err);return res.status(500).json({error:err?.message||"Unable to set the temporary password."});}

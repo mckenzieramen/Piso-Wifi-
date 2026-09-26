@@ -635,8 +635,8 @@ function openUnitModal(id=null){
         const ref=await addDoc(collection(db,"units"),{...data,createdAt:serverTimestamp()});
         await setDoc(doc(db,"users",cred.user.uid),{role:"client",clientUnitId:ref.id,unitId:ref.id,clientCode,username,email,createdAt:serverTimestamp(),updatedAt:serverTimestamp()});
         await logActivity("Clients",`Added client account ${clientCode} — ${username} — ${name}`,ref.id);
-        await addNotification("client","New client account created.",`${name} (${clientCode}) can now log in using username ${username}.`,ref.id);
-        notify(`Created ${clientCode}. Username: ${username} · Temporary password: ${temporaryPassword}`);
+        await addNotification("client","New client account created.",`${name} (${clientCode}) can log in using the registered Gmail, Username ${username}, or Client ID ${clientCode}. Temporary password: ${temporaryPassword}.`,ref.id);
+        notify(`Created ${clientCode}. Login: Registered Gmail / ${username} / ${clientCode} · Temporary password: ${temporaryPassword}`);
       }
   });
   const search=$("#fCodeSearch"), hidden=$("#fCode"), list=$("#unitCodeOptions");
