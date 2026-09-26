@@ -87,10 +87,20 @@ service cloud.firestore {
     }
 
     match /passwordResetRequests/{requestId} {
-      // Password-reset requests are created by the secure Firebase function,
-      // which uses the Admin SDK. Customers never write this collection directly.
+      // Customer can submit a recovery request only when the supplied Client ID
+      // and registered Gmail exactly match the Admin-created directory record.
+      // The customer does not need to know or submit the assigned Unit Code.
+      allow create: if
+        request.resource.data.status == "email_sent"
+        && request.resource.data.adminRead == false
+        && request.resource.data.clientCode is string
+        && request.resource.data.email is string
+        && request.resource.data.createdAt == request.time
+        && exists(/databases/$(database)/documents/customerLoginDirectory/$(request.resource.data.clientCode))
+        && get(/databases/$(database)/documents/customerLoginDirectory/$(request.resource.data.clientCode)).data.email == request.resource.data.email
+        && get(/databases/$(database)/documents/customerLoginDirectory/$(request.resource.data.clientCode)).data.active == true;
+
       allow read, update, delete: if isAdmin();
-      allow create: if false;
     }
 
     match /notifications/{document} {

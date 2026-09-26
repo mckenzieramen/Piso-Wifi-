@@ -1,0 +1,20 @@
+PISO WIFI — CUSTOM HTML PASSWORD RESET EMAIL
+
+This build changes ONLY the Forgot Password delivery path.
+The browser no longer calls Firebase sendPasswordResetEmail(), which sends Firebase's default email.
+Instead:
+1) Customer enters Client ID + registered Gmail.
+2) Firebase callable sendCustomPasswordReset validates the customer.
+3) Firebase Admin generates the secure reset action code.
+4) Firebase calls the Google Apps Script mailer.
+5) Apps Script sends the PISO WIFI custom HTML email using MailApp.htmlBody.
+6) The button in the email opens /reset-password.html with the secure action code.
+
+DEPLOY ORDER
+A. Google Apps Script: use the existing deployed mailer project. Its deployed web-app URL must match the URL in functions/index.js. Keep the existing mailer secret; do not paste it into frontend code. The included apps-script/Code.gs is the standalone reference implementation and must use the same secret as the deployed endpoint.
+B. Firebase Functions: deploy the functions/ folder so sendCustomPasswordReset is live.
+C. Cloudflare Pages: deploy the website files.
+
+IMPORTANT
+Do not deploy only the website if the sendCustomPasswordReset Firebase function is not deployed. The website will otherwise report a callable/function error.
+Do not use sendPasswordResetEmail() in client-login.js; that would send Firebase's default email again.

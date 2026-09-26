@@ -21,7 +21,7 @@ const esc = (v) => String(v ?? "").replace(/[&<>"']/g, m => ({"&":"&amp;","<":"&
 const uid = () => `${Date.now()}-${Math.random().toString(36).slice(2,8)}`;
 
 let currentUser = null;
-let units = [], records = [], payments = [], notifications = [], activities = [], supportChats = [], passwordResetRequests = [];
+let units = [], records = [], payments = [], notifications = [], activities = [], supportChats = [];
 let supportUnsub=null, selectedSupportChatId="";
 let coreRealtimeUnsubs=[];
 let dashboardRealtimeTimer=null;
@@ -33,8 +33,10 @@ let unitSearch = "", unitStatus = "", unitPaymentStatus = "";
 // TEMPORARY ADMIN FEATURE: keep true while client deletion is needed.
 // Set to false later to remove the Delete Client button without changing the rest of the system.
 const ENABLE_CLIENT_DELETE = true;
+const CLIENT_AUTH_DOMAIN="@client-login.pisowifi.local";
 const clientProvisionerApp=initializeApp(firebaseConfig,"clientProvisioner");
 const clientProvisionerAuth=getAuth(clientProvisionerApp);
+const clientAuthEmailFromUsername=(username)=>`${String(username||"").trim().toLowerCase().replace(/[^a-z0-9]+/g,"-")}${CLIENT_AUTH_DOMAIN}`;
 const firstNameFromFullName=(name)=>String(name||"").trim().split(/\s+/)[0]||"Client";
 const sanitizeUsernamePart=(name)=>firstNameFromFullName(name).replace(/[^A-Za-z0-9]/g,"")||"Client";
 async function nextClientId(){
@@ -48,7 +50,7 @@ async function nextClientId(){
     let next=Number(snap.exists()?snap.data().next:(maxExisting+1));
     if(!Number.isInteger(next)||next<1) next=maxExisting+1;
     tx.set(ref,{next:next+1,updatedAt:serverTimestamp()},{merge:true});
-    return `CID-${String(next).padStart(3,"0")}`;
+    return `CID-${String(next).padStart(4,"0")}`;
   });
 }
 function availableUnitCodes(currentCode=""){
@@ -62,7 +64,6 @@ async function syncCustomerDirectory(){
       clientCode:String(u.clientCode).toUpperCase(),
       unitCode:String(u.unitCode).toUpperCase(),
       email:String(u.email).trim().toLowerCase(),
-      username:String(u.username||""),
       unitDocId:u.id,
       authUserId:u.authUserId||"",
       active:u.active!==false,
@@ -129,14 +130,6 @@ async function loadData(){
   }
 
   try {
-    const rr=await getDocs(collection(db,"passwordResetRequests"));
-    passwordResetRequests=rr.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>timeValue(b.createdAt)-timeValue(a.createdAt));
-  } catch(e) {
-    console.warn("Password recovery requests are not readable yet. Publish the latest Firestore rules.",e);
-    passwordResetRequests=[];
-  }
-
-  try {
     const a=await getDocs(collection(db,"activities"));
     activities=a.docs.map(d=>({id:d.id,...d.data()}))
       .sort((a,b)=>timeValue(b.createdAt)-timeValue(a.createdAt));
@@ -184,10 +177,14 @@ async function logActivity(type,description,relatedId=""){
 async function addNotification(type,title,message,relatedId=""){
   try { await addDoc(collection(db,"notifications"),{type,title,message,relatedId,read:false,createdAt:serverTimestamp()}); } catch(e){ console.warn("Notification failed",e); }
 }
-function recoveryNotifications(){return passwordResetRequests.map(r=>({id:`reset:${r.id}`,source:"passwordResetRequest",requestId:r.id,type:"password-reset",title:"Account Recovery Request",message:`${r.clientCode||"Customer"} requested a password reset${r.email?` — ${r.email}`:""}.`,read:r.adminRead===true||r.status!=="pending",createdAt:r.createdAt,relatedId:r.clientCode||""}));}
-function allAdminNotifications(){return [...notifications,...recoveryNotifications()].sort((a,b)=>timeValue(b.createdAt)-timeValue(a.createdAt));}
-function unreadCount(){return allAdminNotifications().filter(n=>n.read!==true).length;}
-function updateNotificationBadge(){const el=document.querySelector("#adminNotificationBadge");if(!el)return;const count=unreadCount();el.textContent=count>99?"99+":String(count);el.classList.toggle("hidden",count===0);}
+function unreadCount(){ return notifications.filter(n=>n.read!==true).length; }
+function updateNotificationBadge(){
+  const el=document.querySelector("#adminNotificationBadge");
+  if(!el)return;
+  const count=unreadCount();
+  el.textContent=count>99?"99+":String(count);
+  el.classList.toggle("hidden",count===0);
+}
 function nav(){ document.querySelectorAll("#nav [data-route]").forEach(a=>a.classList.toggle("active",a.dataset.route===route)); }
 function closeMenu(){ $("#sidebar").classList.remove("open"); $("#overlay").classList.remove("show"); }
 function baseHead(title,sub,button=""){ return `<div class="page-head"><div><h1>${title}</h1><p>${sub}</p></div>${button}</div>`; }
@@ -256,11 +253,6 @@ function renderDashboard(){
       </div>
     </div>
 
-    <div class="panel dashboard-recovery-card">
-      <div class="panel-head"><div><h3>Account Recovery Requests</h3><p>Password reset requests waiting for Admin review.</p></div><button class="link-btn" data-route="notifications">View Notifications</button></div>
-      <div class="recovery-summary-list">${passwordResetRequests.filter(r=>String(r.status||"pending")==="pending").slice(0,4).map(r=>{const u=units.find(x=>String(x.clientCode||"").toUpperCase()===String(r.clientCode||"").toUpperCase());return `<button class="recovery-summary-row" data-recovery-request="${esc(r.id)}"><span><b>${esc(r.clientCode||"Customer")}</b><small>${esc(u?.name||r.email||"Recovery request")}</small></span><strong>Review</strong></button>`}).join("")||empty("No pending recovery requests.")}</div>
-    </div>
-
     <div class="panel">
       <div class="panel-head"><div><h3>Units / Clients</h3><p>Monthly computation for ${monthLabel(selectedMonth)}.</p></div><div class="tools"><input class="search" id="dashSearch" placeholder="Search client or unit…"><select id="dashStatus" class="search"><option value="">All Payment Status</option><option>Paid</option><option>Partial</option><option>Unpaid</option></select><button class="secondary-btn" data-route="units">Manage Clients</button></div></div>
       <div class="table-wrap accumulating-table"><table><thead><tr><th>Unit Code</th><th>Client Name</th><th>Location</th><th>Status</th><th>Gross Sales</th><th>Customer Earnings</th><th>Payment</th><th>Actions</th></tr></thead><tbody id="dashBody">${rows.length?rows.map(dashboardRow).join(""):emptyRow(8,"No clients or units found.")}</tbody></table></div>
@@ -272,7 +264,6 @@ function renderDashboard(){
   $("#chartMetric").onchange=e=>{$("#salesChart").innerHTML=salesChart(e.target.value);};
   $("#topPeriod").onchange=e=>renderTopUnits(e.target.value);
   document.querySelectorAll("[data-pay-unit]").forEach(b=>b.onclick=()=>openPaymentModal(b.dataset.payUnit));
-  document.querySelectorAll("[data-recovery-request]").forEach(b=>b.onclick=()=>openRecoveryRequestModal(passwordResetRequests.find(r=>r.id===b.dataset.recoveryRequest)));
   bindDynamicButtons();
 }
 function kpi(icon,title,value,sub,cls="",routeTarget=""){ return `<article class="kpi ${cls} ${routeTarget?"is-clickable":""}" ${routeTarget?`data-route="${routeTarget.replace("#","")}" tabindex="0" role="button"`:""}><div class="kpi-icon">${icon}</div><span>${title}</span><b>${value}</b><small>${sub}</small></article>`; }
@@ -334,13 +325,13 @@ function exportUnitsCsv(rows){ downloadCsv(`piso-wifi-units-${selectedMonth}.csv
 
 function renderReports(){
   const rows=normalizeRows(), t=totals(rows);
-  view.innerHTML=baseHead("Monthly Reports","View and export monthly summaries.",`<div class="tools"><button class="secondary-btn" id="downloadReport">Download</button><button class="primary-btn" id="printReport">Print</button></div>`)+`<div class="report-cards">${reportCard("Total Units",units.length)}${reportCard("Total Gross Sales",money(t.gross))}${reportCard("Total Internet Cost",money(t.internet))}${reportCard("Total Net Sales",money(t.net),"net-sales")}${reportCard("Total Owner Share",money(t.owner))}${reportCard("Total Client Share",money(t.client))}${reportCard("Client Net",money(Math.max(0,t.client-t.elec)),"customer-net")}${reportCard("Total Electricity",money(t.elec))}${reportCard("Total Amount Due",money(t.due))}${reportCard("Total Collected",money(t.paid),"green")}${reportCard("Outstanding",money(t.balance),"red")}</div><div class="panel"><div class="panel-head"><div><h3>${monthLabel(selectedMonth)} Detail</h3><p>All calculations use the current business settings.</p></div><span class="report-rule">Internet ${money(settings.internetCost)} · Owner ${settings.ownerPercent}% · Client ${settings.clientPercent}% · Electricity ${money(settings.electricity)}</span></div><div class="table-wrap"><table><thead><tr><th>Unit</th><th>Client</th><th>Gross Sales</th><th>Internet</th><th>Net Sales</th><th>Owner Share</th><th>Client Share</th><th>Electricity</th><th>Client Net</th><th>Amount Due</th><th>Paid</th><th>Balance</th><th>Status</th></tr></thead><tbody>${rows.length?rows.map(x=>`<tr><td>${esc(x.u.unitCode)}</td><td>${esc(x.u.name)}</td><td>${money(x.c.gross)}</td><td>${money(x.c.internet)}</td><td>${money(x.c.net)}</td><td>${money(x.c.owner)}</td><td>${money(x.c.client)}</td><td>${money(x.c.elec)}</td><td>${money(Math.max(0,x.c.client-x.c.elec))}</td><td>${money(x.c.clientTotal)}</td><td>${money(x.c.paid)}</td><td class="amount">${money(x.c.balance)}</td><td>${statusBadge(x.c.status)}</td></tr>`).join(""):emptyRow(13,"No sales recorded for this month.")}</tbody></table></div></div>`;
+  view.innerHTML=baseHead("Monthly Reports","View and export monthly summaries.",`<div class="tools"><button class="secondary-btn" id="downloadReport">Download</button><button class="primary-btn" id="printReport">Print</button></div>`)+`<div class="report-cards">${reportCard("Total Units",units.length)}${reportCard("Total Gross Sales",money(t.gross))}${reportCard("Total Internet Cost",money(t.internet))}${reportCard("Total Net Sales",money(t.net),"net-sales")}${reportCard("Total Owner Share",money(t.owner))}${reportCard("Total Client Share",money(t.client))}${reportCard("Client Net",money(t.due),"customer-net")}${reportCard("Total Electricity",money(t.elec))}${reportCard("Total Amount Due",money(t.due))}${reportCard("Total Collected",money(t.paid),"green")}${reportCard("Outstanding",money(t.balance),"red")}</div><div class="panel"><div class="panel-head"><div><h3>${monthLabel(selectedMonth)} Detail</h3><p>All calculations use the current business settings.</p></div><span class="report-rule">Internet ${money(settings.internetCost)} · Owner ${settings.ownerPercent}% · Client ${settings.clientPercent}% · Electricity ${money(settings.electricity)}</span></div><div class="table-wrap"><table><thead><tr><th>Unit</th><th>Client</th><th>Gross Sales</th><th>Internet</th><th>Net Sales</th><th>Owner Share</th><th>Client Share</th><th>Electricity</th><th>Client Net</th><th>Amount Due</th><th>Paid</th><th>Balance</th><th>Status</th></tr></thead><tbody>${rows.length?rows.map(x=>`<tr><td>${esc(x.u.unitCode)}</td><td>${esc(x.u.name)}</td><td>${money(x.c.gross)}</td><td>${money(x.c.internet)}</td><td>${money(x.c.net)}</td><td>${money(x.c.owner)}</td><td>${money(x.c.client)}</td><td>${money(x.c.elec)}</td><td>${money(x.c.clientTotal)}</td><td>${money(x.c.clientTotal)}</td><td>${money(x.c.paid)}</td><td class="amount">${money(x.c.balance)}</td><td>${statusBadge(x.c.status)}</td></tr>`).join(""):emptyRow(13,"No sales recorded for this month.")}</tbody></table></div></div>`;
   $("#downloadReport").onclick=()=>downloadReportHtml(t,rows); $("#printReport").onclick=()=>printReport(t,rows);
 }
 function reportCard(label,value,cls=""){return `<article class="report-card ${cls}"><span>${label}</span><strong>${value}</strong></article>`;}
-function exportReportCsv(rows){downloadCsv(`piso-wifi-report-${selectedMonth}.csv`,[["Unit","Client","Gross Sales","Internet","Net Sales","Owner Share","Client Share","Electricity","Client Net","Amount Due","Paid","Balance","Status"],...rows.map(x=>[x.u.unitCode,x.u.name,x.c.gross,x.c.internet,x.c.net,x.c.owner,x.c.client,x.c.elec,Math.max(0,x.c.client-x.c.elec),x.c.clientTotal,x.c.paid,x.c.balance,x.c.status])]);}
-function exportReportExcel(rows){downloadXlsx(`piso-wifi-report-${selectedMonth}.xlsx`,"Monthly Report",[["Unit","Client","Gross Sales","Internet","Net Sales","Owner Share","Client Share","Electricity","Client Net","Amount Due","Paid","Balance","Status"],...rows.map(x=>[x.u.unitCode,x.u.name,x.c.gross,x.c.internet,x.c.net,x.c.owner,x.c.client,x.c.elec,Math.max(0,x.c.client-x.c.elec),x.c.clientTotal,x.c.paid,x.c.balance,x.c.status])]);}
-function reportDocumentHtml(t,rows){return `<!doctype html><html><head><meta charset="utf-8"><title>PISO WIFI Monthly Report — ${esc(monthLabel(selectedMonth))}</title><style>${printCss()}body{max-width:1200px;margin:auto}.brand{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #1685f5;padding-bottom:16px}.customer-net{background:#eef8ff!important;border:1px solid #bfe1ff!important}.amount{text-align:right;font-weight:700}</style></head><body><div class="brand"><div><h1>PISO WIFI</h1><p>Management System · Monthly Report</p></div><div><b>${monthLabel(selectedMonth)}</b><br>Generated ${dateLabel(new Date())}</div></div><div class="print-grid">${[["Total Units",units.length],["Gross Sales",money(t.gross)],["Internet",money(t.internet)],["Net Sales",money(t.net)],["Owner Share",money(t.owner)],["Client Share",money(t.client)],["Client Net",money(Math.max(0,t.client-t.elec))],["Electricity",money(t.elec)],["Amount Due",money(t.due)],["Collected",money(t.paid)],["Outstanding",money(t.balance)]].map(x=>`<div class="${x[0]==="Client Net"?"customer-net":""}"><b>${x[0]}</b><strong>${x[1]}</strong></div>`).join("")}</div><table><thead><tr><th>Unit</th><th>Client</th><th>Gross</th><th>Internet</th><th>Net</th><th>Owner</th><th>Client</th><th>Electricity</th><th>Client Net</th><th>Due</th><th>Paid</th><th>Balance</th><th>Status</th></tr></thead><tbody>${rows.map(x=>`<tr><td>${esc(x.u.unitCode)}</td><td>${esc(x.u.name)}</td><td>${money(x.c.gross)}</td><td>${money(x.c.internet)}</td><td>${money(x.c.net)}</td><td>${money(x.c.owner)}</td><td>${money(x.c.client)}</td><td>${money(x.c.elec)}</td><td>${money(Math.max(0,x.c.client-x.c.elec))}</td><td>${money(x.c.clientTotal)}</td><td>${money(x.c.paid)}</td><td>${money(x.c.balance)}</td><td>${esc(x.c.status)}</td></tr>`).join("")}</tbody></table></body></html>`;}
+function exportReportCsv(rows){downloadCsv(`piso-wifi-report-${selectedMonth}.csv`,[["Unit","Client","Gross Sales","Internet","Net Sales","Owner Share","Client Share","Electricity","Client Net","Amount Due","Paid","Balance","Status"],...rows.map(x=>[x.u.unitCode,x.u.name,x.c.gross,x.c.internet,x.c.net,x.c.owner,x.c.client,x.c.elec,x.c.clientTotal,x.c.clientTotal,x.c.paid,x.c.balance,x.c.status])]);}
+function exportReportExcel(rows){downloadXlsx(`piso-wifi-report-${selectedMonth}.xlsx`,"Monthly Report",[["Unit","Client","Gross Sales","Internet","Net Sales","Owner Share","Client Share","Electricity","Client Net","Amount Due","Paid","Balance","Status"],...rows.map(x=>[x.u.unitCode,x.u.name,x.c.gross,x.c.internet,x.c.net,x.c.owner,x.c.client,x.c.elec,x.c.clientTotal,x.c.clientTotal,x.c.paid,x.c.balance,x.c.status])]);}
+function reportDocumentHtml(t,rows){return `<!doctype html><html><head><meta charset="utf-8"><title>PISO WIFI Monthly Report — ${esc(monthLabel(selectedMonth))}</title><style>${printCss()}body{max-width:1200px;margin:auto}.brand{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #1685f5;padding-bottom:16px}.customer-net{background:#eef8ff!important;border:1px solid #bfe1ff!important}.amount{text-align:right;font-weight:700}</style></head><body><div class="brand"><div><h1>PISO WIFI</h1><p>Management System · Monthly Report</p></div><div><b>${monthLabel(selectedMonth)}</b><br>Generated ${dateLabel(new Date())}</div></div><div class="print-grid">${[["Total Units",units.length],["Gross Sales",money(t.gross)],["Internet",money(t.internet)],["Net Sales",money(t.net)],["Owner Share",money(t.owner)],["Client Share",money(t.client)],["Client Net",money(t.due)],["Electricity",money(t.elec)],["Amount Due",money(t.due)],["Collected",money(t.paid)],["Outstanding",money(t.balance)]].map(x=>`<div class="${x[0]==="Client Net"?"customer-net":""}"><b>${x[0]}</b><strong>${x[1]}</strong></div>`).join("")}</div><table><thead><tr><th>Unit</th><th>Client</th><th>Gross</th><th>Internet</th><th>Net</th><th>Owner</th><th>Client</th><th>Electricity</th><th>Client Net</th><th>Due</th><th>Paid</th><th>Balance</th><th>Status</th></tr></thead><tbody>${rows.map(x=>`<tr><td>${esc(x.u.unitCode)}</td><td>${esc(x.u.name)}</td><td>${money(x.c.gross)}</td><td>${money(x.c.internet)}</td><td>${money(x.c.net)}</td><td>${money(x.c.owner)}</td><td>${money(x.c.client)}</td><td>${money(x.c.elec)}</td><td>${money(x.c.clientTotal)}</td><td>${money(x.c.clientTotal)}</td><td>${money(x.c.paid)}</td><td>${money(x.c.balance)}</td><td>${esc(x.c.status)}</td></tr>`).join("")}</tbody></table></body></html>`;}
 function downloadReportHtml(t,rows){downloadHtmlFile(`piso-wifi-report-${selectedMonth}.html`,reportDocumentHtml(t,rows));}
 function downloadXlsx(name,sheetName,data){if(!window.XLSX){notify("Excel exporter is still loading. Please try again.","error");return;}const wb=XLSX.utils.book_new();const ws=XLSX.utils.aoa_to_sheet(data);XLSX.utils.book_append_sheet(wb,ws,sheetName);XLSX.writeFile(wb,name);}
 function downloadCsv(name,data){const csv=data.map(r=>r.map(v=>`"${String(v??"").replaceAll('"','""')}"`).join(",")).join("\n");const blob=new Blob([csv],{type:"text/csv;charset=utf-8"});const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),500);}
@@ -379,26 +370,11 @@ function downloadStatementPdf(id,month){
 function printStatement(id,month){const {u,c}=statementData(id,month);openPrintWindow(statementDocumentHtml(u,c,month));}
 
 function renderNotifications(){
-  const list=allAdminNotifications();
-  view.innerHTML=baseHead("Notifications","Stay updated on payments, balances, reports and system changes.",`<button class="secondary-btn" id="markAllRead">Mark all as read</button>`)+`<div class="notification-list">${list.length?list.map(n=>`<button class="notification-card ${n.read===true?"read":"unread"}" data-notification="${esc(n.id)}"><span class="notification-icon">${n.type==="payment"?"₱":n.type==="balance"?"!":n.type==="report"?"▥":n.type==="password-reset"?"🔐":"●"}</span><span><b>${esc(n.title)}</b><small>${esc(n.message)}</small><time>${dateTimeLabel(n.createdAt)}</time></span>${n.read!==true?"<em>NEW</em>":""}</button>`).join(""):empty("You're all caught up.")}</div>`;
-  $("#markAllRead").onclick=markAllNotificationsRead;document.querySelectorAll("[data-notification]").forEach(b=>b.onclick=()=>openNotification(b.dataset.notification));
+  view.innerHTML=baseHead("Notifications","Stay updated on payments, balances, reports and system changes.",`<button class="secondary-btn" id="markAllRead">Mark all as read</button>`)+`<div class="notification-list">${notifications.length?notifications.map(n=>`<button class="notification-card ${n.read===true?"read":"unread"}" data-notification="${n.id}"><span class="notification-icon">${n.type==="payment"?"₱":n.type==="balance"?"!":n.type==="report"?"▥":n.type==="password-reset"?"🔐":"●"}</span><span><b>${esc(n.title)}</b><small>${esc(n.message)}</small><time>${dateTimeLabel(n.createdAt)}</time></span>${n.read!==true?"<em>NEW</em>":""}</button>`).join(""):empty("You're all caught up.")}</div>`;
+  $("#markAllRead").onclick=markAllNotificationsRead; document.querySelectorAll("[data-notification]").forEach(b=>b.onclick=()=>openNotification(b.dataset.notification));
 }
-async function openNotification(id){const n=allAdminNotifications().find(x=>x.id===id);if(!n)return;if(n.source==="passwordResetRequest"){const r=passwordResetRequests.find(x=>x.id===n.requestId);if(!r)return;if(r.adminRead!==true)await updateDoc(doc(db,"passwordResetRequests",r.id),{adminRead:true});openRecoveryRequestModal(r);return;}if(n.read!==true){await updateDoc(doc(db,"notifications",id),{read:true});await loadData();}if(n.relatedId&&units.some(u=>u.id===n.relatedId))openProfile(n.relatedId);else render();}
-async function markAllNotificationsRead(){const jobs=[...notifications.filter(n=>n.read!==true).map(n=>updateDoc(doc(db,"notifications",n.id),{read:true})),...passwordResetRequests.filter(r=>r.adminRead!==true).map(r=>updateDoc(doc(db,"passwordResetRequests",r.id),{adminRead:true}))];await Promise.all(jobs);await loadData();render();notify("All notifications marked as read.");}
-function openRecoveryRequestModal(request){
-  if(!request)return;
-  const status=String(request.status||"pending");
-  const statusText=status==="pending"?"Pending Review":(status==="approved"||status==="email_sent")?"Reset Email Sent":"Rejected";
-  const note=status==="pending"?"A secure password-reset email is sent automatically when the customer submits a valid recovery request. The customer creates their own new password; Admin never sees it.":status==="approved"||status==="email_sent"?"The secure password-reset email was sent to the registered Gmail. The customer must open the email and use the PISO WIFI reset page to create a new private password.":"This recovery request was rejected.";
-  const html=`<div class="recovery-review"><div class="recovery-review-status ${esc(status)}">${esc(statusText)}</div><div class="recovery-review-grid"><div><small>Customer</small><strong>${esc(request.customerName||request.clientCode||"Customer")}</strong></div><div><small>Client ID</small><strong>${esc(request.clientCode||"—")}</strong></div><div><small>Registered Gmail</small><strong>${esc(request.email||"—")}</strong></div><div><small>Unit</small><strong>${esc(request.unitCode||"—")}</strong></div><div><small>Requested</small><strong>${dateTimeLabel(request.createdAt)}</strong></div></div><div class="recovery-review-note">${note}</div></div>`;
-  openModal("Account Recovery Request",html,"Close",async()=>{closeModal();});
-  if(status==="pending")setTimeout(()=>{
-    const actions=document.querySelector("#modalRoot .modal-actions");if(!actions)return;
-    const reject=document.createElement("button");reject.className="danger-outline-btn";reject.textContent="Reject Request";
-    reject.onclick=async()=>{try{await updateDoc(doc(db,"passwordResetRequests",request.id),{status:"rejected",adminRead:true,reviewedAt:serverTimestamp(),reviewedBy:currentUser?.email||"Admin"});closeModal();await loadData();render();notify("Recovery request rejected.");}catch(e){notify(e?.message||"Unable to reject recovery request.","error");}};
-    actions.insertBefore(reject,actions.firstChild);
-  },0);
-}
+async function openNotification(id){const n=notifications.find(x=>x.id===id);if(!n)return;if(n.read!==true){await updateDoc(doc(db,"notifications",id),{read:true});await loadData();} if(n.relatedId && units.some(u=>u.id===n.relatedId)){openProfile(n.relatedId);}else{render();}}
+async function markAllNotificationsRead(){const unread=notifications.filter(n=>n.read!==true);await Promise.all(unread.map(n=>updateDoc(doc(db,"notifications",n.id),{read:true})));await loadData();render();notify("All notifications marked as read.");}
 
 function renderActivity(){
   view.innerHTML=baseHead("Activity Log","Track important system, client, sales, payment and settings actions.",`<select class="search" id="activityFilter"><option value="">All Activities</option><option>System</option><option>Sales</option><option>Payments</option><option>Clients</option><option>Units</option><option>Settings</option><option>Reports</option></select>`)+`<div class="panel"><div class="panel-head"><div><h3>Recent Activity</h3><p>Newest actions appear first and are stored in Firebase.</p></div></div><div class="table-wrap"><table><thead><tr><th>Date & Time</th><th>Activity</th><th>Details</th><th>Admin</th></tr></thead><tbody id="activityBody">${activityRows("")}</tbody></table></div></div>`;
@@ -593,7 +569,7 @@ function openUnitModal(id=null){
       <div class="field full"><label>Unit Location</label><input id="fLocation" value="${esc(u?.location||"")}" placeholder="Brgy. San Isidro, Antipolo" autocomplete="off"></div>
       <div class="field full"><label>Client Address</label><input id="fAddress" value="${esc(u?.address||u?.location||"")}" placeholder="Client residential/contact address" autocomplete="off"></div>
       <div class="field"><label>Status</label><select id="fStatus"><option value="active" ${u?.active!==false?"selected":""}>Active</option><option value="inactive" ${u?.active===false?"selected":""}>Inactive</option></select></div>
-      <div class="field"><label>Username</label><input id="fUsername" value="${esc(u?.username||"")}" placeholder="Generated automatically" disabled><small class="hint">Generated as FirstName + Client ID, e.g. JuanCID-001.</small></div>
+      <div class="field"><label>Username</label><input id="fUsername" value="${esc(u?.username||"")}" placeholder="Generated automatically" disabled><small class="hint">Generated as FirstName + Client ID, e.g. JuanCID-0001.</small></div>
       <div class="field full"><label>Notes</label><textarea id="fNotes" rows="3">${esc(u?.notes||"")}</textarea></div>
     </div>`,`Save Client`,async()=>{
       const clientCode=id?String(u?.clientCode||"").trim().toUpperCase():await nextClientId();
@@ -603,7 +579,7 @@ function openUnitModal(id=null){
       const name=`${firstName} ${lastName}`.trim();
       const email=$("#fEmail").value.trim().toLowerCase();
       if(!clientCode||!unitCode||!firstName||!lastName||!email) throw new Error("Client ID, Unit Code, First Name, Last Name and Registered Gmail are required.");
-      if(!/^CID-\d{3,}$/.test(clientCode)) throw new Error("Client ID must use the CID-001 format.");
+      if(!/^CID-\d{4,}$/.test(clientCode)) throw new Error("Client ID must use the CID-0001 format.");
       if(!/^([1-9]|[1-4]\d|50)$/.test(unitCode)) throw new Error("Unit Code must be between 1 and 50.");
       if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new Error("Enter a valid Gmail address.");
       const activeConflict=units.find(x=>x.id!==id&&x.active!==false&&String(x.unitCode)===unitCode);
@@ -620,7 +596,7 @@ function openUnitModal(id=null){
         await logActivity("Clients",`Edited ${unitCode} — ${name}`,id);
         await addNotification("client","Client profile updated.",`${name} (${clientCode}) was updated.`,id);
       }else{
-        const authEmail=email;
+        const authEmail=clientAuthEmailFromUsername(username);
         const temporaryPassword=clientCode;
         let cred;
         try{ cred=await createUserWithEmailAndPassword(clientProvisionerAuth,authEmail,temporaryPassword); }
@@ -735,7 +711,6 @@ function startCoreRealtime(){
   bind("payments",rows=>{payments=rows;});
   coreRealtimeUnsubs.push(onSnapshot(doc(db,"settings","business"),snap=>{if(snap.exists())settings={...settings,...snap.data()};scheduleDashboardRealtime();},err=>console.warn("PISO WIFI realtime settings unavailable",err)));
   coreRealtimeUnsubs.push(onSnapshot(collection(db,"activities"),snap=>{activities=snap.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>timeValue(b.createdAt)-timeValue(a.createdAt));scheduleDashboardRealtime();},err=>console.warn("PISO WIFI realtime activities unavailable",err)));
-  coreRealtimeUnsubs.push(onSnapshot(collection(db,"passwordResetRequests"),snap=>{passwordResetRequests=snap.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>timeValue(b.createdAt)-timeValue(a.createdAt));updateNotificationBadge();if(route==="notifications"||route==="dashboard")scheduleDashboardRealtime();},err=>console.warn("PISO WIFI realtime password recovery requests unavailable",err)));
 }
 
 function showAuthError(message){console.error("[PISO WIFI]",message);const loader=$("#authLoading");if(loader){loader.innerHTML=`<div class="auth-error"><strong>Unable to open the dashboard</strong><span>${esc(message)}</span><button onclick="location.href='index.html'">Return to Login</button></div>`;loader.classList.remove("hidden");}}

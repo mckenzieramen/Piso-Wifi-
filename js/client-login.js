@@ -4,9 +4,9 @@ import {
   onAuthStateChanged,
   signOut,
   setPersistence,
-  browserSessionPersistence
+  browserSessionPersistence,
 } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-auth.js";
-import { doc, getDoc } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-firestore.js";
+import { doc, getDoc, addDoc, collection, serverTimestamp } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-firestore.js";
 import { getFunctions, httpsCallable } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-functions.js";
 
 const functions = getFunctions();
@@ -27,16 +27,13 @@ function normalizeUsername(value) {
   return String(value || "").trim();
 }
 
-// Prevent the browser from silently reusing a saved Admin credential on the
-// separate Customer portal. The fields become editable as soon as the customer
-// focuses them, so this does not change the actual login flow.
-const clientIdentifierInput = document.querySelector("#clientEmail");
-const clientPasswordInput = document.querySelector("#clientPassword");
-const unlockCustomerField = field => {
-  if (field) field.removeAttribute("readonly");
-};
-clientIdentifierInput?.addEventListener("focus", () => unlockCustomerField(clientIdentifierInput), { once: true });
-clientPasswordInput?.addEventListener("focus", () => unlockCustomerField(clientPasswordInput), { once: true });
+try {
+  const savedUnit = localStorage.getItem(CLIENT_REMEMBER_KEY);
+  if (savedUnit && document.querySelector("#clientEmail")) {
+    document.querySelector("#clientEmail").value = savedUnit;
+    if (remember) remember.checked = true;
+  }
+} catch {}
 
 
 async function getRole(user) {
@@ -84,11 +81,11 @@ onAuthStateChanged(auth, user => {
 form.addEventListener("submit", async e => {
   e.preventDefault();
 
-  const identifier = normalizeUsername(document.querySelector("#clientEmail").value);
+  const email = normalizeUsername(document.querySelector("#clientEmail").value).toLowerCase();
   const password = document.querySelector("#clientPassword").value;
 
-  if (!identifier || !password) {
-    message("Enter your generated Username (or registered Gmail) and temporary password.", "error");
+  if (!email || !password) {
+    message("Enter your registered Gmail, Username, or Client ID and password.", "error");
     return;
   }
 
@@ -106,7 +103,7 @@ form.addEventListener("submit", async e => {
     // returns a Firebase custom token. No customer Gmail is exposed to the
     // browser just to perform a username/Client ID lookup.
     const result = await clientLogin({
-      identifier,
+      identifier: email,
       password
     });
 
@@ -133,7 +130,7 @@ form.addEventListener("submit", async e => {
     window.location.replace("/client/");
   } catch (err) {
     const debugDetails = [
-      `Login identifier entered: ${identifier}`,
+      `Registered Gmail entered: ${email}`,
       `Firebase project: piso-wifi-f2b5c`,
       `Operation: Firebase callable → clientLogin`,
       `Error code: ${err?.code || "(none)"}`,
@@ -212,18 +209,30 @@ async function submitResetRequest(e){
   const email=document.querySelector("#resetEmail").value.trim().toLowerCase();
   const msgEl=document.querySelector("#resetMessage");
   const btn=document.querySelector("#resetSubmit");
-  if(!clientId||!email){msgEl.textContent="Complete all fields.";msgEl.className="client-login-message error";return;}
-  btn.disabled=true; btn.textContent="Sending…"; msgEl.textContent="Checking your account…"; msgEl.className="client-login-message";
+  if(!clientId||!email){
+    msgEl.textContent="Complete all fields.";
+    msgEl.className="client-login-message error";
+    return;
+  }
+
+  btn.disabled=true;
+  btn.textContent="Sending…";
+  msgEl.textContent="Checking your account…";
+  msgEl.className="client-login-message";
+
   try{
-    // Create the custom reset callable only when recovery is actually requested.
-    // Keeping this initialization out of page load protects the working V46 login/navigation runtime.
-    const sendCustomPasswordReset = httpsCallable(getFunctions(), "sendCustomPasswordReset");
-    const result=await sendCustomPasswordReset({clientCode:clientId,email});
+    // IMPORTANT: This is intentionally NOT Firebase's browser sendPasswordResetEmail().
+    // The callable generates the Firebase action code server-side and hands it to the
+    // Google Apps Script mailer, which sends the PISO WIFI custom HTML email.
+    const functions = getFunctions();
+    const sendCustomPasswordReset = httpsCallable(functions,"sendCustomPasswordReset");
+    const result = await sendCustomPasswordReset({clientCode:clientId,email});
+
     if(result?.data?.emailSent!==true){
       throw new Error("PASSWORD RESET FAILED [email_delivery]: The custom mailer did not confirm delivery.");
     }
 
-    const safeEmail=email.replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;", "'":"&#39;"}[c]));
+    const safeEmail=email.replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
     const card=wrapCard();
     if(card){
       card.innerHTML=`<button type="button" class="client-reset-close" data-close-reset aria-label="Close confirmation">×</button>
@@ -240,14 +249,11 @@ async function submitResetRequest(e){
       const closeAndReturnToLogin=()=>{
         if(successTimer) clearTimeout(successTimer);
         wrap.remove();
-        // Always return to the official Customer Login route.
         if(window.location.pathname !== "/") window.location.replace("/");
       };
       card.querySelectorAll("[data-close-reset]").forEach(el=>{
         el.addEventListener("click", closeAndReturnToLogin);
       });
-      // Reliable one-shot auto-close. This avoids interval/timer drift and uses the same
-      // navigation path as the X and Close & Return to Login controls.
       successTimer=setTimeout(closeAndReturnToLogin,5000);
       if(autoCloseEl){
         const countdownTimer=setInterval(()=>{
@@ -256,11 +262,14 @@ async function submitResetRequest(e){
             clearInterval(countdownTimer);
             return;
           }
-          autoCloseEl.innerHTML=`This message will close automatically in <b>${remaining} second${remaining===1?"":"s"}</b>.`;
+          autoCloseEl.innerHTML=`This message will close automatically in <b>${remaining} second${remaining===1?"":"s"}.</b>`;
         },1000);
       }
     }
-    function wrapCard(){ return document.querySelector("#forgotPasswordModal .client-reset-card"); }
+
+    function wrapCard(){
+      return document.querySelector("#forgotPasswordModal .client-reset-card");
+    }
   }catch(err){
     console.error("[PISO WIFI PASSWORD RESET]",err);
     const debugDetails=[
@@ -287,6 +296,7 @@ async function submitResetRequest(e){
     }
     msgEl.textContent=text;
     msgEl.className="client-login-message error";
-    btn.disabled=false; btn.textContent="Send Reset Link";
+    btn.disabled=false;
+    btn.textContent="Send Reset Link";
   }
 }
