@@ -7,7 +7,7 @@ import {
   browserSessionPersistence,
   sendPasswordResetEmail
 } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-auth.js";
-import { doc, getDoc, addDoc, collection, serverTimestamp } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-firestore.js";
+import { doc, getDoc, getDocs, addDoc, collection, query, where, updateDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-firestore.js";
 import { getFunctions, httpsCallable } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-functions.js";
 
 const functions = getFunctions();
@@ -117,6 +117,26 @@ form.addEventListener("submit", async e => {
 
     const profile = await getRole(cred.user);
 
+    // A Firebase-hosted password-reset flow completes the password change before
+    // the customer returns to this login page.  The success page sets this
+    // browser marker so the old temporary-password prompt is not shown again.
+    try {
+      const resetCompleted = localStorage.getItem("pisoWifi.passwordResetCompleted");
+      if (resetCompleted === "1") {
+        const unitSnap = await getDocs(
+          query(collection(db, "units"), where("authUserId", "==", cred.user.uid))
+        );
+        await Promise.all(unitSnap.docs.map(unitDoc => updateDoc(unitDoc.ref, {
+          forcePasswordChange: false,
+          passwordChangedAt: serverTimestamp(),
+          updatedAt: serverTimestamp()
+        })));
+        localStorage.removeItem("pisoWifi.passwordResetCompleted");
+      }
+    } catch (resetProfileError) {
+      console.warn("[PISO WIFI PASSWORD RESET] Could not finalize reset profile flag.", resetProfileError);
+    }
+
     if (profile?.role !== "client" || profile?.active === false) {
       await signOut(auth);
       message(
@@ -218,7 +238,7 @@ async function submitResetRequest(e){
     const actionCodeSettings={
       // Web custom email-action handler. Firebase adds mode/oobCode to the
       // configured email-template Action URL.
-      url:`${window.location.origin}/reset-password.html`,
+      url:`${window.location.origin}/reset-password.html?reset=success`,
       handleCodeInApp:false
     };
     await sendPasswordResetEmail(auth,email,actionCodeSettings);
