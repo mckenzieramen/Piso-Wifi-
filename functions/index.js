@@ -139,6 +139,28 @@ exports.clientLogin = onCall({ region: "us-central1" }, async (request) => {
     throw new HttpsError("permission-denied", "This account is not authorized for the Customer Account.");
   }
 
+  // The Admin-created temporary password is the customer's Client ID.
+  // Once the customer successfully authenticates with a different password,
+  // the account has already completed password setup. Clear the flag on the
+  // server so the change-password modal cannot reappear on later logins.
+  if (customer.forcePasswordChange === true) {
+    const temporaryPassword = clean(customer.clientCode || customer.unitCode).toUpperCase();
+    if (temporaryPassword && password !== temporaryPassword) {
+      try {
+        await db.doc(`units/${customer.id}`).update({
+          forcePasswordChange: false,
+          passwordChangedAt: admin.firestore.FieldValue.serverTimestamp(),
+          updatedAt: admin.firestore.FieldValue.serverTimestamp()
+        });
+        customer.forcePasswordChange = false;
+      } catch (error) {
+        console.error("[CLIENT LOGIN] Could not clear temporary-password flag", error);
+        // Do not block an otherwise valid login. The client-side setup path
+        // can still retry the flag update when the customer is in the portal.
+      }
+    }
+  }
+
   let customToken;
   try {
     customToken = await admin.auth().createCustomToken(localId);

@@ -637,6 +637,15 @@ function setupPasswordVisibilityToggles(){
 async function maybeShowFirstLoginPasswordSetup(){
   const unit=clientUnits[0];
   if(!unit || unit.forcePasswordChange!==true) return;
+
+  // A password-reset flow or a previous completed setup may have already
+  // established the customer's permanent password. Never show the setup
+  // modal again once the completion marker is present.
+  try {
+    if(localStorage.getItem("pisoWifi.passwordSetupCompleted") === "1") {
+      return;
+    }
+  } catch {}
   const modal=$("#clientPasswordSetup");
   if(!modal) return;
   modal.classList.remove("hidden"); modal.setAttribute("aria-hidden","false");
@@ -652,6 +661,7 @@ async function maybeShowFirstLoginPasswordSetup(){
       await updatePassword(currentUser,a);
       await updateDoc(doc(db,"units",unit.id),{forcePasswordChange:false,passwordChangedAt:serverTimestamp(),updatedAt:serverTimestamp()});
       unit.forcePasswordChange=false;
+      try { localStorage.setItem("pisoWifi.passwordSetupCompleted","1"); } catch {}
       modal.classList.add("hidden"); modal.setAttribute("aria-hidden","true");
       toast("Your new password has been saved.");
     }catch(err){
