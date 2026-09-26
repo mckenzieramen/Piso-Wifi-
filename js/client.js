@@ -684,27 +684,6 @@ async function bootstrap(user){
   }
   currentUser=user;
   try{
-    // A successful password-reset link sets this marker. Clear the old
-    // first-login requirement for this authenticated customer before showing
-    // the Customer dashboard.
-    let passwordResetJustCompleted = false;
-    try {
-      passwordResetJustCompleted = localStorage.getItem("pisoWifi.passwordResetCompleted") === "1";
-    } catch {}
-    if (passwordResetJustCompleted) {
-      try {
-        const resetUnits = await getDocs(query(collection(db,"units"),where("authUserId","==",user.uid)));
-        await Promise.all(resetUnits.docs.map(d => updateDoc(d.ref,{
-          forcePasswordChange:false,
-          passwordChangedAt:serverTimestamp(),
-          updatedAt:serverTimestamp()
-        })));
-      } catch (resetFinalizeError) {
-        console.warn("[PISO WIFI PASSWORD RESET] Could not finalize customer unit flag.", resetFinalizeError);
-      } finally {
-        try { localStorage.removeItem("pisoWifi.passwordResetCompleted"); } catch {}
-      }
-    }
     const userSnap=await withTimeout(getDoc(doc(db,"users",user.uid)),8000,"Firebase user profile request timed out.");
     if(userSnap.exists() && userSnap.data().role==="admin"){
       bootstrapFinished=true; clearTimeout(bootTimer);

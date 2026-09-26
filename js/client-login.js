@@ -7,7 +7,7 @@ import {
   browserSessionPersistence,
   sendPasswordResetEmail
 } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-auth.js";
-import { doc, getDoc, getDocs, addDoc, collection, query, where, updateDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-firestore.js";
+import { doc, getDoc, addDoc, collection, serverTimestamp } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-firestore.js";
 import { getFunctions, httpsCallable } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-functions.js";
 
 const functions = getFunctions();
@@ -18,7 +18,6 @@ const msg = document.querySelector("#clientLoginMessage");
 const submit = document.querySelector("#clientLoginButton");
 const remember = document.querySelector("#clientRememberMe");
 const CLIENT_REMEMBER_KEY = "pisoWifi.rememberedUsername";
-let loginInProgress = false;
 
 function message(text, type = "") {
   msg.textContent = text;
@@ -77,8 +76,7 @@ async function routeUser(user) {
 }
 
 onAuthStateChanged(auth, user => {
-  // Prevent the auth listener from racing the explicit customer login flow.
-  if (user && !loginInProgress) routeUser(user);
+  if (user) routeUser(user);
 });
 
 form.addEventListener("submit", async e => {
@@ -92,7 +90,6 @@ form.addEventListener("submit", async e => {
     return;
   }
 
-  loginInProgress = true;
   submit.disabled = true;
   submit.textContent = "Signing in…";
   message("Authenticating…");
@@ -118,32 +115,21 @@ form.addEventListener("submit", async e => {
 
     const cred = await signInWithCustomToken(auth, customToken);
 
-    // The callable has already verified that this is an active Customer Account.
-    // Do not perform a second role/profile read here; that read previously raced
-    // the auth-state listener and could reject an otherwise valid login.
-    //
-    // If this browser just completed a password reset, finalize the customer's
-    // temporary-password flag while the authenticated user is available.
-    try {
-      const resetCompleted = localStorage.getItem("pisoWifi.passwordResetCompleted");
-      if (resetCompleted === "1") {
-        const unitSnap = await getDocs(
-          query(collection(db, "units"), where("authUserId", "==", cred.user.uid))
-        );
-        await Promise.all(unitSnap.docs.map(unitDoc => updateDoc(unitDoc.ref, {
-          forcePasswordChange: false,
-          passwordChangedAt: serverTimestamp(),
-          updatedAt: serverTimestamp()
-        })));
-        localStorage.removeItem("pisoWifi.passwordResetCompleted");
-      }
-    } catch (resetProfileError) {
-      console.warn("[PISO WIFI PASSWORD RESET] Could not finalize reset profile flag during login.", resetProfileError);
+    const profile = await getRole(cred.user);
+
+    if (profile?.role !== "client" || profile?.active === false) {
+      await signOut(auth);
+      message(
+        "Access denied. This account is not a Customer Account.",
+        "error"
+      );
+      submit.disabled = false;
+      submit.textContent = "Login";
+      return;
     }
 
     window.location.replace("/client/");
   } catch (err) {
-    loginInProgress = false;
     const debugDetails = [
       `Registered Gmail entered: ${email}`,
       `Firebase project: piso-wifi-f2b5c`,
@@ -231,7 +217,7 @@ async function submitResetRequest(e){
     // a stale Firestore rule must never prevent the actual password-reset email from being sent.
     const actionCodeSettings={
       url:`${window.location.origin}/reset-password.html`,
-      handleCodeInApp:false
+      handleCodeInApp:true
     };
     await sendPasswordResetEmail(auth,email,actionCodeSettings);
 
@@ -251,28 +237,39 @@ async function submitResetRequest(e){
     const safeEmail=email.replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;", "'":"&#39;"}[c]));
     const card=wrapCard();
     if(card){
-      card.innerHTML=`<button type="button" class="client-reset-close" data-close-reset aria-label="Close confirmation" title="Close">×</button>
+      card.innerHTML=`<button type="button" class="client-reset-close" data-close-reset aria-label="Close confirmation">×</button>
         <div class="client-reset-icon success" aria-hidden="true">✓</div>
         <span class="eyebrow">EMAIL SENT</span>
         <h2>Check your email</h2>
         <p class="reset-intro">We sent a secure password-reset link to <b>${safeEmail}</b>.</p>
         <div class="client-reset-note success-note">Open the email and click <b>Reset My Password</b> to create your new private password. If you don't see it shortly, check your Spam or Promotions folder.</div>
-        <div class="client-reset-actions"><button class="client-primary" type="button" data-close-reset>Close &amp; Return to Login</button></div>`;
+        <div class="client-reset-actions"><button class="client-primary" type="button" data-close-reset>Close &amp; Return to Login</button></div>
+        <div class="reset-auto-close" aria-live="polite">This message will close automatically in <b>5 seconds</b>.</div>`;
+      let remaining=5;
+      const autoCloseEl=card.querySelector(".reset-auto-close");
+      let successTimer=null;
       const closeAndReturnToLogin=()=>{
+        if(successTimer) clearTimeout(successTimer);
         wrap.remove();
+        // Always return to the official Customer Login route.
         if(window.location.pathname !== "/") window.location.replace("/");
       };
-      // Delegated handling makes both the X icon and the dynamically-created
-      // Close button reliably clickable.
-      wrap.addEventListener("click",(event)=>{
-        const closeButton=event.target.closest("[data-close-reset]");
-        if(closeButton){
-          event.preventDefault();
-          event.stopPropagation();
-          closeAndReturnToLogin();
-        }
+      card.querySelectorAll("[data-close-reset]").forEach(el=>{
+        el.addEventListener("click", closeAndReturnToLogin);
       });
-      // No automatic close: the customer controls when the confirmation closes.
+      // Reliable one-shot auto-close. This avoids interval/timer drift and uses the same
+      // navigation path as the X and Close & Return to Login controls.
+      successTimer=setTimeout(closeAndReturnToLogin,5000);
+      if(autoCloseEl){
+        const countdownTimer=setInterval(()=>{
+          remaining-=1;
+          if(remaining<=0){
+            clearInterval(countdownTimer);
+            return;
+          }
+          autoCloseEl.innerHTML=`This message will close automatically in <b>${remaining} second${remaining===1?"":"s"}</b>.`;
+        },1000);
+      }
     }
     function wrapCard(){ return document.querySelector("#forgotPasswordModal .client-reset-card"); }
   }catch(err){
