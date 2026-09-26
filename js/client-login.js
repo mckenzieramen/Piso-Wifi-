@@ -18,6 +18,7 @@ const msg = document.querySelector("#clientLoginMessage");
 const submit = document.querySelector("#clientLoginButton");
 const remember = document.querySelector("#clientRememberMe");
 const CLIENT_REMEMBER_KEY = "pisoWifi.rememberedUsername";
+let loginInProgress = false;
 
 function message(text, type = "") {
   msg.textContent = text;
@@ -76,7 +77,10 @@ async function routeUser(user) {
 }
 
 onAuthStateChanged(auth, user => {
-  if (user) routeUser(user);
+  // During the explicit customer login flow, the callable has already
+  // verified the account as a customer. Do not let this listener race
+  // the login and sign the customer out because of a separate profile read.
+  if (user && !loginInProgress) routeUser(user);
 });
 
 form.addEventListener("submit", async e => {
@@ -90,6 +94,7 @@ form.addEventListener("submit", async e => {
     return;
   }
 
+  loginInProgress = true;
   submit.disabled = true;
   submit.textContent = "Signing in…";
   message("Authenticating…");
@@ -113,9 +118,7 @@ form.addEventListener("submit", async e => {
       throw new Error("CLIENT LOGIN FAILED [custom_token_missing]");
     }
 
-    const cred = await signInWithCustomToken(auth, customToken);
-
-    const profile = await getRole(cred.user);
+    await signInWithCustomToken(auth, customToken);
 
     // A Firebase-hosted password-reset flow completes the password change before
     // the customer returns to this login page.  The success page sets this
@@ -137,19 +140,12 @@ form.addEventListener("submit", async e => {
       console.warn("[PISO WIFI PASSWORD RESET] Could not finalize reset profile flag.", resetProfileError);
     }
 
-    if (profile?.role !== "client" || profile?.active === false) {
-      await signOut(auth);
-      message(
-        "Access denied. This account is not a Customer Account.",
-        "error"
-      );
-      submit.disabled = false;
-      submit.textContent = "Login";
-      return;
-    }
-
+    // The clientLogin callable already verified role=client and account status
+    // before issuing the custom token. Route directly instead of performing a
+    // second Firestore profile read that can race or be blocked by rules.
     window.location.replace("/client/");
   } catch (err) {
+    loginInProgress = false;
     const debugDetails = [
       `Registered Gmail entered: ${email}`,
       `Firebase project: piso-wifi-f2b5c`,
