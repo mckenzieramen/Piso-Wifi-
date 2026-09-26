@@ -1,3 +1,9 @@
+const { onCall, HttpsError } = require("firebase-functions/v2/https");
+const admin = require("firebase-admin");
+
+admin.initializeApp();
+const db = admin.firestore();
+
 // CUSTOM PISO WIFI PASSWORD RESET MAILER
 // Generates the Firebase reset action code server-side and sends the reset
 // message through the Google Apps Script HTML mailer. This deliberately
@@ -8,7 +14,7 @@ const CLIENT_RESET_PAGE = "https://piso-wifi.pages.dev/reset-password.html";
 
 function normalizeEmail(value){ return String(value || "").trim().toLowerCase(); }
 function firstNameFromCustomer(unit){
-  return String(unit?.firstName || String(unit?.name || "Customer").trim().split(/\\s+/)[0] || "Customer").trim() || "Customer";
+  return String(unit?.firstName || String(unit?.name || "Customer").trim().split(/\s+/)[0] || "Customer").trim() || "Customer";
 }
 
 async function findCustomerByClientCodeForReset(clientCode){
@@ -36,7 +42,7 @@ async function sendCustomPasswordResetCallable(request){
   try{
     clientCode=String(request.data?.clientCode || "").trim().toUpperCase();
     const email=normalizeEmail(request.data?.email);
-    if(!/^CID-\\d{3,}$/.test(clientCode) || !email){
+    if(!/^CID-\d{3,}$/.test(clientCode) || !email){
       throw new HttpsError("invalid-argument","Please enter a valid Client ID and registered Gmail.");
     }
 
@@ -134,11 +140,7 @@ async function sendCustomPasswordResetCallable(request){
 
 exports.sendCustomPasswordReset=onCall({region:"us-central1"},sendCustomPasswordResetCallable);
 
-const { onCall, HttpsError } = require("firebase-functions/v2/https");
-const admin = require("firebase-admin");
 
-admin.initializeApp();
-const db = admin.firestore();
 
 // This is the public Firebase Web API key from the client configuration.
 // It is not a service-account credential.
