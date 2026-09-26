@@ -237,39 +237,29 @@ async function submitResetRequest(e){
     const safeEmail=email.replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;", "'":"&#39;"}[c]));
     const card=wrapCard();
     if(card){
-      card.innerHTML=`<button type="button" class="client-reset-close" data-close-reset aria-label="Close confirmation">×</button>
+      card.innerHTML=`<button type="button" class="client-reset-close" data-close-reset aria-label="Close confirmation" title="Close">×</button>
         <div class="client-reset-icon success" aria-hidden="true">✓</div>
         <span class="eyebrow">EMAIL SENT</span>
         <h2>Check your email</h2>
         <p class="reset-intro">We sent a secure password-reset link to <b>${safeEmail}</b>.</p>
         <div class="client-reset-note success-note">Open the email and click <b>Reset My Password</b> to create your new private password. If you don't see it shortly, check your Spam or Promotions folder.</div>
-        <div class="client-reset-actions"><button class="client-primary" type="button" data-close-reset>Close &amp; Return to Login</button></div>
-        <div class="reset-auto-close" aria-live="polite">This message will close automatically in <b>5 seconds</b>.</div>`;
-      let remaining=5;
-      const autoCloseEl=card.querySelector(".reset-auto-close");
-      let successTimer=null;
+        <div class="client-reset-actions"><button class="client-primary" type="button" data-close-reset>Close &amp; Return to Login</button></div>`;
       const closeAndReturnToLogin=()=>{
-        if(successTimer) clearTimeout(successTimer);
         wrap.remove();
         // Always return to the official Customer Login route.
-        if(window.location.pathname !== "/") window.location.replace("/");
+        window.location.replace("/");
       };
-      card.querySelectorAll("[data-close-reset]").forEach(el=>{
-        el.addEventListener("click", closeAndReturnToLogin);
+      // Use delegated click handling so dynamically-created controls always respond.
+      wrap.addEventListener("click",(event)=>{
+        const closeButton=event.target.closest("[data-close-reset]");
+        if(closeButton){
+          event.preventDefault();
+          event.stopPropagation();
+          closeAndReturnToLogin();
+        }
       });
-      // Reliable one-shot auto-close. This avoids interval/timer drift and uses the same
-      // navigation path as the X and Close & Return to Login controls.
-      successTimer=setTimeout(closeAndReturnToLogin,5000);
-      if(autoCloseEl){
-        const countdownTimer=setInterval(()=>{
-          remaining-=1;
-          if(remaining<=0){
-            clearInterval(countdownTimer);
-            return;
-          }
-          autoCloseEl.innerHTML=`This message will close automatically in <b>${remaining} second${remaining===1?"":"s"}</b>.`;
-        },1000);
-      }
+      // No automatic close: the customer controls when the confirmation closes.
+
     }
     function wrapCard(){ return document.querySelector("#forgotPasswordModal .client-reset-card"); }
   }catch(err){
