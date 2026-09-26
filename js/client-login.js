@@ -216,8 +216,10 @@ async function submitResetRequest(e){
     // Send the secure Firebase Auth reset email first. The Firestore request is an audit/notification record;
     // a stale Firestore rule must never prevent the actual password-reset email from being sent.
     const actionCodeSettings={
+      // Web custom email-action handler. Firebase adds mode/oobCode to the
+      // configured email-template Action URL.
       url:`${window.location.origin}/reset-password.html`,
-      handleCodeInApp:true
+      handleCodeInApp:false
     };
     await sendPasswordResetEmail(auth,email,actionCodeSettings);
 
