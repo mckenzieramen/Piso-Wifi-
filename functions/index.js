@@ -299,13 +299,27 @@ async function findCustomer(identifier) {
     return null;
   }
 
+  // First try the exact generated username.
   const usernameSnap = await db.collection("units").where("username", "==", value).limit(1).get();
   if (!usernameSnap.empty) return { id: usernameSnap.docs[0].id, ...usernameSnap.docs[0].data() };
 
-  const code = normalizeClientCode(value);
+  // Generated usernames always end with the unique Client ID, e.g.
+  // CliffCID-023. Resolve by that Client ID so casing differences or a
+  // harmless username-format variation cannot break customer login.
+  const embeddedCodeMatch = value.match(/(CID-\d{3,})$/i);
+  const code = normalizeClientCode(embeddedCodeMatch?.[1] || value);
   if (validClientCode(code)) {
     const codeSnap = await db.collection("units").where("clientCode", "==", code).limit(1).get();
-    if (!codeSnap.empty) return { id: codeSnap.docs[0].id, ...codeSnap.docs[0].data() };
+    if (!codeSnap.empty) {
+      const data = codeSnap.docs[0].data();
+      // A full generated username must belong to the same Client ID.
+      // Client ID alone is also accepted by design.
+      const expectedUsername = clean(data.username);
+      const suppliedLooksLikeUsername = /CID-\d{3,}$/i.test(value) && !/^CID-\d{3,}$/i.test(value);
+      if (!suppliedLooksLikeUsername || expectedUsername.toLowerCase() === value.toLowerCase()) {
+        return { id: codeSnap.docs[0].id, ...data };
+      }
+    }
   }
   return null;
 }

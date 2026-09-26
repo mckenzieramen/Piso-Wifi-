@@ -27,13 +27,16 @@ function normalizeUsername(value) {
   return String(value || "").trim();
 }
 
-try {
-  const savedUnit = localStorage.getItem(CLIENT_REMEMBER_KEY);
-  if (savedUnit && document.querySelector("#clientEmail")) {
-    document.querySelector("#clientEmail").value = savedUnit;
-    if (remember) remember.checked = true;
-  }
-} catch {}
+// Prevent the browser from silently reusing a saved Admin credential on the
+// separate Customer portal. The fields become editable as soon as the customer
+// focuses them, so this does not change the actual login flow.
+const clientIdentifierInput = document.querySelector("#clientEmail");
+const clientPasswordInput = document.querySelector("#clientPassword");
+const unlockCustomerField = field => {
+  if (field) field.removeAttribute("readonly");
+};
+clientIdentifierInput?.addEventListener("focus", () => unlockCustomerField(clientIdentifierInput), { once: true });
+clientPasswordInput?.addEventListener("focus", () => unlockCustomerField(clientPasswordInput), { once: true });
 
 
 async function getRole(user) {
