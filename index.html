@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#0a2344">
+  <title>PISO WIFI — Customer Account</title>
+  <link rel="stylesheet" href="css/client.css">
+  <style id="client-login-critical-css">/* PISO WIFI Customer Account — shared visual system */
+:root{
+  --navy:#09213f;--navy-2:#0d3157;--navy-3:#123e69;--blue:#0877e8;--blue-2:#1697f4;
+  --ink:#142742;--muted:#718096;--line:#e2e9f2;--bg:#f4f7fb;--white:#fff;
+  --green:#16a36b;--green-bg:#e8f8f1;--red:#e44c5b;--red-bg:#fff0f2;--purple:#7b55d9;--purple-bg:#f1edff;
+  --orange:#e08b18;--orange-bg:#fff5df;--shadow:0 14px 34px rgba(18,48,82,.08);--radius:14px;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:var(--ink);background:var(--bg);-webkit-font-smoothing:antialiased}
+button,input,select,textarea{font:inherit}
+button,a{ -webkit-tap-highlight-color:transparent}
+button{cursor:pointer}
+input,select,textarea{font-size:16px}
+.hidden{display:none!important}
+
+/* Login */
+.client-login-page{min-height:100vh;background:#eef3f8}
+.client-login-shell{min-height:100vh;display:grid;grid-template-columns:minmax(390px,.88fr) minmax(500px,1.12fr)}
+.client-brand-panel{position:relative;overflow:hidden;padding:46px 7vw 36px;background:radial-gradient(circle at 75% 18%,rgba(23,151,244,.22),transparent 32%),linear-gradient(145deg,#061a33,#0a3156 58%,#09213f);color:#fff;display:flex;flex-direction:column}
+.client-brand-panel:after{content:"";position:absolute;inset:auto -15% -20% auto;width:430px;height:430px;border-radius:50%;background:rgba(24,147,245,.08);filter:blur(2px)}
+.client-brand-top,.brand-copy,.client-illustration,.brand-footer{position:relative;z-index:1}
+.client-logo-lockup{display:flex;align-items:center;gap:12px}
+.client-logo-lockup b{display:block;font-size:20px;letter-spacing:.04em}
+.client-logo-lockup small{display:block;color:#a9c7e5;font-size:11px;margin-top:2px}
+.client-logo-mark{width:42px;height:42px;border-radius:12px;display:grid;place-items:center;color:#36b5ff;background:rgba(255,255,255,.08);box-shadow:inset 0 0 0 1px rgba(255,255,255,.1)}
+.client-logo-mark svg{width:32px;height:32px}
+.brand-copy{margin-top:clamp(80px,15vh,150px);max-width:460px}
+.eyebrow{font-size:11px;font-weight:800;letter-spacing:.13em;color:#228df1}
+.client-brand-panel .eyebrow{color:#55bcff}
+.brand-copy h1{font-size:46px;line-height:1.05;margin:12px 0 15px;letter-spacing:-.035em}
+.brand-copy p{font-size:17px;line-height:1.65;color:#c5d7ea;max-width:410px;margin:0}
+.client-illustration{height:280px;margin-top:auto;max-width:500px;position:relative}
+.illustration-screen{position:absolute;left:9%;bottom:28px;width:260px;height:160px;border-radius:13px 13px 7px 7px;background:#0d4c7d;border:7px solid #092d50;box-shadow:0 18px 30px rgba(0,0,0,.18);padding:18px}
+.screen-top{height:10px;width:40%;border-radius:10px;background:#3db6ff;margin-bottom:18px}
+.screen-line{height:7px;width:55%;background:#6d9fc8;border-radius:10px;margin:8px 0;opacity:.7}.screen-line.long{width:82%}
+.screen-chart{position:absolute;bottom:18px;right:18px;left:18px;height:58px;display:flex;align-items:flex-end;gap:9px}.screen-chart span{flex:1;border-radius:5px 5px 2px 2px;background:#1ca7f4}.screen-chart span:nth-child(1){height:34%}.screen-chart span:nth-child(2){height:58%}.screen-chart span:nth-child(3){height:45%}.screen-chart span:nth-child(4){height:76%}.screen-chart span:nth-child(5){height:95%}
+.illustration-person{position:absolute;right:7%;bottom:10px;width:190px;height:240px}.illustration-person .head{position:absolute;width:67px;height:67px;border-radius:50%;background:#f2b894;left:67px;top:20px;box-shadow:inset -7px -3px rgba(0,0,0,.05)}.illustration-person .head:before{content:"";position:absolute;width:76px;height:37px;background:#18283d;border-radius:50px 50px 20px 20px;left:-5px;top:-7px}.illustration-person .body{position:absolute;width:125px;height:126px;border-radius:62px 62px 24px 24px;background:linear-gradient(160deg,#0f74c7,#0b4d89);left:35px;top:83px}.illustration-person .laptop{position:absolute;width:174px;height:92px;background:#a7c6df;border:8px solid #244866;border-radius:8px;bottom:8px;left:8px;transform:skew(-7deg);box-shadow:0 15px 25px rgba(0,0,0,.2)}.illustration-person .laptop:after{content:"";position:absolute;left:-22px;right:-22px;bottom:-20px;height:12px;border-radius:50%;background:#183c5d}
+.wifi-orb{position:absolute;right:5%;top:0;width:74px;height:74px;border-radius:50%;background:#fff;color:#0877e8;display:grid;place-items:center;box-shadow:0 15px 25px rgba(0,0,0,.12)}.wifi-orb:before{content:"";position:absolute;width:22px;height:22px;border-radius:50%;border:4px solid currentColor;border-top-color:transparent;transform:rotate(-45deg);top:18px}.wifi-orb i{position:absolute;border:3px solid currentColor;border-left-color:transparent;border-bottom-color:transparent;border-radius:50%;width:42px;height:42px;transform:rotate(-45deg);top:14px}.wifi-orb i:nth-child(2){width:57px;height:57px;top:7px}.wifi-orb i:nth-child(3){display:none}
+.brand-footer{margin-top:18px;font-size:11px;color:#8fb0cf}
+.client-login-area{display:grid;place-items:center;padding:48px;background:linear-gradient(180deg,#fbfdff,#f3f7fb)}
+.client-login-card{width:min(470px,100%);background:#fff;border:1px solid #e6edf5;border-radius:18px;box-shadow:0 25px 65px rgba(14,39,70,.09);padding:42px}
+.mobile-brand{display:none}
+.login-heading h2{font-size:29px;margin:10px 0 7px;letter-spacing:-.02em}.login-heading p{color:var(--muted);line-height:1.55;margin:0 0 30px;font-size:14px}
+.client-field{display:block;margin:18px 0}.client-field>span{display:block;font-size:13px;font-weight:700;margin-bottom:8px;color:#33445d}
+.input-with-icon{height:52px;border:1px solid #dbe4ee;border-radius:10px;display:flex;align-items:center;padding:0 12px;gap:9px;transition:.2s;background:#fff}.input-with-icon:focus-within{border-color:#3b9af1;box-shadow:0 0 0 4px rgba(8,119,232,.09)}.input-with-icon svg{width:18px;height:18px;fill:none;stroke:#7c8da3;stroke-width:1.7;flex:none}.input-with-icon input{border:0;outline:0;min-width:0;flex:1;color:var(--ink);background:transparent}.input-with-icon button{border:0;background:transparent;color:var(--blue);font-size:12px;font-weight:700;padding:7px}
+.login-options{display:flex;justify-content:flex-end;margin:3px 0 20px}.text-link,.back-admin{border:0;background:transparent;color:var(--blue);font-weight:700;font-size:12px;text-decoration:none}
+.client-primary,.client-secondary{min-height:44px;border-radius:9px;padding:0 16px;border:1px solid transparent;font-weight:750;display:inline-flex;align-items:center;justify-content:center;gap:8px;text-decoration:none}
+.client-primary{background:linear-gradient(135deg,#0b78e8,#0864c6);color:#fff;box-shadow:0 9px 18px rgba(8,119,232,.18)}.client-primary:hover{filter:brightness(1.04)}.client-primary:disabled{opacity:.65;cursor:wait}
+.client-secondary{background:#fff;color:#31506f;border-color:#dbe4ee}.client-secondary:hover{background:#f7faff}
+.login-submit{width:100%;height:50px}.client-login-message{min-height:22px;margin-top:12px;text-align:center;font-size:12px;color:#6b7d93}.client-login-message.error{color:var(--red)}.client-login-message.success{color:var(--green)}
+.login-contact{text-align:center;font-size:12px;color:#718096;margin:24px 0 15px}.login-contact a{color:var(--blue);font-weight:700}.back-admin{display:block;text-align:center;color:#60748b}
+
+
+/* Mobile-first customer login refinement */
+@media (max-width: 900px){
+  .client-login-page{min-height:100svh;background:linear-gradient(180deg,#f7faff,#eef4f9)}
+  .client-login-shell{min-height:100svh;display:block}
+  .client-brand-panel{display:none}
+  .client-login-area{min-height:100svh;display:flex;align-items:flex-start;justify-content:center;padding:20px 14px 28px;background:transparent}
+  .client-login-card{width:100%;max-width:520px;margin:0;border-radius:20px;padding:24px 20px 22px;box-shadow:0 18px 45px rgba(14,39,70,.09)}
+  .mobile-brand{display:flex;align-items:center;justify-content:center;gap:10px;margin:2px 0 24px;color:var(--navy);font-weight:850;font-size:20px;letter-spacing:.04em}
+  .mobile-brand .client-logo-mark{width:44px;height:44px;color:#168fe8;background:#edf7ff;box-shadow:inset 0 0 0 1px #d7ebfb}
+  .mobile-brand .client-logo-mark svg{width:30px;height:30px}
+  .login-heading{text-align:center}
+  .login-heading h2{font-size:24px;line-height:1.2;margin:9px 0 8px}
+  .login-heading p{font-size:13px;margin-bottom:24px}
+  .client-field{margin:16px 0}
+  .client-field>span{font-size:13px;margin-bottom:7px}
+  .input-with-icon{height:52px;border-radius:12px;padding:0 13px}
+  .login-options{margin:2px 0 18px}
+  .login-submit{height:52px;border-radius:12px}
+  .login-contact{font-size:11px;line-height:1.55;margin:20px 8px 0}
+}
+
+@media (max-width: 420px){
+  .client-login-area{padding:12px 10px 20px}
+  .client-login-card{padding:22px 16px 20px;border-radius:18px}
+  .mobile-brand{margin-bottom:20px}
+  .login-heading h2{font-size:22px}
+  .login-heading p{margin-bottom:20px}
+  .client-field{margin:14px 0}
+}
+
+
+
+/* Account Recovery modal */
+.client-reset-modal{position:fixed;inset:0;z-index:5000;display:flex;align-items:center;justify-content:center;padding:18px;isolation:isolate}
+.client-reset-modal.hidden{display:none!important}
+.client-reset-backdrop{pointer-events:none;position:absolute;inset:0;background:rgba(5,24,48,.66);backdrop-filter:blur(7px);-webkit-backdrop-filter:blur(7px)}
+.client-reset-card{position:relative;z-index:1;width:min(470px,100%);background:#fff;border:1px solid #e4ebf3;border-radius:22px;padding:30px;box-shadow:0 28px 80px rgba(5,29,57,.28);animation:resetCardIn .18s ease-out}
+@keyframes resetCardIn{from{opacity:0;transform:translateY(10px) scale(.985)}to{opacity:1;transform:none}}
+.client-reset-close{z-index:3;pointer-events:auto;position:absolute;right:16px;top:16px;width:38px;height:38px;border:1px solid #e1e9f2;border-radius:11px;background:#f7faff;color:#60748b;font-size:22px;line-height:1;display:grid;place-items:center;cursor:pointer}
+.client-reset-close:hover{background:#eef5fc;color:#173657}
+.client-reset-icon{width:54px;height:54px;border-radius:16px;background:linear-gradient(135deg,#edf7ff,#e4f1ff);color:#0877e8;display:grid;place-items:center;margin-bottom:16px;box-shadow:inset 0 0 0 1px #d7ebfb}
+.client-reset-icon svg{width:27px;height:27px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.client-reset-card .eyebrow{display:block;margin-bottom:8px;color:#0877e8}
+.client-reset-card h2{margin:0 42px 8px 0;color:#102a4c;font-size:27px;line-height:1.15;letter-spacing:-.025em}
+.client-reset-card .reset-intro{margin:0 0 22px;color:#667990;font-size:13px;line-height:1.6}
+.client-reset-card .client-field{margin:16px 0}
+.client-reset-card .client-field>span{display:block;font-size:12px;font-weight:800;color:#33445d;margin-bottom:8px}
+.client-reset-card .client-field input{width:100%;height:50px;border:1px solid #dbe4ee;border-radius:11px;padding:0 14px;color:var(--ink);background:#fff;outline:0;transition:.2s}
+.client-reset-card .client-field input:focus{border-color:#3b9af1;box-shadow:0 0 0 4px rgba(8,119,232,.09)}
+.client-reset-actions{display:grid;grid-template-columns:1fr 1.2fr;gap:10px;margin-top:20px}
+.client-reset-actions button{width:100%;min-height:48px}
+.client-reset-note{margin:15px 0 0;padding:11px 12px;border-radius:10px;background:#f6f9fc;color:#6c7e93;font-size:11px;line-height:1.5;text-align:left}
+.client-reset-card .client-login-message{min-height:20px;margin:12px 0 0;text-align:left}
+@media(max-width:600px){
+  .client-reset-modal{padding:12px;align-items:flex-end}
+  .client-reset-card{width:100%;border-radius:22px;padding:24px 18px calc(20px + env(safe-area-inset-bottom));max-height:calc(100svh - 24px);overflow:auto}
+  .client-reset-icon{width:50px;height:50px;border-radius:15px;margin-bottom:13px}
+  .client-reset-card h2{font-size:24px;margin-right:38px}
+  .client-reset-card .reset-intro{font-size:12px;margin-bottom:18px}
+  .client-reset-actions{grid-template-columns:1fr;gap:9px}
+  .client-reset-actions .client-secondary{order:2}
+}
+
+</style>
+
+<style>
+.client-login-official-logo{display:block;width:158px;height:auto;object-fit:contain;filter:drop-shadow(0 10px 22px rgba(0,0,0,.16))}.client-login-official-logo.mobile{width:132px}.mobile-brand{margin-bottom:24px}.mobile-brand .client-login-official-logo{filter:none}
+</style>
+</head>
+<body class="client-login-page">
+  <noscript><div style="padding:16px;background:#fff3cd;color:#664d03;text-align:center;font-family:Arial,sans-serif">JavaScript is required for the PISO WIFI Customer Account.</div></noscript>
+  <main class="client-login-shell">
+    <section class="client-brand-panel">
+      <div class="client-brand-top">
+        <div class="client-logo-lockup"><img class="client-login-official-logo" src="/assets/piso-wifi-logo-transparent.png" alt="PISO WIFI"></div>
+      </div>
+      <div class="brand-copy">
+        <span class="eyebrow">SECURE CUSTOMER ACCESS</span>
+        <h1>Customer Account</h1>
+        <p>View your sales, payments and personal records anytime, anywhere.</p>
+      </div>
+      <div class="client-illustration" aria-hidden="true">
+        <div class="wifi-orb"><i></i><i></i><i></i></div>
+        <div class="illustration-screen"><div class="screen-top"></div><div class="screen-line long"></div><div class="screen-line"></div><div class="screen-chart"><span></span><span></span><span></span><span></span><span></span></div></div>
+        <div class="illustration-person"><div class="head"></div><div class="body"></div><div class="laptop"></div></div>
+      </div>
+      <div class="brand-footer">PISO WIFI Management System</div>
+    </section>
+    <section class="client-login-area">
+      <div class="client-login-card">
+        <div class="mobile-brand"><img class="client-login-official-logo mobile" src="/assets/piso-wifi-logo-transparent.png" alt="PISO WIFI"></div>
+        <div class="login-heading"><span class="eyebrow">CLIENT ACCESS</span><h2>Welcome to Your Customer Account!</h2><p>Log in to your account to view your Piso WiFi records.</p></div>
+        <form id="clientLoginForm" novalidate>
+          <label class="client-field"><span>Registered Gmail / Username / Client ID</span><div class="input-with-icon"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m4 7 8 6 8-6"/></svg><input id="clientEmail" type="text" autocomplete="username" placeholder="Gmail / Username / CID-0001" required></div></label>
+          <label class="client-field"><span>Password</span><div class="input-with-icon"><svg viewBox="0 0 24 24"><rect x="5" y="10" width="14" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg><input id="clientPassword" type="password" autocomplete="current-password" placeholder="Enter your password" required><button type="button" id="clientTogglePassword">Show</button></div></label>
+          <div class="login-options"><button type="button" id="clientForgotPassword" class="text-link">Forgot Password?</button></div>
+          <button class="client-primary login-submit" id="clientLoginButton" type="submit">Login</button>
+          <div id="clientLoginMessage" class="client-login-message" role="status" aria-live="polite"></div>
+        </form>
+        <p class="login-contact">Your Admin will provide your Unit ID. On first login, you will be asked to create your own private password.</p>
+      </div>
+    </section>
+  </main>
+  <script type="module" src="js/client-login.js"></script>
+</body>
+</html>
