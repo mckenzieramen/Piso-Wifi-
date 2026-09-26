@@ -5,8 +5,9 @@ import {
   signOut,
   setPersistence,
   browserSessionPersistence,
+  sendPasswordResetEmail
 } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-auth.js";
-import { doc, getDoc } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-firestore.js";
+import { doc, getDoc, addDoc, collection, serverTimestamp } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-firestore.js";
 import { getFunctions, httpsCallable } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-functions.js";
 
 const functions = getFunctions();
@@ -205,46 +206,36 @@ function openForgotPasswordModal(){
 
 async function submitResetRequest(e){
   e.preventDefault();
-
   const clientId=document.querySelector("#resetClientId").value.trim().toUpperCase();
   const email=document.querySelector("#resetEmail").value.trim().toLowerCase();
   const msgEl=document.querySelector("#resetMessage");
   const btn=document.querySelector("#resetSubmit");
-
-  if(!clientId || !email){
-    msgEl.textContent="Complete all fields.";
-    msgEl.className="client-login-message error";
-    return;
-  }
-
-  btn.disabled=true;
-  btn.textContent="Sending…";
-  msgEl.textContent="Checking your account…";
-  msgEl.className="client-login-message";
-
+  if(!clientId||!email){msgEl.textContent="Complete all fields.";msgEl.className="client-login-message error";return;}
+  btn.disabled=true; btn.textContent="Sending…"; msgEl.textContent="Checking your account…"; msgEl.className="client-login-message";
   try{
-    const response = await fetch("/api/password-reset", {
-      method:"POST",
-      headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({ clientId, email })
-    });
+    // Send the secure Firebase Auth reset email first. The Firestore request is an audit/notification record;
+    // a stale Firestore rule must never prevent the actual password-reset email from being sent.
+    const actionCodeSettings={
+      url:`${window.location.origin}/reset-password.html`,
+      handleCodeInApp:true
+    };
+    await sendPasswordResetEmail(auth,email,actionCodeSettings);
 
-    const data = await response.json().catch(()=>({}));
-
-    if(!response.ok || !data.ok){
-      throw new Error(data.error || "RESET_EMAIL_FAILED");
+    // Best-effort recovery notification record for Admin. The email has already been sent if this write fails.
+    try{
+      await addDoc(collection(db,"passwordResetRequests"),{
+        clientCode:clientId,
+        email,
+        status:"email_sent",
+        adminRead:false,
+        createdAt:serverTimestamp()
+      });
+    }catch(recordErr){
+      console.warn("[PISO WIFI PASSWORD RESET] Email sent, but recovery notification record could not be saved.",recordErr);
     }
 
-    const safeEmail=email.replace(/[&<>"']/g,c=>({
-      "&":"&amp;",
-      "<":"&lt;",
-      ">":"&gt;",
-      '"':"&quot;",
-      "'":"&#39;"
-    }[c]));
-
+    const safeEmail=email.replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;", "'":"&#39;"}[c]));
     const card=wrapCard();
-
     if(card){
       card.innerHTML=`<button type="button" class="client-reset-close" data-close-reset aria-label="Close confirmation">×</button>
         <div class="client-reset-icon success" aria-hidden="true">✓</div>
@@ -254,23 +245,21 @@ async function submitResetRequest(e){
         <div class="client-reset-note success-note">Open the email and click <b>Reset My Password</b> to create your new private password. If you don't see it shortly, check your Spam or Promotions folder.</div>
         <div class="client-reset-actions"><button class="client-primary" type="button" data-close-reset>Close &amp; Return to Login</button></div>
         <div class="reset-auto-close" aria-live="polite">This message will close automatically in <b>5 seconds</b>.</div>`;
-
       let remaining=5;
       const autoCloseEl=card.querySelector(".reset-auto-close");
       let successTimer=null;
-
       const closeAndReturnToLogin=()=>{
         if(successTimer) clearTimeout(successTimer);
         wrap.remove();
+        // Always return to the official Customer Login route.
         if(window.location.pathname !== "/") window.location.replace("/");
       };
-
       card.querySelectorAll("[data-close-reset]").forEach(el=>{
         el.addEventListener("click", closeAndReturnToLogin);
       });
-
+      // Reliable one-shot auto-close. This avoids interval/timer drift and uses the same
+      // navigation path as the X and Close & Return to Login controls.
       successTimer=setTimeout(closeAndReturnToLogin,5000);
-
       if(autoCloseEl){
         const countdownTimer=setInterval(()=>{
           remaining-=1;
@@ -282,18 +271,20 @@ async function submitResetRequest(e){
         },1000);
       }
     }
-
-    function wrapCard(){
-      return document.querySelector("#forgotPasswordModal .client-reset-card");
-    }
-
+    function wrapCard(){ return document.querySelector("#forgotPasswordModal .client-reset-card"); }
   }catch(err){
     console.error("[PISO WIFI PASSWORD RESET]",err);
-
-    msgEl.textContent="We could not send the reset email. Please verify your Client ID and registered Gmail and try again.";
+    const code=String(err?.code||"");
+    let text="We could not send the reset email. Please verify your Client ID and registered Gmail and try again.";
+    if(code.includes("permission-denied")){
+      text="The Client ID and registered Gmail do not match our records. Please check both and try again.";
+    }else if(code.includes("user-not-found")){
+      text="We could not send the reset email. Please verify your registered Gmail and try again.";
+    }else if(code.includes("unauthorized-continue-uri")||code.includes("invalid-continue-uri")){
+      text="Password reset is not fully configured for this website yet. Please contact Admin.";
+    }
+    msgEl.textContent=text;
     msgEl.className="client-login-message error";
-    btn.disabled=false;
-    btn.textContent="Send Reset Link";
+    btn.disabled=false; btn.textContent="Send Reset Link";
   }
 }
-
