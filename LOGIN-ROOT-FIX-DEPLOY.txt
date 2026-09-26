@@ -1,0 +1,5 @@
+V46 LOCKED BASELINE - CUSTOMER LOGIN ROOT FIX
+
+Only customer login transport was changed. V46 UI/features/reset/first-login/admin files are preserved.
+The customer login now uses /api/client-login for Username/Client ID and direct Firebase Auth for registered Gmail.
+The backend file is functions/api/client-login.js. It requires the existing Cloudflare Pages environment secret FIREBASE_SERVICE_ACCOUNT_JSON.

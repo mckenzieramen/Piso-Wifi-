@@ -12,14 +12,6 @@ function clean(value) {
   return String(value || "").trim();
 }
 
-function normalizeClientCode(value) {
-  return clean(value).toUpperCase();
-}
-
-function validClientCode(value) {
-  return /^CID-\d{3,}$/.test(value);
-}
-
 async function findCustomer(identifier) {
   const value = clean(identifier);
   if (!value) return null;
@@ -91,29 +83,6 @@ exports.clientLogin = onCall({ region: "us-central1" }, async (request) => {
   if (!authEmail || !authEmail.includes("@")) {
     console.error("[CLIENT LOGIN] Missing auth email", { identifier, unitId: customer.id });
     throw new HttpsError("failed-precondition", "CLIENT LOGIN FAILED [auth_email_missing]");
-  }
-
-  // SAFE LOGIN FIX: if this is still a first-login account and the customer
-  // enters the assigned Client ID temporary password, synchronize the
-  // Firebase Auth password before authentication. This repairs older customer
-  // accounts whose Auth password became out of sync with the stored temporary
-  // password, without changing normal post-login password handling.
-  const clientCode = normalizeClientCode(customer.clientCode);
-  if (customer.forcePasswordChange === true && validClientCode(clientCode) && password === clientCode) {
-    const authUserId = clean(customer.authUserId);
-    if (!authUserId) {
-      console.error("[CLIENT LOGIN] Missing auth user ID for temporary-password sync", { identifier, unitId: customer.id });
-      throw new HttpsError("failed-precondition", "CLIENT LOGIN FAILED [auth_user_missing]");
-    }
-    try {
-      await admin.auth().updateUser(authUserId, {
-        password: clientCode,
-        disabled: false
-      });
-    } catch (error) {
-      console.error("[CLIENT LOGIN] Temporary password synchronization failed", error);
-      throw new HttpsError("internal", "CLIENT LOGIN FAILED [temporary_password_sync]");
-    }
   }
 
   let authResponse;

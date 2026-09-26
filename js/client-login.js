@@ -8,10 +8,6 @@ import {
   sendPasswordResetEmail
 } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-auth.js";
 import { doc, getDoc, addDoc, collection, serverTimestamp } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-firestore.js";
-import { getFunctions, httpsCallable } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-functions.js";
-
-const functions = getFunctions();
-const clientLogin = httpsCallable(functions, "clientLogin");
 
 const form = document.querySelector("#clientLoginForm");
 const msg = document.querySelector("#clientLoginMessage");
@@ -103,17 +99,29 @@ form.addEventListener("submit", async e => {
     // The callable resolves that identifier privately on the server and
     // returns a Firebase custom token. No customer Gmail is exposed to the
     // browser just to perform a username/Client ID lookup.
-    const result = await clientLogin({
-      identifier: email,
-      password
-    });
+    let cred;
 
-    const customToken = String(result?.data?.customToken || "").trim();
-    if (!customToken) {
-      throw new Error("CLIENT LOGIN FAILED [custom_token_missing]");
+    // Keep the V46 login behavior, but route Username / Client ID resolution
+    // through the existing Cloudflare Pages backend. This removes the broken
+    // Firebase callable dependency from the customer login path.
+    if (email.includes("@")) {
+      const { signInWithEmailAndPassword } = await import("https://www.gstatic.com/firebasejs/12.2.1/firebase-auth.js");
+      cred = await signInWithEmailAndPassword(auth, email, password);
+    } else {
+      const response = await fetch("/api/client-login", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ identifier: email, password })
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok || !result.customToken) {
+        const code = String(result.error || "INVALID_LOGIN_CREDENTIALS");
+        const error = new Error(code);
+        error.code = code;
+        throw error;
+      }
+      cred = await signInWithCustomToken(auth, result.customToken);
     }
-
-    const cred = await signInWithCustomToken(auth, customToken);
 
     const profile = await getRole(cred.user);
 
@@ -133,7 +141,7 @@ form.addEventListener("submit", async e => {
     const debugDetails = [
       `Registered Gmail entered: ${email}`,
       `Firebase project: piso-wifi-f2b5c`,
-      `Operation: Firebase callable → clientLogin`,
+      `Operation: Customer login → /api/client-login`,
       `Error code: ${err?.code || "(none)"}`,
       `Error message: ${err?.message || String(err)}`
     ].join("\n");
