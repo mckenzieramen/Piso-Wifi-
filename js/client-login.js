@@ -81,10 +81,10 @@ onAuthStateChanged(auth, user => {
 form.addEventListener("submit", async e => {
   e.preventDefault();
 
-  const email = normalizeUsername(document.querySelector("#clientEmail").value).toLowerCase();
+  const identifier = normalizeUsername(document.querySelector("#clientEmail").value);
   const password = document.querySelector("#clientPassword").value;
 
-  if (!email || !password) {
+  if (!identifier || !password) {
     message("Enter your registered Gmail, Username, or Client ID and password.", "error");
     return;
   }
@@ -103,7 +103,7 @@ form.addEventListener("submit", async e => {
     // returns a Firebase custom token. No customer Gmail is exposed to the
     // browser just to perform a username/Client ID lookup.
     const result = await clientLogin({
-      identifier: email,
+      identifier,
       password
     });
 
@@ -130,7 +130,7 @@ form.addEventListener("submit", async e => {
     window.location.replace("/client/");
   } catch (err) {
     const debugDetails = [
-      `Registered Gmail entered: ${email}`,
+      `Login identifier entered: ${identifier}`,
       `Firebase project: piso-wifi-f2b5c`,
       `Operation: Firebase callable → clientLogin`,
       `Error code: ${err?.code || "(none)"}`,

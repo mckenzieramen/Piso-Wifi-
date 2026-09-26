@@ -144,6 +144,23 @@ async function findCustomer(identifier) {
     return { id: doc.id, ...doc.data() };
   }
 
+  // Usernames are generated as FirstName + Client ID (for example
+  // CliffCID-023). Firestore string matching is case-sensitive, so the
+  // customer login must still work if the browser normalizes the identifier
+  // casing. Resolve the CID suffix as the same customer account.
+  const usernameClientCodeMatch = value.match(/(CID-\d{3,})$/i);
+  if (usernameClientCodeMatch) {
+    const usernameClientCode = usernameClientCodeMatch[1].toUpperCase();
+    const usernameCodeSnap = await db.collection("units")
+      .where("clientCode", "==", usernameClientCode)
+      .limit(1)
+      .get();
+    if (!usernameCodeSnap.empty) {
+      const doc = usernameCodeSnap.docs[0];
+      return { id: doc.id, ...doc.data() };
+    }
+  }
+
   // Client ID login: e.g. CID-023 / CID-0001.
   const codeSnap = await db.collection("units")
     .where("clientCode", "==", upper)
