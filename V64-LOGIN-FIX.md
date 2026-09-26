@@ -1,1 +1,0 @@
-V64 fixes the customer login race after password reset. The callable clientLogin already verifies the customer role before issuing a custom token; the browser no longer performs a second Firestore role read during the explicit login flow, preventing a race/profile-read failure from logging the customer back out. Existing reset flow and first-login behavior are preserved.
