@@ -11,7 +11,6 @@ import { getFunctions, httpsCallable } from "https://www.gstatic.com/firebasejs/
 
 const functions = getFunctions();
 const clientLogin = httpsCallable(functions, "clientLogin");
-const sendCustomPasswordReset = httpsCallable(functions, "sendCustomPasswordReset");
 
 const form = document.querySelector("#clientLoginForm");
 const msg = document.querySelector("#clientLoginMessage");
@@ -213,8 +212,9 @@ async function submitResetRequest(e){
   if(!clientId||!email){msgEl.textContent="Complete all fields.";msgEl.className="client-login-message error";return;}
   btn.disabled=true; btn.textContent="Sending…"; msgEl.textContent="Checking your account…"; msgEl.className="client-login-message";
   try{
-    // The custom Firebase callable generates the Firebase action code server-side
-    // and sends our PISO WIFI HTML email through the Apps Script mailer.
+    // Create the custom reset callable only when recovery is actually requested.
+    // Keeping this initialization out of page load protects the working V46 login/navigation runtime.
+    const sendCustomPasswordReset = httpsCallable(getFunctions(), "sendCustomPasswordReset");
     const result=await sendCustomPasswordReset({clientCode:clientId,email});
     if(result?.data?.emailSent!==true){
       throw new Error("PASSWORD RESET FAILED [email_delivery]: The custom mailer did not confirm delivery.");
@@ -286,4 +286,4 @@ async function submitResetRequest(e){
     msgEl.className="client-login-message error";
     btn.disabled=false; btn.textContent="Send Reset Link";
   }
-}}
+}
