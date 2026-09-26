@@ -15,7 +15,7 @@ function stringField(v){return {stringValue:String(v??"")};}
 function boolField(v){return {booleanValue:Boolean(v)};}
 async function firestoreCreate(token,path,fields){const r=await fetch(`https://firestore.googleapis.com/v1/projects/${PROJECT_ID}/databases/(default)/documents/${path}`,{method:"POST",headers:{authorization:`Bearer ${token}`,"content-type":"application/json"},body:JSON.stringify({fields})});const data=await r.json();if(!r.ok)throw new Error(data.error?.message||"Unable to record password-reset request.");return data;}
 async function generateResetLink(token,email){const r=await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:sendOobCode?key=${encodeURIComponent(FIREBASE_API_KEY)}`,{method:"POST",headers:{authorization:`Bearer ${token}`,"content-type":"application/json","x-goog-user-project":PROJECT_ID},body:JSON.stringify({requestType:"PASSWORD_RESET",email,returnOobLink:true,continueUrl:RESET_PAGE})});const data=await r.json();if(!r.ok||!data.oobLink)throw new Error(data.error?.message||"Unable to create password-reset link.");return data.oobLink;}
-async function sendMailer(firstName,email,clientId,resetLink){const r=await fetch(APPS_SCRIPT_URL,{method:"POST",redirect:"follow",headers:{"content-type":"application/json"},body:JSON.stringify({secret:PASSWORD_RESET_MAILER_SECRET,email,clientId,firstName,resetLink})});const text=await r.text();let data={};try{data=JSON.parse(text);}catch{}if(!r.ok||data.ok!==true)throw new Error(data.error||`Password-reset mailer returned HTTP ${r.status}.`);return data;}
+async function sendMailer(firstName,email,clientId){const r=await fetch(APPS_SCRIPT_URL,{method:"POST",redirect:"follow",headers:{"content-type":"application/json"},body:JSON.stringify({secret:PASSWORD_RESET_MAILER_SECRET,email,clientId,firstName,generateResetLink:true})});const text=await r.text();let data={};try{data=JSON.parse(text);}catch{}if(!r.ok||data.ok!==true)throw new Error(data.error||`Password-reset mailer returned HTTP ${r.status}.`);return data;}
 
 export async function onRequestPost(context){
   try{
@@ -34,8 +34,7 @@ export async function onRequestPost(context){
     if(active===false)return json({ok:false,error:"CLIENT_ACCOUNT_NOT_AVAILABLE"},403);
     const firstName=String(sv(fields,"firstName",sv(fields,"name","Customer"))).trim()||"Customer";
 
-    const resetLink=await generateResetLink(token,email);
-    await sendMailer(firstName,email,clientId,resetLink);
+    await sendMailer(firstName,email,clientId);
 
     await firestoreCreate(token,"passwordResetRequests",{
       clientCode:stringField(clientId),
