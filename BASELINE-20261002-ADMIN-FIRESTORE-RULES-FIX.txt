@@ -1,0 +1,17 @@
+PISO WIFI — LOCKED BASELINE
+Version: 20261002-ADMIN-FIRESTORE-RULES-FIX-v2
+
+Baseline source:
+Piso-Wifi-V46-LOCKED-BASELINE-ADMIN-LOGIN-FIX-20261002-v1
+
+Root cause confirmed from browser console:
+FirebaseError: Missing or insufficient permissions at js/auth.js during Admin profile read.
+
+Change in this baseline:
+- firestore.rules only: made the authenticated user's own /users/{uid} document GET explicitly independent of isAdmin().
+- Admin list access remains role-protected.
+- Admin create/update/delete of user role records remains role-protected.
+- All other V46 application files/features are preserved unchanged.
+
+Deployment note:
+This rules file must be deployed to the Firebase project's Firestore Rules. Uploading the ZIP to GitHub Pages alone does NOT deploy Firebase Rules.

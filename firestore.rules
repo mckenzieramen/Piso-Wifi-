@@ -7,8 +7,6 @@ service cloud.firestore {
       return request.auth != null;
     }
 
-    // Admin authorization must follow the same role-based source of truth
-    // used by the Admin portal. Do not hard-code a Firebase UID here.
     function isAdmin() {
       return isSignedIn()
         && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == "admin"
@@ -31,15 +29,22 @@ service cloud.firestore {
     }
 
     match /users/{uid} {
-      // Admin can manage role records; a signed-in user may read only their own role.
-      allow read: if isAdmin() || (isSignedIn() && uid == request.auth.uid);
-      allow write: if isAdmin();
+      // CRITICAL ADMIN LOGIN RULE:
+      // A signed-in user must be able to read ONLY their own user profile.
+      // This check is intentionally independent of isAdmin() so Admin login
+      // can retrieve /users/{uid} before the role is known.
+      allow get: if isSignedIn() && uid == request.auth.uid;
+
+      // Admin pages may query user records after authorization.
+      allow list: if isAdmin();
+
+      // Admin can manage role records; a signed-in user may not write their own role.
+      allow create, update, delete: if isAdmin();
     }
 
     match /units/{document} {
       allow read: if isAdmin() || isClientUnit(resource.data);
 
-      // Admin owns all client/unit administration.
       allow create: if isAdmin()
         || (
           request.resource.data.type == "password-reset"
@@ -56,7 +61,6 @@ service cloud.firestore {
 
       allow delete: if isAdmin();
 
-      // Clients may update only their own profile fields or establish the UID link.
       allow update: if isAdmin()
         || (
           isClientUnit(resource.data)
@@ -81,15 +85,10 @@ service cloud.firestore {
     }
 
     match /customerLoginDirectory/{clientCode} {
-      // Public read is intentionally disabled. This directory is only used by security rules
-      // to verify a password-reset request. Admin is the only writer.
       allow read, write: if isAdmin();
     }
 
     match /passwordResetRequests/{requestId} {
-      // Customer can submit a recovery request only when the supplied Client ID
-      // and registered Gmail exactly match the Admin-created directory record.
-      // The customer does not need to know or submit the assigned Unit Code.
       allow create: if
         request.resource.data.status == "email_sent"
         && request.resource.data.adminRead == false
