@@ -4,8 +4,7 @@ import {
   onAuthStateChanged,
   signOut,
   setPersistence,
-  browserSessionPersistence,
-  sendPasswordResetEmail
+  browserSessionPersistence
 } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-auth.js";
 import { doc, getDoc, addDoc, collection, serverTimestamp } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-firestore.js";
 import { getFunctions, httpsCallable } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-functions.js";
@@ -166,125 +165,148 @@ document.querySelector("#clientForgotPassword").onclick = () => {
   openForgotPasswordModal();
 };
 
+
+const PASSWORD_RECOVERY_ENDPOINT = "/api/password-reset-code";
+
+document.querySelector("#clientForgotPassword").onclick = () => {
+  openForgotPasswordModal();
+};
+
 function openForgotPasswordModal(){
   const existing=document.querySelector("#forgotPasswordModal");
-  if(existing){ existing.classList.remove("hidden"); existing.querySelector("input")?.focus(); return; }
+  if(existing) existing.remove();
+
   const wrap=document.createElement("div");
   wrap.id="forgotPasswordModal";
   wrap.className="client-reset-modal";
   wrap.innerHTML=`
-    <div class="client-reset-backdrop" aria-hidden="true"></div>
-    <section class="client-reset-card" role="dialog" aria-modal="true" aria-labelledby="forgotTitle" aria-describedby="forgotDescription">
+    <div class="client-reset-backdrop" data-close-reset></div>
+    <section class="client-reset-card" role="dialog" aria-modal="true" aria-labelledby="forgotTitle">
       <button type="button" class="client-reset-close" data-close-reset aria-label="Close account recovery">×</button>
-      <div class="client-reset-icon" aria-hidden="true">
-        <svg viewBox="0 0 24 24"><path d="M7 10V7a5 5 0 0 1 10 0v3"/><rect x="4" y="10" width="16" height="10" rx="2"/><path d="M12 14v2"/></svg>
-      </div>
-      <span class="eyebrow">ACCOUNT RECOVERY</span>
-      <h2 id="forgotTitle">Recover your account</h2>
-      <p id="forgotDescription" class="reset-intro">Enter your Client ID and registered Gmail. We’ll send a secure password-reset link to your registered Gmail.</p>
+      <div class="client-reset-icon" aria-hidden="true">🔐</div>
+      <h2 id="forgotTitle">Forgot your password?</h2>
+      <p id="resetIntro" class="reset-intro">Enter your Client ID and registered Gmail. We’ll send a 6-digit verification code to your email.</p>
+
       <form id="forgotPasswordForm">
         <label class="client-field"><span>Client ID</span><input id="resetClientId" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="CID-0001" required></label>
         <label class="client-field"><span>Registered Gmail</span><input id="resetEmail" type="email" autocomplete="email" inputmode="email" placeholder="yourname@gmail.com" required></label>
+
+        <div id="resetCodeGroup" hidden>
+          <label class="client-field">
+            <span>6-Digit Verification Code</span>
+            <input id="resetCode" inputmode="numeric" autocomplete="one-time-code" maxlength="6" pattern="[0-9]{6}" placeholder="000000">
+          </label>
+          <p class="client-reset-note">The code expires in 10 minutes and can only be used once.</p>
+        </div>
+
+        <div id="resetPasswordGroup" hidden>
+          <label class="client-field"><span>New Password</span><input id="resetNewPassword" type="password" minlength="8" autocomplete="new-password" placeholder="At least 8 characters"></label>
+          <label class="client-field"><span>Confirm New Password</span><input id="resetConfirmPassword" type="password" minlength="8" autocomplete="new-password" placeholder="Re-enter your new password"></label>
+        </div>
+
         <div id="resetMessage" class="client-login-message" role="status" aria-live="polite"></div>
         <div class="client-reset-actions">
           <button class="client-secondary" id="resetCancel" type="button">Cancel</button>
-          <button class="client-primary" id="resetSubmit" type="submit">Send Reset Link</button>
+          <button class="client-primary" id="resetSubmit" type="submit">Send 6-Digit Code</button>
         </div>
-        <div class="client-reset-note">For your security, your password is never displayed to Admin. The reset link is sent only to the registered Gmail for this Customer Account.</div>
       </form>
+
+      <div class="client-reset-note">Your personal password is never shown to Admin. The 6-digit code is only for account recovery.</div>
     </section>`;
   document.body.appendChild(wrap);
-  // Do not close the recovery form when the backdrop is clicked; use the explicit X button.
+
+  let stage="request";
+  let resetToken="";
+
+  const form=wrap.querySelector("#forgotPasswordForm");
+  const msgEl=wrap.querySelector("#resetMessage");
+  const btn=wrap.querySelector("#resetSubmit");
+  const codeGroup=wrap.querySelector("#resetCodeGroup");
+  const passwordGroup=wrap.querySelector("#resetPasswordGroup");
+  const codeInput=wrap.querySelector("#resetCode");
+  const intro=wrap.querySelector("#resetIntro");
+
   wrap.querySelectorAll("[data-close-reset]").forEach(el=>{
     el.onclick=()=>wrap.remove();
   });
   wrap.querySelector("#resetCancel").onclick=()=>wrap.remove();
-  wrap.querySelector("#forgotPasswordForm").onsubmit=submitResetRequest;
-  wrap.addEventListener("keydown", e=>{ if(e.key==="Escape") wrap.remove(); });
   wrap.querySelector("#resetClientId").focus();
-}
 
-async function submitResetRequest(e){
-  e.preventDefault();
-  const clientId=document.querySelector("#resetClientId").value.trim().toUpperCase();
-  const email=document.querySelector("#resetEmail").value.trim().toLowerCase();
-  const msgEl=document.querySelector("#resetMessage");
-  const btn=document.querySelector("#resetSubmit");
-  if(!clientId||!email){msgEl.textContent="Complete all fields.";msgEl.className="client-login-message error";return;}
-  btn.disabled=true; btn.textContent="Sending…"; msgEl.textContent="Checking your account…"; msgEl.className="client-login-message";
-  try{
-    // Send the secure Firebase Auth reset email first. The Firestore request is an audit/notification record;
-    // a stale Firestore rule must never prevent the actual password-reset email from being sent.
-    const actionCodeSettings={
-      url:`${window.location.origin}/reset-password.html`,
-      handleCodeInApp:true
-    };
-    await sendPasswordResetEmail(auth,email,actionCodeSettings);
-
-    // Best-effort recovery notification record for Admin. The email has already been sent if this write fails.
-    try{
-      await addDoc(collection(db,"passwordResetRequests"),{
-        clientCode:clientId,
-        email,
-        status:"email_sent",
-        adminRead:false,
-        createdAt:serverTimestamp()
-      });
-    }catch(recordErr){
-      console.warn("[PISO WIFI PASSWORD RESET] Email sent, but recovery notification record could not be saved.",recordErr);
-    }
-
-    const safeEmail=email.replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;", "'":"&#39;"}[c]));
-    const card=wrapCard();
-    if(card){
-      card.innerHTML=`<button type="button" class="client-reset-close" data-close-reset aria-label="Close confirmation">×</button>
-        <div class="client-reset-icon success" aria-hidden="true">✓</div>
-        <span class="eyebrow">EMAIL SENT</span>
-        <h2>Check your email</h2>
-        <p class="reset-intro">We sent a secure password-reset link to <b>${safeEmail}</b>.</p>
-        <div class="client-reset-note success-note">Open the email and click <b>Reset My Password</b> to create your new private password. If you don't see it shortly, check your Spam or Promotions folder.</div>
-        <div class="client-reset-actions"><button class="client-primary" type="button" data-close-reset>Close &amp; Return to Login</button></div>
-        <div class="reset-auto-close" aria-live="polite">This message will close automatically in <b>5 seconds</b>.</div>`;
-      let remaining=5;
-      const autoCloseEl=card.querySelector(".reset-auto-close");
-      let successTimer=null;
-      const closeAndReturnToLogin=()=>{
-        if(successTimer) clearTimeout(successTimer);
-        wrap.remove();
-        // Always return to the official Customer Login route.
-        if(window.location.pathname !== "/") window.location.replace("/");
-      };
-      card.querySelectorAll("[data-close-reset]").forEach(el=>{
-        el.addEventListener("click", closeAndReturnToLogin);
-      });
-      // Reliable one-shot auto-close. This avoids interval/timer drift and uses the same
-      // navigation path as the X and Close & Return to Login controls.
-      successTimer=setTimeout(closeAndReturnToLogin,5000);
-      if(autoCloseEl){
-        const countdownTimer=setInterval(()=>{
-          remaining-=1;
-          if(remaining<=0){
-            clearInterval(countdownTimer);
-            return;
-          }
-          autoCloseEl.innerHTML=`This message will close automatically in <b>${remaining} second${remaining===1?"":"s"}</b>.`;
-        },1000);
-      }
-    }
-    function wrapCard(){ return document.querySelector("#forgotPasswordModal .client-reset-card"); }
-  }catch(err){
-    console.error("[PISO WIFI PASSWORD RESET]",err);
-    const code=String(err?.code||"");
-    let text="We could not send the reset email. Please verify your Client ID and registered Gmail and try again.";
-    if(code.includes("permission-denied")){
-      text="The Client ID and registered Gmail do not match our records. Please check both and try again.";
-    }else if(code.includes("user-not-found")){
-      text="We could not send the reset email. Please verify your registered Gmail and try again.";
-    }else if(code.includes("unauthorized-continue-uri")||code.includes("invalid-continue-uri")){
-      text="Password reset is not fully configured for this website yet. Please contact Admin.";
-    }
-    msgEl.textContent=text;
-    msgEl.className="client-login-message error";
-    btn.disabled=false; btn.textContent="Send Reset Link";
+  async function postRecovery(payload){
+    const response=await fetch(PASSWORD_RECOVERY_ENDPOINT,{
+      method:"POST",
+      headers:{"content-type":"application/json"},
+      body:JSON.stringify(payload)
+    });
+    const data=await response.json().catch(()=>({}));
+    if(!response.ok || !data.ok) throw new Error(data.error || "Password recovery request failed.");
+    return data;
   }
+
+  form.onsubmit=async e=>{
+    e.preventDefault();
+    const clientId=wrap.querySelector("#resetClientId").value.trim().toUpperCase();
+    const email=wrap.querySelector("#resetEmail").value.trim().toLowerCase();
+
+    try{
+      btn.disabled=true;
+
+      if(stage==="request"){
+        btn.textContent="Sending code…";
+        msgEl.textContent="";
+        await postRecovery({action:"requestCode",clientId,email});
+        stage="verify";
+        codeGroup.hidden=false;
+        wrap.querySelector("#resetClientId").disabled=true;
+        wrap.querySelector("#resetEmail").disabled=true;
+        intro.textContent=`We sent a 6-digit verification code to ${email}.`;
+        btn.textContent="Verify Code";
+        msgEl.textContent="Check your Gmail inbox, Spam, or Promotions.";
+        msgEl.className="client-login-message success";
+        codeInput.focus();
+        return;
+      }
+
+      if(stage==="verify"){
+        const code=codeInput.value.trim();
+        if(!/^\d{6}$/.test(code)){
+          throw new Error("Enter the 6-digit verification code.");
+        }
+        btn.textContent="Verifying…";
+        const result=await postRecovery({action:"verifyCode",clientId,email,code});
+        resetToken=result.resetToken;
+        stage="reset";
+        codeGroup.hidden=true;
+        passwordGroup.hidden=false;
+        intro.textContent="Verification successful. Create your new private password.";
+        btn.textContent="Save New Password";
+        msgEl.textContent="";
+        wrap.querySelector("#resetNewPassword").focus();
+        return;
+      }
+
+      const newPassword=wrap.querySelector("#resetNewPassword").value;
+      const confirmPassword=wrap.querySelector("#resetConfirmPassword").value;
+      if(newPassword.length<8) throw new Error("Your new password must be at least 8 characters.");
+      if(newPassword!==confirmPassword) throw new Error("The new passwords do not match.");
+
+      btn.textContent="Saving password…";
+      await postRecovery({action:"resetPassword",clientId,email,resetToken,newPassword});
+      msgEl.textContent="Password changed successfully. You can now sign in with your new password.";
+      msgEl.className="client-login-message success";
+      btn.textContent="Return to Login";
+      stage="done";
+      btn.disabled=false;
+      btn.onclick=()=>wrap.remove();
+    }catch(err){
+      console.error("[PISO WIFI PASSWORD RECOVERY]",err);
+      msgEl.textContent=String(err?.message || "Password recovery failed. Please try again.");
+      msgEl.className="client-login-message error";
+      btn.disabled=false;
+      if(stage==="request") btn.textContent="Send 6-Digit Code";
+      else if(stage==="verify") btn.textContent="Verify Code";
+      else if(stage==="reset") btn.textContent="Save New Password";
+    }
+  };
 }
+
