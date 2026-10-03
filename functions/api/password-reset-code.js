@@ -4,10 +4,7 @@ const FIREBASE_API_KEY = "AIzaSyAfX3sSDkJwX9u9dxEDBhG8RU3iP_k6EdI";
 function json(data, status = 200) {
   return new Response(JSON.stringify(data), {
     status,
-    headers: {
-      "content-type": "application/json; charset=utf-8",
-      "cache-control": "no-store"
-    }
+    headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" }
   });
 }
 
@@ -66,6 +63,14 @@ async function firestoreListDirectory(token) {
   const data = await r.json();
   if (!r.ok) throw new Error(data.error?.message || "Unable to read the customer login directory.");
   return Array.isArray(data.documents) ? data.documents : [];
+}
+
+async function firestoreGet(token, path) {
+  const r = await fetch(`https://firestore.googleapis.com/v1/projects/${PROJECT_ID}/databases/(default)/documents/${path}`, { headers: { authorization: `Bearer ${token}` } });
+  const data = await r.json();
+  if (r.status === 404) return null;
+  if (!r.ok) throw new Error(data.error?.message || `Unable to read ${path}.`);
+  return data;
 }
 
 async function firestorePatch(token, path, fields) {
@@ -134,49 +139,19 @@ function findMatch(docs, clientId, email) {
   }) || null;
 }
 
-async function callAppsScript(env, payload) {
-  const url = String(env.APPS_SCRIPT_PASSWORD_RESET_URL || "").trim();
-  if (!url) throw new Error("APPS_SCRIPT_PASSWORD_RESET_URL is not configured.");
-  const response = await fetch(url, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(payload),
-    redirect: "follow"
-  });
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(data.error || `Apps Script returned HTTP ${response.status}.`);
-  return data;
-}
-
 export async function onRequestPost(context) {
   try {
     const body = await context.request.json().catch(() => ({}));
     const action = String(body.action || "").trim();
-    const clientId = String(body.clientId || "").trim().toUpperCase();
-    const email = String(body.email || "").trim().toLowerCase();
-
-    if (!/^CID-\d{3,}$/i.test(clientId) || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      return json({ ok: false, error: "Enter a valid Client ID and registered Gmail." }, 400);
-    }
-
-    // Browser-visible recovery actions are proxied through this same-origin function.
-    // Apps Script remains the mailer/code store; its bridge secret never reaches the browser.
-    if (action === "requestCode") {
-      const result = await callAppsScript(context.env, { action: "requestCode", clientId, email });
-      return json(result, result.ok ? 200 : 400);
-    }
-
-    if (action === "verifyCode") {
-      const code = String(body.code || "").trim();
-      if (!/^\d{6}$/.test(code)) return json({ ok: false, error: "Enter the 6-digit verification code." }, 400);
-      const result = await callAppsScript(context.env, { action: "verifyCode", clientId, email, code });
-      return json(result, result.ok ? 200 : 400);
-    }
-
-    // These two actions are private bridge operations called only by the Apps Script.
     const bridgeSecret = String(body.bridgeSecret || "");
     if (!context.env.PASSWORD_RESET_MAILER_SECRET || bridgeSecret !== context.env.PASSWORD_RESET_MAILER_SECRET) {
       return json({ ok: false, error: "Unauthorized password recovery request." }, 401);
+    }
+
+    const clientId = String(body.clientId || "").trim().toUpperCase();
+    const email = String(body.email || "").trim().toLowerCase();
+    if (!/^CID-\d{3,}$/i.test(clientId) || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      return json({ ok: false, error: "Invalid customer recovery details." }, 400);
     }
 
     const { token, serviceAccount } = await googleAccessToken(context.env);
@@ -202,8 +177,7 @@ export async function onRequestPost(context) {
     await updatePasswordWithAdminToken(authSession.idToken, newPassword);
 
     const now = new Date();
-    const matchPath = String(match.name).replace(`projects/${PROJECT_ID}/databases/(default)/documents/`, "");
-    await firestorePatch(token, matchPath, {
+    await firestorePatch(token, String(match.name).replace(`projects/${PROJECT_ID}/databases/(default)/documents/`, ""), {
       forcePasswordChange: boolField(true),
       passwordChangedAt: timestampField(now),
       updatedAt: timestampField(now)
@@ -221,6 +195,6 @@ export async function onRequestPost(context) {
     return json({ ok: true, temporaryPasswordSet: true });
   } catch (error) {
     console.error("[PISO WIFI PASSWORD RESET CODE]", error);
-    return json({ ok: false, error: error?.message || "PASSWORD_RESET_SERVER_ERROR" }, 500);
+    return json({ ok: false, error: "PASSWORD_RESET_SERVER_ERROR" }, 500);
   }
 }

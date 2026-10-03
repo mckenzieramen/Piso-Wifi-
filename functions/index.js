@@ -55,7 +55,7 @@ async function findCustomer(identifier) {
   return null;
 }
 
-exports.clientLogin = onCall({ region: "us-central1", cors: ["https://piso-wifi.pages.dev"] }, async (request) => {
+exports.clientLogin = onCall({ region: "us-central1" }, async (request) => {
   const identifier = clean(request.data?.identifier);
   const password = String(request.data?.password || "");
 
