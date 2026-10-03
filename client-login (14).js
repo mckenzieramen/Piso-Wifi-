@@ -10,7 +10,7 @@ import {
 import { doc, getDoc, addDoc, collection, serverTimestamp } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-firestore.js";
 import { getFunctions, httpsCallable } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-functions.js";
 
-const functions = getFunctions();
+const functions = getFunctions(undefined, "us-central1");
 const clientLogin = httpsCallable(functions, "clientLogin");
 
 const form = document.querySelector("#clientLoginForm");

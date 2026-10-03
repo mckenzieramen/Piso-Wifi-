@@ -29,6 +29,7 @@ let settings = { internetCost:1000, ownerPercent:70, clientPercent:30, electrici
 let route = "dashboard";
 let selectedMonth = localStorage.getItem("pisoSelectedMonth") || todayKey();
 let unitSearch = "", unitStatus = "", unitPaymentStatus = "";
+let clientSequenceNext = null;
 
 // TEMPORARY ADMIN FEATURE: keep true while client deletion is needed.
 // Set to false later to remove the Delete Client button without changing the rest of the system.
@@ -37,18 +38,28 @@ const clientProvisionerApp=initializeApp(firebaseConfig,"clientProvisioner");
 const clientProvisionerAuth=getAuth(clientProvisionerApp);
 const firstNameFromFullName=(name)=>String(name||"").trim().split(/\s+/)[0]||"Client";
 const sanitizeUsernamePart=(name)=>firstNameFromFullName(name).replace(/[^A-Za-z0-9]/g,"")||"Client";
-async function nextClientId(){
-  const ref=doc(db,"settings","clientSequence");
-  const maxExisting=units.reduce((max,u)=>{
+function maxExistingClientNumber(){
+  return units.reduce((max,u)=>{
     const m=String(u.clientCode||"").match(/^CID-(\d+)$/i);
     return m?Math.max(max,Number(m[1])):max;
   },0);
+}
+function previewNextClientId(){
+  const next=Number.isInteger(Number(clientSequenceNext)) && Number(clientSequenceNext)>0
+    ? Number(clientSequenceNext)
+    : maxExistingClientNumber()+1;
+  return `CID-${String(next).padStart(4,"0")}`;
+}
+async function nextClientId(){
+  const ref=doc(db,"settings","clientSequence");
+  const maxExisting=maxExistingClientNumber();
   return await runTransaction(db,async tx=>{
     const snap=await tx.get(ref);
     let next=Number(snap.exists()?snap.data().next:(maxExisting+1));
-    if(!Number.isInteger(next)||next<1) next=maxExisting+1;
+    if(!Number.isInteger(next)||next<1) next=Math.max(maxExisting+1,Number(clientSequenceNext)||1);
     tx.set(ref,{next:next+1,updatedAt:serverTimestamp()},{merge:true});
-    return `CID-${String(next).padStart(3,"0")}`;
+    clientSequenceNext=next+1;
+    return `CID-${String(next).padStart(4,"0")}`;
   });
 }
 function availableUnitCodes(currentCode=""){
@@ -118,6 +129,14 @@ async function loadData(){
   records=r.docs.map(d=>({id:d.id,...d.data()}));
   payments=p.docs.map(d=>({id:d.id,...d.data()}));
   if(s.exists()) settings={...settings,...s.data()};
+  try {
+    const seq=await getDoc(doc(db,"settings","clientSequence"));
+    const storedNext=seq.exists()?Number(seq.data().next):NaN;
+    clientSequenceNext=Number.isInteger(storedNext)&&storedNext>0?storedNext:maxExistingClientNumber()+1;
+  } catch(e) {
+    clientSequenceNext=maxExistingClientNumber()+1;
+    console.warn("Client ID sequence preview unavailable; using current records.",e);
+  }
 
   try {
     const n=await getDocs(collection(db,"notifications"));
@@ -578,12 +597,15 @@ function closeModal(){ $("#modalRoot").innerHTML=""; }
 function openUnitModal(id=null){
   const u=id?units.find(x=>x.id===id):null;
   const suggestedDate = u?.dateJoined || new Date().toISOString().slice(0,10);
+  const displayedClientCode = id ? String(u?.clientCode||"") : previewNextClientId();
+  const displayedFirstName = id ? String(u?.firstName||"") : "";
+  const displayedUsername = id ? String(u?.username||"") : displayedClientCode;
   const codes=availableUnitCodes(u?.unitCode||"");
   const currentCode=String(u?.unitCode||"");
   const codeOptions=codes.map(x=>`<button type="button" class="unit-option ${x.used?"is-used":""}" data-unit-code="${x.code}" ${x.used?"disabled":""}><span>${x.code}</span><small>${x.used?"Active / Unavailable":"Available"}</small></button>`).join("");
   openModal(id?"Edit Client / Unit":"Add New Client",`
     <div class="form-grid">
-      <div class="field"><label>Client ID *</label><input id="fClientCode" value="${esc(u?.clientCode||"")}" placeholder="CID-0001" ${id?"disabled":"disabled"}><small class="hint">Automatically generated in sequence. This ID is never reused.</small></div>
+      <div class="field"><label>User ID / Client ID *</label><input id="fClientCode" value="${esc(displayedClientCode)}" placeholder="CID-0001" disabled><small class="hint">Generated immediately in sequence. IDs accumulate (CID-0001, CID-0002, CID-0003…) and are never reused.</small></div>
       <div class="field"><label>Unit Code *</label><div class="unit-combobox"><input id="fCodeSearch" value="${esc(currentCode)}" placeholder="Search or select 1–50" autocomplete="off" aria-autocomplete="list"><input id="fCode" type="hidden" value="${esc(currentCode)}"><div id="unitCodeOptions" class="unit-options">${codeOptions}</div></div><small class="hint">Active unit codes cannot be selected. Deactivated unit codes become available again.</small></div>
       <div class="field"><label>First Name *</label><input id="fFirstName" value="${esc(u?.firstName||"")}" placeholder="First Name" autocomplete="off"></div>
       <div class="field"><label>Last Name *</label><input id="fLastName" value="${esc(u?.lastName||String(u?.name||"").trim().split(/\s+/).slice(1).join(" "))}" placeholder="Last Name" autocomplete="off"></div>
@@ -640,6 +662,15 @@ function openUnitModal(id=null){
       }
   });
   const search=$("#fCodeSearch"), hidden=$("#fCode"), list=$("#unitCodeOptions");
+  const firstNameInput=$("#fFirstName"), usernameInput=$("#fUsername"), clientCodeInput=$("#fClientCode");
+  const refreshUsername=()=>{
+    if(!id && usernameInput && clientCodeInput){
+      const first=firstNameInput?.value?.trim()||"";
+      usernameInput.value=first ? `${sanitizeUsernamePart(first)}${clientCodeInput.value}` : clientCodeInput.value;
+    }
+  };
+  firstNameInput?.addEventListener("input",refreshUsername);
+  refreshUsername();
   const refreshOptions=()=>{
     const q=search.value.trim().toLowerCase();
     list.querySelectorAll(".unit-option").forEach(btn=>btn.style.display=btn.dataset.unitCode.includes(q)?"flex":"none");
