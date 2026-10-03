@@ -37,6 +37,18 @@ const clientProvisionerApp=initializeApp(firebaseConfig,"clientProvisioner");
 const clientProvisionerAuth=getAuth(clientProvisionerApp);
 const firstNameFromFullName=(name)=>String(name||"").trim().split(/\s+/)[0]||"Client";
 const sanitizeUsernamePart=(name)=>firstNameFromFullName(name).replace(/[^A-Za-z0-9]/g,"")||"Client";
+async function peekNextClientId(){
+  const ref=doc(db,"settings","clientSequence");
+  const maxExisting=units.reduce((max,u)=>{
+    const m=String(u.clientCode||"").match(/^CID-(\d+)$/i);
+    return m?Math.max(max,Number(m[1])):max;
+  },0);
+  const snap=await getDoc(ref);
+  let next=Number(snap.exists()?snap.data().next:(maxExisting+1));
+  if(!Number.isInteger(next)||next<1) next=maxExisting+1;
+  return `CID-${String(next).padStart(3,"0")}`;
+}
+
 async function nextClientId(){
   const ref=doc(db,"settings","clientSequence");
   const maxExisting=units.reduce((max,u)=>{
@@ -575,7 +587,7 @@ function openModal(title,body,saveText,onSave,{danger=false}={}){
   setTimeout(()=>document.querySelector("#modalRoot input, #modalRoot select")?.focus(),50);
 }
 function closeModal(){ $("#modalRoot").innerHTML=""; }
-function openUnitModal(id=null){
+async function openUnitModal(id=null){
   const u=id?units.find(x=>x.id===id):null;
   const suggestedDate = u?.dateJoined || new Date().toISOString().slice(0,10);
   const codes=availableUnitCodes(u?.unitCode||"");
@@ -583,7 +595,7 @@ function openUnitModal(id=null){
   const codeOptions=codes.map(x=>`<button type="button" class="unit-option ${x.used?"is-used":""}" data-unit-code="${x.code}" ${x.used?"disabled":""}><span>${x.code}</span><small>${x.used?"Active / Unavailable":"Available"}</small></button>`).join("");
   openModal(id?"Edit Client / Unit":"Add New Client",`
     <div class="form-grid">
-      <div class="field"><label>Client ID *</label><input id="fClientCode" value="${esc(u?.clientCode||"")}" placeholder="CID-0001" ${id?"disabled":"disabled"}><small class="hint">Automatically generated in sequence. This ID is never reused.</small></div>
+      <div class="field"><label>Client ID *</label><input id="fClientCode" value="${esc(u?.clientCode||"__CLIENT_ID_PENDING__")}" placeholder="CID-0001" disabled><small class="hint">Next ID is shown automatically. It is reserved only when you save the client.</small></div>
       <div class="field"><label>Unit Code *</label><div class="unit-combobox"><input id="fCodeSearch" value="${esc(currentCode)}" placeholder="Search or select 1–50" autocomplete="off" aria-autocomplete="list"><input id="fCode" type="hidden" value="${esc(currentCode)}"><div id="unitCodeOptions" class="unit-options">${codeOptions}</div></div><small class="hint">Active unit codes cannot be selected. Deactivated unit codes become available again.</small></div>
       <div class="field"><label>First Name *</label><input id="fFirstName" value="${esc(u?.firstName||"")}" placeholder="First Name" autocomplete="off"></div>
       <div class="field"><label>Last Name *</label><input id="fLastName" value="${esc(u?.lastName||String(u?.name||"").trim().split(/\s+/).slice(1).join(" "))}" placeholder="Last Name" autocomplete="off"></div>
@@ -596,7 +608,9 @@ function openUnitModal(id=null){
       <div class="field"><label>Username</label><input id="fUsername" value="${esc(u?.username||"")}" placeholder="Generated automatically" disabled><small class="hint">Generated as FirstName + Client ID, e.g. JuanCID-001.</small></div>
       <div class="field full"><label>Notes</label><textarea id="fNotes" rows="3">${esc(u?.notes||"")}</textarea></div>
     </div>`,`Save Client`,async()=>{
-      const clientCode=id?String(u?.clientCode||"").trim().toUpperCase():await nextClientId();
+      const clientCode=id
+        ? String(u?.clientCode||"").trim().toUpperCase()
+        : await nextClientId();
       const unitCode=$("#fCode").value.trim();
       const firstName=$("#fFirstName").value.trim();
       const lastName=$("#fLastName").value.trim();
@@ -625,7 +639,9 @@ function openUnitModal(id=null){
         let cred;
         try{ cred=await createUserWithEmailAndPassword(clientProvisionerAuth,authEmail,temporaryPassword); }
         catch(e){
-          if(e?.code==="auth/email-already-in-use") throw new Error("This generated username already has a login account. Please try again.");
+          if(e?.code==="auth/email-already-in-use") {
+            throw new Error(`The registered Gmail ${authEmail} already has a Firebase login account. Use a different Gmail or open the existing client account instead.`);
+          }
           throw e;
         }
         data.authUserId=cred.user.uid;
@@ -639,6 +655,18 @@ function openUnitModal(id=null){
         notify(`Created ${clientCode}. Username: ${username} · Temporary password: ${temporaryPassword}`);
       }
   });
+  if(!id){
+    try{
+      const preview=await peekNextClientId();
+      const idField=$("#fClientCode");
+      if(idField) idField.value=preview;
+    }catch(e){
+      const idField=$("#fClientCode");
+      if(idField) idField.value="";
+      notify("Could not load the next Client ID. Please check your Firebase connection.","error");
+    }
+  }
+
   const search=$("#fCodeSearch"), hidden=$("#fCode"), list=$("#unitCodeOptions");
   const refreshOptions=()=>{
     const q=search.value.trim().toLowerCase();

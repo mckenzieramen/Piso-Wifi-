@@ -142,45 +142,59 @@ function findMatch(docs, clientId, email) {
 export async function onRequestPost(context) {
   try {
     const body = await context.request.json().catch(() => ({}));
-    const action = String(body.action || '').trim();
-    const secret = String(body.bridgeSecret || '');
-    const configuredSecret = String(context.env.PASSWORD_RESET_MAILER_SECRET || '');
-
-    if (secret && configuredSecret && secret === configuredSecret) {
-      const clientId = String(body.clientId || '').trim().toUpperCase();
-      const email = String(body.email || '').trim().toLowerCase();
-      if (!/^CID-\d{3,}$/i.test(clientId) || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return json({ok:false,error:'Invalid customer recovery details.'},400);
-      const { token, serviceAccount } = await googleAccessToken(context.env);
-      const docs = await firestoreListDirectory(token);
-      const match = findMatch(docs, clientId, email);
-      if (!match) return json({ok:false,error:'The Client ID and registered Gmail do not match.'},404);
-      const fields = match.fields || {};
-      const active = sv(fields,'active',true);
-      const uid = String(sv(fields,'authUserId','')).trim();
-      if(active===false || !uid) return json({ok:false,error:'This customer account is not available.'},403);
-      if(action === 'verifyAccount') return json({ok:true});
-      if(action !== 'resetPassword') return json({ok:false,error:'Invalid recovery action.'},400);
-      const newPassword=String(body.newPassword||'');
-      if(newPassword.length<8) return json({ok:false,error:'The new password must be at least 8 characters.'},400);
-      const customToken=await makeCustomToken(serviceAccount,uid);
-      const authSession=await exchangeCustomToken(customToken);
-      if(authSession.localId!==uid) return json({ok:false,error:'Customer account verification failed.'},403);
-      await updatePasswordWithAdminToken(authSession.idToken,newPassword);
-      const now=new Date();
-      const matchPath=String(match.name).replace(`projects/${PROJECT_ID}/databases/(default)/documents/`,'');
-      await firestorePatch(token,matchPath,{forcePasswordChange:boolField(false),passwordChangedAt:timestampField(now),updatedAt:timestampField(now)});
-      const unitDocId=String(sv(fields,'unitDocId','')).trim();
-      if(unitDocId) await firestorePatch(token,`units/${unitDocId}`,{forcePasswordChange:boolField(false),passwordChangedAt:timestampField(now),updatedAt:timestampField(now)});
-      return json({ok:true,passwordReset:true});
+    const action = String(body.action || "").trim();
+    const bridgeSecret = String(body.bridgeSecret || "");
+    if (!context.env.PASSWORD_RESET_MAILER_SECRET || bridgeSecret !== context.env.PASSWORD_RESET_MAILER_SECRET) {
+      return json({ ok: false, error: "Unauthorized password recovery request." }, 401);
     }
 
-    if(!['requestCode','verifyCode','resetPassword'].includes(action)) return json({ok:false,error:'Invalid password recovery action.'},400);
-    const response=await fetch(context.env.PISO_APPS_SCRIPT_URL || 'https://script.google.com/macros/s/AKfycbw0V3j5VPpFq2Ui0Y28CAC9owTXLawEsjEllq12W9wtzpFjFgXLgI5VCRDHzc26raWJ/exec',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body),redirect:'follow'});
-    const text=await response.text();
-    let data; try{data=JSON.parse(text);}catch{data={ok:false,error:'Password recovery service returned an invalid response.'};}
-    return json(data,response.ok?200:response.status);
-  } catch(error) {
-    console.error('[PISO WIFI PASSWORD RECOVERY]',error);
-    return json({ok:false,error:'Unable to connect to the password recovery service.'},502);
+    const clientId = String(body.clientId || "").trim().toUpperCase();
+    const email = String(body.email || "").trim().toLowerCase();
+    if (!/^CID-\d{3,}$/i.test(clientId) || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      return json({ ok: false, error: "Invalid customer recovery details." }, 400);
+    }
+
+    const { token, serviceAccount } = await googleAccessToken(context.env);
+    const docs = await firestoreListDirectory(token);
+    const match = findMatch(docs, clientId, email);
+    if (!match) return json({ ok: false, error: "The Client ID and registered Gmail do not match." }, 404);
+
+    const fields = match.fields || {};
+    const active = sv(fields, "active", true);
+    const uid = String(sv(fields, "authUserId", "")).trim();
+    if (active === false || !uid) return json({ ok: false, error: "This customer account is not available." }, 403);
+
+    if (action === "verifyAccount") return json({ ok: true });
+
+    if (action !== "resetPassword") return json({ ok: false, error: "Invalid recovery action." }, 400);
+
+    const newPassword = String(body.newPassword || "");
+    if (!/^\d{6}$/.test(newPassword)) return json({ ok: false, error: "The temporary password must be exactly 6 digits." }, 400);
+
+    const customToken = await makeCustomToken(serviceAccount, uid);
+    const authSession = await exchangeCustomToken(customToken);
+    if (authSession.localId !== uid) return json({ ok: false, error: "Customer account verification failed." }, 403);
+    await updatePasswordWithAdminToken(authSession.idToken, newPassword);
+
+    const now = new Date();
+    await firestorePatch(token, String(match.name).replace(`projects/${PROJECT_ID}/databases/(default)/documents/`, ""), {
+      forcePasswordChange: boolField(true),
+      passwordChangedAt: timestampField(now),
+      updatedAt: timestampField(now)
+    });
+
+    const unitDocId = String(sv(fields, "unitDocId", "")).trim();
+    if (unitDocId) {
+      await firestorePatch(token, `units/${unitDocId}`, {
+        forcePasswordChange: boolField(true),
+        passwordChangedAt: timestampField(now),
+        updatedAt: timestampField(now)
+      });
+    }
+
+    return json({ ok: true, temporaryPasswordSet: true });
+  } catch (error) {
+    console.error("[PISO WIFI PASSWORD RESET CODE]", error);
+    return json({ ok: false, error: "PASSWORD_RESET_SERVER_ERROR" }, 500);
   }
 }

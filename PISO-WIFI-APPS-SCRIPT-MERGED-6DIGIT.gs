@@ -1,27 +1,3 @@
-
-/*************************************************
- * 0. ONE-TIME AUTHORIZATION CHECK
- *
- * Run authorizePasswordRecovery() manually ONCE
- * from the Apps Script editor after saving.
- *
- * This requests the permissions needed by:
- * - UrlFetchApp (server-to-server bridge)
- * - MailApp (sending the 6-digit email)
- *
- * Do NOT call this from the public website.
- *************************************************/
-function authorizePasswordRecovery() {
-  UrlFetchApp.fetch('https://www.google.com', {
-    method: 'get',
-    muteHttpExceptions: true
-  });
-
-  MailApp.getRemainingDailyQuota();
-
-  Logger.log('PISO WIFI password-recovery permissions authorized.');
-}
-
 /*************************************************
  * PISO WIFI BACKEND
  * Google Apps Script + Google Sheets API
