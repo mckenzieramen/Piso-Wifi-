@@ -148,19 +148,3 @@ input,select{width:100%;padding:12px 13px;border-radius:10px;border:1px solid #2
   .dashboard-header{gap:8px;padding-left:70px}.dashboard-header>div:nth-child(2){min-width:0}.dashboard-header h1{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.kpi-card{min-height:92px;padding:13px}.kpi-icon{width:42px;height:42px}
   .income-card .donut-wrap{min-height:210px;display:grid;place-items:center;overflow:visible;padding:10px 0 8px}.income-card .donut{margin:auto;width:155px;height:155px}.income-card .donut:before{width:92px;height:92px}.income-card .donut b{font-size:15px}.income-card .legend{max-width:250px;margin:0 auto}
 }
-
-/* V66: persistent horizontal scrolling — scroll only inside the intended containers. */
-.table-scroll,.dtr-table-wrap,.report-box,.sales-period-table,#employeeTable,#employeeHistory{
-  overflow-x:auto;
-  overflow-y:hidden;
-  -webkit-overflow-scrolling:touch;
-  overscroll-behavior-x:contain;
-  overflow-anchor:none;
-  scroll-behavior:auto;
-}
-.table-scroll>table,.dtr-table-wrap>table,.report-box>table,.sales-period-table>table,#employeeTable>table,#employeeHistory table{
-  min-width:max-content;
-}
-@media(max-width:700px){
-  .table-scroll,.dtr-table-wrap,.report-box,.sales-period-table,#employeeTable,#employeeHistory{touch-action:pan-x pan-y;}
-}

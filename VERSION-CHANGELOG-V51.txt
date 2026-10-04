@@ -1,0 +1,10 @@
+V51 - DTR PASSWORD PROTECTION CORRECTION
+
+- Removed Face Scan password protection from the Admin portal.
+- Admin Face Enrollment opens normally again.
+- Added password protection to the Employee DTR page instead.
+- DTR requires password on first open in a browser tab/session.
+- Refresh/reload keeps DTR unlocked using sessionStorage.
+- Closing the tab/browser ends the session, so the DTR password is required again.
+- DTR scanner/camera does not initialize until access is unlocked.
+- Existing face recognition, attendance, Firebase, payroll, sales and reports logic preserved.
