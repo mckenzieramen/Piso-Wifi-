@@ -1,12 +1,9 @@
-// Firebase Web App configuration
-// This file contains the public Firebase web configuration.
-// Never place Firebase Admin SDK service-account private keys here.
-
-export const firebaseConfig = {
-  apiKey: "AIzaSyAfX3sSDkJwX9u9dxEDBhG8RU3iP_k6EdI",
-  authDomain: "piso-wifi-f2b5c.firebaseapp.com",
-  projectId: "piso-wifi-f2b5c",
-  storageBucket: "piso-wifi-f2b5c.firebasestorage.app",
-  messagingSenderId: "209573842115",
-  appId: "1:209573842115:web:a5cbfe45bb02ff980ce676"
+/* Big Guy's Carwash Firebase Web App configuration. */
+window.BIGGUYS_FIREBASE_CONFIG = {
+  apiKey: "AIzaSyAvTo4ieD6x1RK5WrFgGq7STjEQjHbh7dE",
+  authDomain: "big-guys-carwash.firebaseapp.com",
+  projectId: "big-guys-carwash",
+  storageBucket: "big-guys-carwash.firebasestorage.app",
+  messagingSenderId: "267146668906",
+  appId: "1:267146668906:web:ad94aec90fa44d7299313"
 };

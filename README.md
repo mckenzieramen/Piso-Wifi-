@@ -1,39 +1,25 @@
-PISO WIFI — OFFICIAL ROUTE BUILD
+# Big Guy's Carwash — DTR Starter
 
-The official customer/client website is the root URL:
-https://piso-wifi.pages.dev/
+This starter includes:
+- Admin login UI
+- Employee ID → biometric camera step
+- Daily DTR with Early (blue), On-time, Late (red)
+- Admin-configurable employee start time
+- Full / Semi Full / Part Time base daily rates
+- Sales recording
+- Commission calculation: 40% normal, 35% late, 30% AWOL
+- Daily/monthly/yearly report starter
+- Transparent Big Guy's logo
 
-The Admin portal is:
-https://piso-wifi.pages.dev/admin
+## Important
+This is a front-end prototype using browser localStorage. It is NOT yet suitable for production payroll/security.
 
-The authenticated client dashboard is:
-https://piso-wifi.pages.dev/client
+The camera step currently checks camera access only. True face recognition requires employee face enrollment plus a face-recognition model and should be connected to a secure backend/Firebase before deployment.
 
-Deploy the contents of this package to the ROOT of the Cloudflare Pages project.
-Do not nest the whole package inside another folder.
+Commission formula implemented:
+`daily pay = max(base daily rate, sales × commission rate)` for a recorded attendance day.
 
-The customer account remains client-only and uses the existing Firebase authentication/data layer.
-Each authenticated client must be authorized server-side to access only their own units, sales, payments, statements and notifications.
+Example: Full-time + ₱350 sales + normal attendance:
+350 × 40% = ₱140, so pay remains ₱250.
 
-
-CUSTOMER ACCOUNT NAMING — V11
-=============================
-Customer-facing branding now uses "Customer Account" instead of "Client Portal".
-Official customer login:
-https://piso-wifi.pages.dev/
-
-Admin:
-https://piso-wifi.pages.dev/admin
-
-The internal data/auth architecture may still use client/clientId terminology
-where required by the existing backend; only the customer-facing wording was changed.
-
-
-Support chat added in this SafeEdit version: customer ↔ admin real-time chat via supportChats, typing indicators, unread flags, Open/Solved/Closed statuses, and preserved conversation history.
-
-
-## V16 Support Chat Root-Cause Fix
-- Customer support conversations now use the authenticated customer's UID as the stable default document ID.
-- Existing conversations created by earlier versions are recovered by `authUserId` lookup.
-- Customer support access no longer depends on unit-linkage fields at the time a chat is created; access remains restricted to the signed-in owner or Admin.
-- Admin opening a conversation clears the Admin unread flag.
+For production, replace the demo admin credentials with Firebase Authentication and store employee/DTR/sales records in Firestore with security rules.
