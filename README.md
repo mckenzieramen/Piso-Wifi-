@@ -1,9 +1,11 @@
-# Big Guy's Carwash — V88
+Big Guy's Carwash DTR/Admin - V89
 
-Schedule draft persistence and saved-week edit reliability fix.
+Schedule workflow fix:
+- Create Schedule starts blank.
+- Unsaved selections become an active draft only after the user selects them.
+- Draft survives navigation and reload.
+- Saved schedules are never shown in Create Schedule.
+- Scheduled -> Edit loads the selected saved week only.
+- Update saves the edited week and returns to Scheduled.
 
-- CREATE SCHEDULE draft survives navigation.
-- Selected week and schedule mode are restored when returning.
-- SCHEDULED saved weeks use a confirmed Firestore weeklySchedules write.
-- EDIT loads the exact saved week; UPDATE writes back to that same week.
-- No attendance/sales/payroll/face data reset.
+No attendance, sales, payroll, employee, or face records are deleted or reset by this change.

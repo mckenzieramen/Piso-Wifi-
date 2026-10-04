@@ -1,0 +1,11 @@
+V89 - 2026-10-05
+
+Schedule Create Draft Isolation Fix
+- CREATE SCHEDULE no longer loads saved/old employee schedules automatically.
+- A Create Schedule screen is blank until the user actually selects employees.
+- An active unsaved draft is preserved across internal navigation and browser refresh using the existing draft persistence.
+- Saved schedules are shown only through SCHEDULED -> EDIT.
+- Editing a saved week loads only that saved week into the roster.
+- Saving a new schedule clears its draft and switches to SCHEDULED.
+- Updating an edited schedule returns to the scheduled list after save.
+- Existing employee, attendance, sales, payroll, face, and Firebase data logic preserved.

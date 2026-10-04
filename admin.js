@@ -18,6 +18,8 @@ let scheduleBlankDraft=true;
 let scheduleMode='create';
 let scheduleModeInitialized=false;
 let scheduleEditingWeek="";
+let scheduleDraftActive=false;
+let scheduleDraftWeek="";
 let scheduleUiStateLoaded=false;
 let attendanceCaptureDisplayedKey=null;
 let selectedDtrEmployeeId="";
@@ -358,7 +360,7 @@ function loadScheduleUiState(){
 function persistScheduleUiState(){
   try{
     const week=mondayOfWeek($("scheduleWeekOf")?.value||state.scheduleWeekOf||today());
-    localStorage.setItem(SCHEDULE_UI_STATE_KEY,JSON.stringify({mode:scheduleMode,week,editingWeek:scheduleEditingWeek||""}));
+    localStorage.setItem(SCHEDULE_UI_STATE_KEY,JSON.stringify({mode:scheduleMode,week,editingWeek:scheduleEditingWeek||"",draftActive:scheduleDraftActive===true,draftWeek:scheduleDraftWeek||""}));
   }catch(err){console.warn("Schedule UI state local save skipped:",err);}
 }
 function restoreScheduleUiState(){
@@ -367,6 +369,8 @@ function restoreScheduleUiState(){
   if(saved){
     scheduleMode=saved.mode;
     scheduleEditingWeek=saved.editingWeek||"";
+    scheduleDraftActive=saved.draftActive===true;
+    scheduleDraftWeek=saved.draftWeek||"";
     if(saved.week){state.scheduleWeekOf=saved.week;if($("scheduleWeekOf"))$("scheduleWeekOf").value=saved.week;}
   }
   scheduleUiStateLoaded=true;
@@ -428,6 +432,7 @@ function clearScheduleDraft(weekOf){
  const key=mondayOfWeek(weekOf||today());
  if(state.scheduleDrafts&&Object.prototype.hasOwnProperty.call(state.scheduleDrafts,key)){
    delete state.scheduleDrafts[key];
+   if(scheduleDraftWeek===key){scheduleDraftActive=false;scheduleDraftWeek="";persistScheduleUiState();}
    persistScheduleDrafts();
    cacheState();
  }
@@ -470,6 +475,9 @@ function createNewSchedule(){
  const week=nextCreateScheduleWeek();
  if($("scheduleWeekOf"))$("scheduleWeekOf").value=week;
  state.scheduleWeekOf=week;
+ scheduleDraftActive=true;
+ scheduleDraftWeek=week;
+ if(!scheduleDraftForWeek(week)){state.scheduleDrafts=state.scheduleDrafts||{};state.scheduleDrafts[week]={};persistScheduleDrafts();}
  scheduleBlankDraft=!scheduleDraftForWeek(week);
  scheduleModeInitialized=true;
  setScheduleMode("create");
@@ -622,10 +630,15 @@ function renderScheduleRoster(){
  const siteOrder=["site1","site2","site3","off"];
  const rowLimits={site1:10,site2:5,site3:5,off:5};
  const escapeHtml=v=>String(v??"").replace(/[&<>"']/g,ch=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[ch]));
- const draft=draftAssignmentsForWeek(weekOf);
+ const draft=(scheduleMode==="create" && scheduleDraftActive && scheduleDraftWeek===weekOf)?draftAssignmentsForWeek(weekOf):null;
  const viewingSavedWeek=scheduleMode==="scheduled"&&scheduleEditingWeek===weekOf&&hasSavedScheduleForWeek(weekOf);
  const showRoster=scheduleMode!=="scheduled"||viewingSavedWeek;
  const employeeAt=(siteId,day,rowIndex)=>{
+   if(scheduleMode==="create") {
+     if(!draft) return "";
+     const matches=state.employees.filter(e=>draft[String(e.id)]?.[day]===siteId);
+     return matches[rowIndex]?.id||"";
+   }
    if(draft){
      const matches=state.employees.filter(e=>draft[String(e.id)]?.[day]===siteId);
      return matches[rowIndex]?.id||"";
