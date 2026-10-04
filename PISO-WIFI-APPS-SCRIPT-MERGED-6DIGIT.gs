@@ -632,6 +632,14 @@ function doPost(e) {
     );
 
     const action = String(payload.action || '').trim();
+    const suppliedSecret = String(payload.secret || payload.bridgeSecret || '').trim();
+
+    if (suppliedSecret !== PASSWORD_RESET_MAILER_SECRET) {
+      return jsonResponse_({
+        ok: false,
+        error: 'Unauthorized password recovery request.'
+      });
+    }
 
     if (action === 'requestCode') {
       return jsonResponse_(requestPasswordCode_(payload));
