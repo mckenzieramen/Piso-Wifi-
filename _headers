@@ -1,0 +1,10 @@
+/*
+  Cache-Control: no-cache, no-store, must-revalidate
+  Pragma: no-cache
+  Expires: 0
+
+/admin/*
+  Cache-Control: no-cache, no-store, must-revalidate
+
+/client*
+  Cache-Control: no-cache, no-store, must-revalidate
