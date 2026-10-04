@@ -7,18 +7,7 @@ state.sales=Array.isArray(state.sales)?state.sales:[];
 state.faces=state.faces&&typeof state.faces==="object"?state.faces:{};
 state.faceUpdatedAt=state.faceUpdatedAt&&typeof state.faceUpdatedAt==="object"?state.faceUpdatedAt:{};
 state.dailyReports=state.dailyReports&&typeof state.dailyReports==="object"?state.dailyReports:{};
-state.scheduleWeekOf=state.scheduleWeekOf||"";
-state.scheduleDrafts=state.scheduleDrafts&&typeof state.scheduleDrafts==="object"?state.scheduleDrafts:{};
-const SCHEDULE_DRAFT_SESSION_KEY="bigguys_schedule_create_drafts_v2";
-const SCHEDULE_UI_STATE_KEY="bigguys_schedule_ui_state_v1";
-try{const cachedDrafts=JSON.parse(sessionStorage.getItem(SCHEDULE_DRAFT_SESSION_KEY)||"{}");if(cachedDrafts&&typeof cachedDrafts==="object")state.scheduleDrafts={...state.scheduleDrafts,...cachedDrafts};}catch(e){}
 let enrollStream=null,modelsReady=false;
-// Start the schedule screen as a blank, unsaved draft without deleting any saved Firebase schedule/time data.
-let scheduleBlankDraft=true;
-let scheduleMode='create';
-let scheduleModeInitialized=false;
-let scheduleEditingWeek="";
-let scheduleUiStateLoaded=false;
 let attendanceCaptureDisplayedKey=null;
 let selectedDtrEmployeeId="";
 let attendanceCaptureHideTimer=null;
@@ -59,43 +48,13 @@ function syncStateFromStorage(){
    if(raw.faces&&typeof raw.faces==="object"&&Object.keys(raw.faces).length)state.faces=raw.faces;
    if(raw.faceUpdatedAt&&typeof raw.faceUpdatedAt==="object"&&Object.keys(raw.faceUpdatedAt).length)state.faceUpdatedAt=raw.faceUpdatedAt;
    state.dailyReports=raw.dailyReports&&typeof raw.dailyReports==="object"?raw.dailyReports:{};
-   state.scheduleDrafts=raw.scheduleDrafts&&typeof raw.scheduleDrafts==="object"?raw.scheduleDrafts:loadScheduleDrafts();
-   if(raw.scheduleWeekOf)state.scheduleWeekOf=raw.scheduleWeekOf;
  }catch(e){console.warn("Could not sync dashboard data",e)}
 }
 const today=()=>{const n=new Date();const y=n.getFullYear(),m=String(n.getMonth()+1).padStart(2,"0"),d=String(n.getDate()).padStart(2,"0");return `${y}-${m}-${d}`};
 const money=n=>"₱"+Number(n||0).toLocaleString("en-PH",{minimumFractionDigits:2,maximumFractionDigits:2});
 const WEEKDAYS=["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
-const DTR_SITES={
- site1:{name:"Site 1",lat:14.118861,lng:122.950854,radius:250},
- site2:{name:"Site 2",lat:14.0956367,lng:122.9469572,radius:250},
- site3:{name:"Site 3",lat:14.091233,lng:122.9467024,radius:250}
-};
-function siteLabel(id){return DTR_SITES[id]?.name||"Unassigned";}
-const SCHEDULE_SITE_OPTIONS=["site1","site2","site3","off"];
-function scheduleForEmployee(e,dateOrWeek=today(),useLegacy=true){
- const raw=String(dateOrWeek||today());
- const weekKey=/^\d{4}-\d{2}-\d{2}$/.test(raw)?mondayOfWeek(raw):raw;
- const weekly=e?.weeklySchedules&&typeof e.weeklySchedules==="object"?e.weeklySchedules:{};
- const hasSavedWeek=Object.prototype.hasOwnProperty.call(weekly,weekKey)&&weekly[weekKey]&&typeof weekly[weekKey]==="object";
- const legacy=e?.weeklySchedule&&typeof e.weeklySchedule==="object"?e.weeklySchedule:{};
- const useSavedWeek=hasSavedWeek;
- const existing=useSavedWeek?weekly[weekKey]:(useLegacy&&!Object.keys(weekly).length?legacy:{});
- const out={};
- WEEKDAYS.slice(1).forEach(day=>{
-   const value=existing?.[day];
-   out[day]=SCHEDULE_SITE_OPTIONS.includes(value)?value:"";
- });
- return out;
-}
-function scheduledSiteId(e,date=today()){
- if(!e)return ""; const day=WEEKDAYS[new Date(date+"T00:00:00").getDay()];
- const value=scheduleForEmployee(e,date,false)[day]; return value==="off"?"":(DTR_SITES[value]?value:"");
-}
-function scheduledSiteName(e,date=today()){return siteLabel(scheduledSiteId(e,date));}
-
 function employeeOffDays(e){return Array.isArray(e?.offDays)?e.offDays:[];}
-function isEmployeeOff(e,date){if(!e||!date)return false;const day=WEEKDAYS[new Date(date+"T00:00:00").getDay()];const value=scheduleForEmployee(e,date,false)[day];return value==="off"||value==="";}
+function isEmployeeOff(e,date){if(!e||!date)return false;return employeeOffDays(e).includes(WEEKDAYS[new Date(date+"T00:00:00").getDay()]);}
 function isBeforeHire(e,date){return !!(e?.hireDate&&date<e.hireDate);}
 function previousDate(date){const d=new Date(date+"T00:00:00");d.setDate(d.getDate()-1);return d.toISOString().slice(0,10);}
 function previousDayPenaltyApplies(emp,date){
@@ -274,436 +233,57 @@ async function markEmployeeExcuse(employeeId,date){
    cacheState();refresh();
  }catch(err){console.error("Mark excuse failed",err);alert(`Unable to mark excuse: ${err?.code||err?.message||err}`);}
 }
-function mondayOfWeek(dateValue){
- const d=new Date((dateValue||today())+"T00:00:00");
- const day=d.getDay();
- const diff=day===0?-6:1-day;
- d.setDate(d.getDate()+diff);
- return d.toISOString().slice(0,10);
+function renderSettings(){
+ const select=$("settingsEmployee"); if(!select)return;
+ const current=select.value;
+ select.innerHTML='<option value="">Select Employee</option>'+state.employees.map(e=>`<option value="${e.id}">${e.name} — ${e.id}</option>`).join("");
+ if(state.employees.some(e=>String(e.id)===String(current)))select.value=current;
+ const e=state.employees.find(x=>String(x.id)===String(select.value));
+ const wrap=$("employeeOffDays"); if(!wrap)return;
+ const selected=new Set(employeeOffDays(e));
+ wrap.innerHTML=WEEKDAYS.map(day=>`<label class="off-day-option ${selected.has(day)?"selected":""}"><input type="checkbox" value="${day}" ${selected.has(day)?"checked":""}><span>${day}</span></label>`).join("");
+ wrap.querySelectorAll('input[type="checkbox"]').forEach(input=>input.addEventListener("change",()=>input.closest(".off-day-option")?.classList.toggle("selected",input.checked)));
+ $("offDaysSummary").innerHTML=e?`<strong>${e.name}</strong><span>${selected.size?Array.from(selected).join(" • "):"No regular days off selected."}</span>`:"Select an employee to configure days off.";
 }
-function addDaysISO(dateValue,offset){
- const d=new Date(dateValue+"T00:00:00");d.setDate(d.getDate()+offset);return d.toISOString().slice(0,10);
-}
-function prettyScheduleDate(dateValue){
- return new Date(dateValue+"T00:00:00").toLocaleDateString("en-PH",{month:"short",day:"numeric",year:"numeric"});
-}
-function employeeOptions(selected=""){
- return '<option value=""></option>'+state.employees.map(e=>`<option value="${String(e.id).replace(/"/g,"&quot;")}" ${String(e.id)===String(selected)?"selected":""}>${String(e.name||e.id).replace(/[&<>]/g,ch=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[ch]))}</option>`).join("");
-}
-function scheduleRosterAssignments(){
- const out={};
- document.querySelectorAll('#scheduleRoster [data-roster-site][data-roster-day]').forEach(sel=>{
-   const id=sel.value,site=sel.dataset.rosterSite,day=sel.dataset.rosterDay;
-   if(!id)return;
-   if(!out[id])out[id]={};
-   out[id][day]=site;
- });
- return out;
-}
-function refreshRosterDayAvailability(day){
- const selects=[...document.querySelectorAll(`#scheduleRoster select[data-roster-day="${day}"]`)];
- const used=new Set();
- selects.forEach(sel=>{
-   const id=String(sel.value||"");
-   if(id)used.add(id);
- });
- selects.forEach(sel=>{
-   const current=String(sel.value||"");
-   [...sel.options].forEach(opt=>{
-     const id=String(opt.value||"");
-     opt.disabled=!!id && id!==current && used.has(id);
-   });
- });
-}
-function normalizeRosterDuplicates(){
- const days=WEEKDAYS.slice(1);
- days.forEach(day=>{
-   const seen=new Set();
-   document.querySelectorAll(`#scheduleRoster select[data-roster-day="${day}"]`).forEach(sel=>{
-     const id=String(sel.value||"");
-     if(!id)return;
-     if(seen.has(id)){
-       sel.value="";
-     }else{
-       seen.add(id);
-     }
-   });
-   refreshRosterDayAvailability(day);
- });
-}
-function syncRosterDuplicateDay(changed){
- const day=changed?.dataset?.rosterDay;
- if(!day)return;
- const id=String(changed.value||"");
- if(id){
-   const duplicate=[...document.querySelectorAll(`#scheduleRoster select[data-roster-day="${day}"]`)].some(sel=>sel!==changed&&String(sel.value||"")===id);
-   if(duplicate){
-     changed.value="";
-     alert("This employee is already scheduled on this day. One employee can only have one site or Day Off per day.");
-   }
- }
- refreshRosterDayAvailability(day);
-}
-function loadScheduleUiState(){
-  try{
-    const raw=JSON.parse(localStorage.getItem(SCHEDULE_UI_STATE_KEY)||"{}");
-    if(!raw||typeof raw!=="object")return null;
-    return {
-      mode:raw.mode==="scheduled"?"scheduled":"create",
-      week:/^\d{4}-\d{2}-\d{2}$/.test(String(raw.week||""))?mondayOfWeek(raw.week):"",
-      editingWeek:/^\d{4}-\d{2}-\d{2}$/.test(String(raw.editingWeek||""))?mondayOfWeek(raw.editingWeek):""
-    };
-  }catch(err){return null;}
-}
-function persistScheduleUiState(){
-  try{
-    const week=mondayOfWeek($("scheduleWeekOf")?.value||state.scheduleWeekOf||today());
-    localStorage.setItem(SCHEDULE_UI_STATE_KEY,JSON.stringify({mode:scheduleMode,week,editingWeek:scheduleEditingWeek||""}));
-  }catch(err){console.warn("Schedule UI state local save skipped:",err);}
-}
-function restoreScheduleUiState(){
-  if(scheduleUiStateLoaded)return;
-  const saved=loadScheduleUiState();
-  if(saved){
-    scheduleMode=saved.mode;
-    scheduleEditingWeek=saved.editingWeek||"";
-    if(saved.week){state.scheduleWeekOf=saved.week;if($("scheduleWeekOf"))$("scheduleWeekOf").value=saved.week;}
-  }
-  scheduleUiStateLoaded=true;
-}
-function persistScheduleDrafts(){
-  try{
-    state.scheduleDrafts=state.scheduleDrafts&&typeof state.scheduleDrafts==="object"?state.scheduleDrafts:{};
-    localStorage.setItem("bigguys_schedule_drafts",JSON.stringify(state.scheduleDrafts));
-  }catch(err){ console.warn("Schedule draft local save skipped:",err); }
-}
-function loadScheduleDrafts(){
-  try{
-    const raw=localStorage.getItem("bigguys_schedule_drafts");
-    const parsed=raw?JSON.parse(raw):{};
-    return parsed&&typeof parsed==="object"?parsed:{};
-  }catch(err){ return {}; }
-}
-function preserveScheduleDrafts(){
-  const memory=state.scheduleDrafts&&typeof state.scheduleDrafts==="object"?state.scheduleDrafts:{};
-  const stored=loadScheduleDrafts();
-  return {...stored,...memory};
-}
-function scheduleDraftForWeek(weekOf){
- const key=mondayOfWeek(weekOf||today());
- if(!state.scheduleDrafts||typeof state.scheduleDrafts!=="object")state.scheduleDrafts=loadScheduleDrafts();
- const draft=state.scheduleDrafts?.[key];
- return draft&&typeof draft==="object"?draft:null;
-}
-function captureCurrentScheduleDraft(weekOf){
- const key=mondayOfWeek(weekOf||today());
- const draft={};
- document.querySelectorAll('#scheduleRoster select[data-roster-site][data-roster-day]').forEach(sel=>{
-   const id=String(sel.value||"");
-   const day=sel.dataset.rosterDay;
-   const site=sel.dataset.rosterSite;
-   if(!day||!site)return;
-   if(!draft[id])draft[id]={};
-   if(id)draft[id][day]=site;
- });
- state.scheduleDrafts=state.scheduleDrafts||{};
- state.scheduleDrafts[key]=draft;
- state.scheduleWeekOf=key;
- persistScheduleDrafts();
- cacheState();
- return draft;
-}
-function draftAssignmentsForWeek(weekOf){
- const key=mondayOfWeek(weekOf||today());
- const draft=scheduleDraftForWeek(key);
- if(!draft)return null;
- const out={};
- Object.entries(draft).forEach(([id,days])=>{
-   if(!id||!days||typeof days!=="object")return;
-   out[id]={...days};
- });
- return out;
-}
-function clearScheduleDraft(weekOf){
- const key=mondayOfWeek(weekOf||today());
- if(state.scheduleDrafts&&Object.prototype.hasOwnProperty.call(state.scheduleDrafts,key)){
-   delete state.scheduleDrafts[key];
-   persistScheduleDrafts();
-   cacheState();
- }
-}
-function hasSavedScheduleForWeek(weekOf){
- const key=mondayOfWeek(weekOf||today());
- return state.employees.some(e=>{
-   const weekly=e?.weeklySchedules&&typeof e.weeklySchedules==="object"?e.weeklySchedules:{};
-   return Object.prototype.hasOwnProperty.call(weekly,key) && weekly[key] && typeof weekly[key]==="object";
- });
-}
-function savedScheduleWeeks(){
- const keys=new Set();
- state.employees.forEach(e=>{
-   const weekly=e?.weeklySchedules&&typeof e.weeklySchedules==="object"?e.weeklySchedules:{};
-   Object.keys(weekly).forEach(k=>{if(/^\d{4}-\d{2}-\d{2}$/.test(k))keys.add(k);});
- });
- return [...keys].sort();
-}
-function nextCreateScheduleWeek(){
- const weeks=savedScheduleWeeks();
- if(!weeks.length)return mondayOfWeek(today());
- return addDaysISO(weeks[weeks.length-1],7);
-}
-function setScheduleMode(mode){
- scheduleMode=mode==="scheduled"?"scheduled":"create";
- persistScheduleUiState();
- const createBtn=$("scheduleModeCreate"),scheduledBtn=$("scheduleModeScheduled");
- createBtn?.classList.toggle("active",scheduleMode==="create");
- scheduledBtn?.classList.toggle("active",scheduleMode==="scheduled");
- createBtn?.setAttribute("aria-selected",scheduleMode==="create"?"true":"false");
- scheduledBtn?.setAttribute("aria-selected",scheduleMode==="scheduled"?"true":"false");
- $("scheduleCreatePanel")?.classList.toggle("hidden",scheduleMode!=="create");
- $("scheduleScheduledPanel")?.classList.toggle("hidden",scheduleMode!=="scheduled");
- if(scheduleMode==="scheduled")renderSavedScheduleWeeks();
-}
-function createNewSchedule(){
- if(scheduleMode==="create" && $("scheduleRoster")) captureCurrentScheduleDraft(state.scheduleWeekOf||$("scheduleWeekOf")?.value||today());
- scheduleEditingWeek="";
- const week=nextCreateScheduleWeek();
- if($("scheduleWeekOf"))$("scheduleWeekOf").value=week;
- state.scheduleWeekOf=week;
- scheduleBlankDraft=!scheduleDraftForWeek(week);
- scheduleModeInitialized=true;
- setScheduleMode("create");
- const saveBtn=$("saveRosterSchedule"); if(saveBtn)saveBtn.textContent="SAVE SCHEDULE";
- renderScheduleRoster();
- renderSavedScheduleWeeks();
-}
-
-function renderSavedScheduleWeeks(){
- const root=$("scheduleSavedWeeks"); if(!root)return;
- const weeks=savedScheduleWeeks();
- if(!weeks.length){
-   root.innerHTML='<div class="schedule-empty-saved"><strong>No saved schedules yet.</strong><span>Create a schedule, assign employees, then click SAVE SCHEDULE.</span></div>';
-   return;
- }
- const current=mondayOfWeek($("scheduleWeekOf")?.value||today());
- root.innerHTML='<div class="saved-weeks-heading"><strong>Saved weeks</strong><span>Choose EDIT to load that saved week into the table below.</span></div><div class="saved-weeks-list">'+weeks.slice().reverse().map(w=>`<div class="saved-week-item ${w===current?'active':''}"><button type="button" class="saved-week-btn" data-week="${w}"><span>${prettyScheduleDate(w)} – ${prettyScheduleDate(addDaysISO(w,6))}</span><small>EDIT</small></button><button type="button" class="saved-week-delete" data-delete-week="${w}" title="Delete saved schedule">DELETE</button></div>`).join('')+'</div>';
- root.querySelectorAll('.saved-week-btn').forEach(btn=>btn.addEventListener('click',()=>{
-   const week=btn.dataset.week;
-   scheduleEditingWeek=week;
-   if($("scheduleWeekOf"))$("scheduleWeekOf").value=week;
-   state.scheduleWeekOf=week;
-   scheduleBlankDraft=false;
-   setScheduleMode("scheduled");
-   renderScheduleRoster();
-   renderSavedScheduleWeeks();
-   const saveBtn=$("saveRosterSchedule"); if(saveBtn)saveBtn.textContent="UPDATE SCHEDULE";
-   persistScheduleUiState();
- }));
- root.querySelectorAll('.saved-week-delete').forEach(btn=>btn.addEventListener('click',async()=>{
-   const week=btn.dataset.deleteWeek;
-   if(!week)return;
-   if(!confirm(`Delete the saved schedule for ${prettyScheduleDate(week)} – ${prettyScheduleDate(addDaysISO(week,6))}? This removes only that weekly schedule, not attendance, sales, payroll, employees, or faces.`))return;
-   try{
-     if(window.BigGuysCloud?.deleteScheduleWeek) await window.BigGuysCloud.deleteScheduleWeek(week);
-     state.employees=state.employees.map(e=>{
-       const weekly=e?.weeklySchedules&&typeof e.weeklySchedules==="object"?{...e.weeklySchedules}:{};
-       delete weekly[week];
-       return {...e,weeklySchedules:weekly};
-     });
-     clearScheduleDraft(week);
-     if(scheduleEditingWeek===week)scheduleEditingWeek="";
-     const current=mondayOfWeek($("scheduleWeekOf")?.value||today());
-     if(current===week){
-       const next=savedScheduleWeeks().filter(w=>w!==week).sort().pop()||mondayOfWeek(today());
-       if($("scheduleWeekOf"))$("scheduleWeekOf").value=next;
-       state.scheduleWeekOf=next;
-       scheduleBlankDraft=true;
-       setScheduleMode("scheduled");
-     }
-     cacheState();
-     persistScheduleUiState();
-     renderSchedules();
-     alert(`Schedule deleted for the week of ${prettyScheduleDate(week)}.`);
-   }catch(err){console.error("Schedule delete failed",err);alert(`Unable to delete schedule: ${err?.code||err?.message||err}`);}
- }));
-}
-
-function renderSchedules(){
- restoreScheduleUiState();
- const weekInput=$("scheduleWeekOf");
- if(weekInput && !weekInput.value)weekInput.value=state.scheduleWeekOf||today();
- const weekOf=mondayOfWeek(weekInput?.value||state.scheduleWeekOf||today());
- if(weekInput)weekInput.value=weekOf;
- state.scheduleWeekOf=weekOf;
- if(!scheduleModeInitialized){
-   const savedWeeks=savedScheduleWeeks();
-   if(scheduleMode==="scheduled" && (!savedWeeks.length || !hasSavedScheduleForWeek(weekOf))){
-     scheduleMode=savedWeeks.length?"scheduled":"create";
-     if(scheduleMode==="scheduled")scheduleEditingWeek="";
-   }
-   scheduleModeInitialized=true;
- }
- if(scheduleMode==="create")scheduleBlankDraft=!scheduleDraftForWeek(weekOf);
- else scheduleBlankDraft=!hasSavedScheduleForWeek(weekOf);
- renderSavedScheduleWeeks();
- setScheduleMode(scheduleMode);
- const saveBtn=$("saveRosterSchedule");
- const canEdit=scheduleMode==="create" || (scheduleMode==="scheduled"&&scheduleEditingWeek===weekOf&&hasSavedScheduleForWeek(weekOf));
- if(saveBtn){saveBtn.textContent=scheduleMode==="scheduled"?"UPDATE SCHEDULE":"SAVE SCHEDULE";saveBtn.disabled=!canEdit;}
- renderScheduleRoster();
- persistScheduleUiState();
-}
-
-async function saveRosterSchedule(){
- const weekOf=mondayOfWeek($("scheduleWeekOf")?.value||today());
- const assignments=scheduleRosterAssignments();
- const updating=scheduleMode==="scheduled"&&scheduleEditingWeek===weekOf;
- if(scheduleMode==="scheduled"&&!updating){alert("Click EDIT on a saved week before updating it.");return;}
+async function saveEmployeeOffDays(){
+ const id=$("settingsEmployee")?.value;
+ const current=state.employees.find(x=>String(x.id)===String(id));
+ if(!current){alert("Select an employee first.");return;}
+ const offDays=[...document.querySelectorAll('#employeeOffDays input[type="checkbox"]:checked')].map(x=>x.value);
+ const employee={...current,offDays:[...new Set(offDays)]};
  try{
-   const duplicateDays=[];
-   WEEKDAYS.slice(1).forEach(day=>{
-     const seen=new Set();
-     document.querySelectorAll(`#scheduleRoster select[data-roster-day="${day}"]`).forEach(sel=>{
-       const id=String(sel.value||"");
-       if(!id)return;
-       if(seen.has(id)) duplicateDays.push(day);
-       seen.add(id);
-     });
-   });
-   if(duplicateDays.length){ alert(`A person can only be scheduled once per day. Please fix: ${[...new Set(duplicateDays)].join(", ")}.`); return; }
-
-   const selectedByDay={};
-   WEEKDAYS.slice(1).forEach(day=>{
-     selectedByDay[day]={};
-     document.querySelectorAll(`#scheduleRoster select[data-roster-day="${day}"]`).forEach(sel=>{
-       if(sel.value) selectedByDay[day][String(sel.value)]=sel.dataset.rosterSite;
-     });
-   });
-   const employees=state.employees.map(e=>{
-     const weeklySchedules=e?.weeklySchedules&&typeof e.weeklySchedules==="object"?{...e.weeklySchedules}:{};
-     // A new week starts completely blank. Only an explicitly selected Day Off is saved as "off".
-     const next={Monday:"",Tuesday:"",Wednesday:"",Thursday:"",Friday:"",Saturday:"",Sunday:""};
-     WEEKDAYS.slice(1).forEach(day=>{next[day]=selectedByDay[day][String(e.id)]||"";});
-     weeklySchedules[weekOf]=next;
-     return {...e,weeklySchedules};
-   });
-   if(window.BigGuysCloud?.saveScheduleWeek){
-     const scheduleMap={};
-     employees.forEach(employee=>{scheduleMap[String(employee.id)]=employee.weeklySchedules?.[weekOf]||{};});
-     const fresh=await window.BigGuysCloud.saveScheduleWeek(weekOf,scheduleMap);
-     if(fresh?.employees) state.employees=fresh.employees;
-     else state.employees=employees;
-   }else{
-     for(const employee of employees){
-       const original=state.employees.find(x=>String(x.id)===String(employee.id));
-       if(JSON.stringify(original?.weeklySchedules||{})!==JSON.stringify(employee.weeklySchedules||{})){
-         if(window.BigGuysCloud?.saveEmployee) await window.BigGuysCloud.saveEmployee(employee);
-       }
-     }
-     state.employees=employees;
-   }
-   state.scheduleWeekOf=weekOf;
-   clearScheduleDraft(weekOf);
-   scheduleEditingWeek="";
-   scheduleBlankDraft=false;
-   scheduleMode='scheduled';
-   persistScheduleUiState();
+   let next;
+   if(window.BigGuysCloud?.saveEmployee) next=await window.BigGuysCloud.saveEmployee(employee);
+   else next=await save();
+   if(next&&Array.isArray(next.employees)) state=next; else { const local=state.employees.find(x=>String(x.id)===String(id)); if(local)local.offDays=employee.offDays; }
    cacheState();
-   renderSchedules();renderAttendanceAdmin(attendanceDateValue());renderPayroll();refresh();
-   alert(`Schedule saved for the week of ${prettyScheduleDate(weekOf)}.`);
- }catch(err){console.error("Roster schedule save failed",err);alert(`Unable to save schedule: ${err?.code||err?.message||err}`);}
-}
-function renderScheduleRoster(){
- const root=$("scheduleRoster");if(!root)return;
- const selectedDate=$("scheduleWeekOf")?.value||state.scheduleWeekOf||today();
- const weekOf=mondayOfWeek(selectedDate);
- const days=["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"];
- const dayColors={Monday:"mon",Tuesday:"tue",Wednesday:"wed",Thursday:"thu",Friday:"fri",Saturday:"sat",Sunday:"sun"};
- const siteOrder=["site1","site2","site3","off"];
- const rowLimits={site1:10,site2:5,site3:5,off:5};
- const escapeHtml=v=>String(v??"").replace(/[&<>"']/g,ch=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[ch]));
- const draft=draftAssignmentsForWeek(weekOf);
- const viewingSavedWeek=scheduleMode==="scheduled"&&scheduleEditingWeek===weekOf&&hasSavedScheduleForWeek(weekOf);
- const showRoster=scheduleMode!=="scheduled"||viewingSavedWeek;
- const employeeAt=(siteId,day,rowIndex)=>{
-   if(draft){
-     const matches=state.employees.filter(e=>draft[String(e.id)]?.[day]===siteId);
-     return matches[rowIndex]?.id||"";
-   }
-   if(scheduleBlankDraft)return "";
-   const matches=state.employees.filter(e=>{
-     const hasWeeklySchedules=e?.weeklySchedules&&typeof e.weeklySchedules==="object"&&Object.keys(e.weeklySchedules).length>0;
-     const useLegacy=!hasWeeklySchedules;
-     const schedule=scheduleForEmployee(e,weekOf,useLegacy);
-     return siteId==="off"?schedule[day]==="off":schedule[day]===siteId;
-   });
-   return matches[rowIndex]?.id||"";
- };
- const buildRows=(siteId,maxRows)=>{
-   return Array.from({length:maxRows},(_,rowIndex)=>{
-     const cells=days.map(day=>{
-       const selected=employeeAt(siteId,day,rowIndex);
-       return `<div class="site-roster-cell ${selected?"has-name":"empty"}"><select class="site-roster-select" data-roster-site="${siteId}" data-roster-day="${day}" aria-label="${escapeHtml(siteId)} ${escapeHtml(day)} employee">${employeeOptions(selected)}</select></div>`;
-     }).join("");
-     return `<div class="site-roster-row"><div class="site-roster-num">${rowIndex+1}</div>${cells}</div>`;
-   }).join("");
- };
- const makeCard=(siteId,title,subtitle,badge,maxRows)=>`<div class="site-roster-card ${siteId==="off"?"dayoff-roster-card":""}">
-   <div class="site-roster-title"><div><strong>${title}</strong><small>${subtitle}</small></div><span class="site-roster-badge">${badge}</span></div>
-   <div class="site-roster-scroll"><div class="site-roster-grid">
-     <div class="site-roster-header"><div class="site-roster-corner">#</div>${days.map((d,i)=>`<div class="site-roster-day ${dayColors[d]}">${d.toUpperCase()}<small>${prettyScheduleDate(addDaysISO(weekOf,i))}</small></div>`).join("")}</div>
-     ${buildRows(siteId,maxRows)}
-   </div></div>
- </div>`;
- if(!showRoster){
-   root.innerHTML='<div class="schedule-editor-empty"><strong>No schedule loaded.</strong><span>Choose a saved week above and click EDIT to load it here.</span></div>';
-   const summary=$("scheduleWeekSummary");
-   if(summary)summary.innerHTML=`<strong>Schedule week:</strong><span>${prettyScheduleDate(weekOf)} – ${prettyScheduleDate(addDaysISO(weekOf,6))}</span>`;
-   return;
+   renderSettings();
+   renderAttendanceAdmin(attendanceDateValue());
+   renderPayroll();
+   alert(employee.offDays.length?`Days off saved: ${employee.offDays.join(", ")}`:"Days off cleared. No regular days off are set.");
+ }catch(err){
+   console.error("Days off save failed",err);
+   alert(`Unable to save days off: ${err?.code||err?.message||err}`);
  }
- root.innerHTML=siteOrder.map(siteId=>{
-   const site=DTR_SITES[siteId];
-   return makeCard(siteId,site?site.name:"Day Off",site?`${site.lat}, ${site.lng}`:"Employees not scheduled / OFF",site?"WEEKLY ROSTER":"OFF",rowLimits[siteId]);
- }).join("");
- root.querySelectorAll('.site-roster-select').forEach(sel=>sel.addEventListener('change',()=>{syncRosterDuplicateDay(sel);captureCurrentScheduleDraft(weekOf);}));
- normalizeRosterDuplicates();
- const summary=$("scheduleWeekSummary");
- if(summary)summary.innerHTML=`<strong>Schedule week:</strong><span>${prettyScheduleDate(weekOf)} – ${prettyScheduleDate(addDaysISO(weekOf,6))}</span>`;
-}
-
-function scrollContainerKey(el,i=0){
- const host=el.closest('[id]');
- if(el.dataset.scrollKey)return el.dataset.scrollKey;
- if(el.id)return `id:${el.id}`;
- if(host?.id)return `host:${host.id}:${el.className||''}`;
- const cls=String(el.className||'').replace(/\s+/g,'-');
- return `scroll:${cls}:${i}`;
-}
-function getHorizontalScrollContainers(){
- const seen=new Set(),out=[];
- ['.table-scroll','.dtr-table-wrap','.report-box','.sales-period-table','#employeeTable'].forEach(sel=>document.querySelectorAll(sel).forEach(el=>{
-   if(seen.has(el)||el.scrollWidth<=el.clientWidth)return;
-   seen.add(el);out.push(el);
- }));
- return out;
 }
 function preserveTableScrollPositions(){
  const positions={};
- getHorizontalScrollContainers().forEach((el,i)=>{const key=scrollContainerKey(el,i);el.dataset.scrollKey=key;positions[key]=el.scrollLeft;});
+ document.querySelectorAll('.table-scroll').forEach((el,i)=>{
+   const host=el.parentElement;
+   const key=host?.id || el.dataset.scrollKey || `table-scroll-${i}`;
+   positions[key]=el.scrollLeft;
+ });
  return positions;
 }
 function restoreTableScrollPositions(positions){
  if(!positions)return;
- const restore=()=>getHorizontalScrollContainers().forEach((el,i)=>{const key=scrollContainerKey(el,i);if(Object.prototype.hasOwnProperty.call(positions,key)){const x=positions[key];el.scrollLeft=x;requestAnimationFrame(()=>{el.scrollLeft=x;});}});
- restore();requestAnimationFrame(restore);setTimeout(restore,60);
-}
-function bindHorizontalScrollPersistence(){
- getHorizontalScrollContainers().forEach((el,i)=>{
-   const key=scrollContainerKey(el,i);el.dataset.scrollKey=key;
-   if(el.dataset.scrollPersistenceBound==='1')return;
-   el.dataset.scrollPersistenceBound='1';
-   el.addEventListener('scroll',()=>{try{sessionStorage.setItem('bigguys_scroll_'+key,String(el.scrollLeft));}catch(e){}},{passive:true});
-   try{const saved=Number(sessionStorage.getItem('bigguys_scroll_'+key));if(Number.isFinite(saved)&&saved>0)requestAnimationFrame(()=>{el.scrollLeft=saved;});}catch(e){}
+ document.querySelectorAll('.table-scroll').forEach((el,i)=>{
+   const host=el.parentElement;
+   const key=host?.id || el.dataset.scrollKey || `table-scroll-${i}`;
+   if(Object.prototype.hasOwnProperty.call(positions,key)){
+     const x=positions[key];
+     requestAnimationFrame(()=>{el.scrollLeft=x;});
+   }
  });
 }
 function refresh(){
@@ -717,7 +297,7 @@ function refresh(){
  const attendanceRows=state.employees.map((e,i)=>{const a=state.attendance.find(x=>x.employeeId===e.id&&x.date===d);const sales=state.sales.filter(x=>x.employeeId===e.id&&x.date===d).reduce((t,x)=>t+Number(x.amount||0),0);return[i+1,e.name,e.type,e.start,a?.clockIn||"—",statusBadge(a?.status||"awol"),money(sales),money(sales*effectiveCommissionRate(e,d,a?.status||"awol")),money(pay(e,d))]});
  $("overviewAttendance").innerHTML=table(attendanceRows,["#","Employee","Type","Schedule","Clock In","Status","Sales","Commission","Daily Pay"]);
  renderAttendanceAdmin(attendanceDateValue());
- $("employeeTable").innerHTML=table(state.employees.map(e=>[e.id,e.name,e.type,e.start,scheduledSiteName(e,d),money(baseRate(e.type)),state.faces[e.id]?"Enrolled":"Not enrolled",`<button class="history-employee" data-id="${e.id}">HISTORY</button> <button class="face-employee" data-id="${e.id}">FACE</button> <button class="delete-employee" data-id="${e.id}">DELETE</button>`]),["ID","Name","Type","Start","Today's Site","Base/Day","Face","Action"]);
+ $("employeeTable").innerHTML=table(state.employees.map(e=>[e.id,e.name,e.type,e.start,money(baseRate(e.type)),state.faces[e.id]?"Enrolled":"Not enrolled",`<button class="history-employee" data-id="${e.id}">HISTORY</button> <button class="face-employee" data-id="${e.id}">FACE</button> <button class="delete-employee" data-id="${e.id}">DELETE</button>`]),["ID","Name","Type","Start","Base/Day","Face","Action"]);
  document.querySelectorAll(".history-employee").forEach(btn=>btn.onclick=()=>showEmployeeHistory(btn.dataset.id));
 document.querySelectorAll(".face-employee").forEach(btn=>btn.onclick=()=>openEnrollmentModal(btn.dataset.id));
 document.querySelectorAll(".delete-employee").forEach(btn=>btn.onclick=()=>deleteEmployee(btn.dataset.id));
@@ -726,7 +306,6 @@ document.querySelectorAll(".delete-employee").forEach(btn=>btn.onclick=()=>delet
  const opts=state.employees.map(e=>`<option value="${e.id}">${e.name} (${e.id})</option>`).join(""); if($("saleEmployee"))$("saleEmployee").innerHTML=opts;if($("enrollEmployee"))$("enrollEmployee").innerHTML=opts;
  $("salesTable").innerHTML=table(state.sales.slice().reverse().map(s=>[s.date,state.employees.find(e=>e.id===s.employeeId)?.name||s.employeeId,money(s.amount),s.note||"—"]),["Date","Employee","Amount","Service / Note"]);
  wrapAllTableScrolls();
- bindHorizontalScrollPersistence();
  renderPayroll();
  const top=state.employees.map(e=>({name:e.name,sales:state.sales.filter(s=>s.date===d&&s.employeeId===e.id).reduce((t,s)=>t+Number(s.amount||0),0)})).filter(x=>x.sales>0).sort((a,b)=>b.sales-a.sales);
  $("topSalesToday").innerHTML=table(top.slice(0,6).map((x,i)=>[i+1,x.name,money(x.sales)]),["#","Employee","Sales"]);
@@ -734,7 +313,6 @@ document.querySelectorAll(".delete-employee").forEach(btn=>btn.onclick=()=>delet
  $("recentSales").innerHTML=table(state.sales.slice().reverse().slice(0,6).map(s=>[new Date((s.date||d)+"T"+(s.time||"12:00") ).toLocaleTimeString("en-PH",{hour:"numeric",minute:"2-digit"}),s.note||"Carwash",money(s.amount)]),["Time","Service","Amount"]);
  refreshDashboardCharts();refreshRightPanel();if(!$('sales').classList.contains('hidden'))renderSalesPage('daily');if(!$('reports').classList.contains('hidden'))makeReport(currentReportView);
  restoreTableScrollPositions(__scrollPositions);
- bindHorizontalScrollPersistence();
 }
 async function loadModels(){
  if(modelsReady)return true;
@@ -779,9 +357,7 @@ $("loginBtn").onclick=async()=>{
     BigGuysCloud.init(state,remote=>{
       state=remote;
       cacheState();
-      scheduleModeInitialized=false;
       refresh();
-      cleanupExpiredScheduleWeeks();
     },'admin').catch(err=>{
       console.error('Background Firestore sync failed:',err);
     });
@@ -808,7 +384,7 @@ $("employeeForm").onsubmit=async e=>{
    },'admin');
    const hireDate=$("empHireDate").value||today();
    const id=window.BigGuysCloud?.reserveEmployeeId ? await window.BigGuysCloud.reserveEmployeeId(hireDate) : nextEmployeeId(hireDate);
-   const employee={id,firstName:first,lastName:last,name:`${first} ${last}`.trim(),type:$("empType").value,start:$("empStart").value,hireDate,siteId:"",weeklySchedules:{},weeklySchedule:{Monday:"",Tuesday:"",Wednesday:"",Thursday:"",Friday:"",Saturday:"",Sunday:""},offDays:[]};
+   const employee={id,firstName:first,lastName:last,name:`${first} ${last}`.trim(),type:$("empType").value,start:$("empStart").value,hireDate,offDays:[]};
    state.employees.push(employee);
    cacheState();
    if(window.BigGuysCloud?.saveEmployee){
@@ -1062,22 +638,15 @@ function renderEmployeeDtr(id){
  const commission=isWorkedAttendance(todayRecord)?todaySales*rate:0;
  const totalSalary=rows.reduce((t,a)=>t+pay(e,a.date),0);
  const type=e.type==="full"?"Full Time":e.type==="semi"?"Semi Full Time":"Part Time";
- const monthKeys=[...new Set(rows.map(a=>String(a.date||"").slice(0,7)).filter(Boolean))].sort();
- const recentMonth=monthKeys[monthKeys.length-1]||today().slice(0,7);
- const recentMonthRows=rows.filter(a=>String(a.date||"").startsWith(recentMonth));
- const recentLabel=new Date(recentMonth+"-01T00:00:00").toLocaleDateString("en-PH",{month:"long",year:"numeric"});
- const history=recentMonthRows.length?recentMonthRows.map(a=>{
+ const history=rows.length?rows.map(a=>{
    const sales=state.sales.filter(x=>String(x.employeeId)===String(e.id)&&x.date===a.date).reduce((t,x)=>t+Number(x.amount||0),0);
-   const r=effectiveCommissionRate(e,a.date,a.status||"awol");
-   const scheduled=scheduledSiteName(e,a.date);
-   const actual=siteLabel(a.actualSiteId||a.siteId||"");
-   return [dateLabel(a.date),scheduled,actual,a.clockIn||"—",a.clockOut||"—",money(sales),`${Math.round(r*100)}%`,money(isWorkedAttendance(a)?sales*r:0),statusBadge(a.status||"awol")];
+   const r=effectiveCommissionRate(e,date,a.status||"awol");
+   return [dateLabel(a.date),e.start||"—",a.clockIn||"—",a.clockOut||"—",dtrHours(a),money(sales),`${Math.round(r*100)}%`,money(isWorkedAttendance(a)?sales*r:0),statusBadge(a.status||"awol")];
  }):[];
  box.className="employee-dtr-profile";
- box.innerHTML=`<div class="dtr-employee-header"><div class="dtr-avatar">${(e.name||"?").split(/\s+/).map(x=>x[0]).slice(0,2).join("").toUpperCase()}</div><div class="dtr-employee-main"><span class="section-kicker">EMPLOYEE DTR PROFILE</span><h3>${e.name}</h3><p>${e.id} · ${type} · Today's Site: ${scheduledSiteName(e,today())} · Start ${e.start||"—"}</p></div><button type="button" class="dtr-print" onclick="window.print()">PRINT DTR</button></div>
+ box.innerHTML=`<div class="dtr-employee-header"><div class="dtr-avatar">${(e.name||"?").split(/\s+/).map(x=>x[0]).slice(0,2).join("").toUpperCase()}</div><div class="dtr-employee-main"><span class="section-kicker">EMPLOYEE DTR PROFILE</span><h3>${e.name}</h3><p>${e.id} · ${type} · Schedule ${e.start||"—"}</p></div><button type="button" class="dtr-print" onclick="window.print()">PRINT DTR</button></div>
  <div class="dtr-kpi-grid"><div class="dtr-kpi"><span>TIME IN TODAY</span><b>${todayRecord?.clockIn||"—"}</b><small>${todayRecord?statusBadge(todayRecord.status||"awol"):"No record yet"}</small></div><div class="dtr-kpi"><span>TIME OUT TODAY</span><b>${todayRecord?.clockOut||"—"}</b><small>${todayRecord?.clockOut?dtrHours(todayRecord):"Pending"}</small></div><div class="dtr-kpi"><span>TODAY'S SALES</span><b>${money(todaySales)}</b><small>Commission ${Math.round(rate*100)}%</small></div><div class="dtr-kpi"><span>TOTAL SALES</span><b>${money(totalSales)}</b><small>${rows.length} attendance record${rows.length===1?"":"s"}</small></div><div class="dtr-kpi"><span>TOTAL HOURS</span><b>${(totalMinutes/60).toFixed(2)}</b><small>Completed shifts</small></div><div class="dtr-kpi"><span>TOTAL SALARY</span><b>${money(totalSalary)}</b><small>Higher of minimum pay or commission</small></div><div class="dtr-kpi"><span>TODAY COMMISSION</span><b>${money(commission)}</b><small>${Math.round(rate*100)}% of today's sales</small></div></div>
- <div class="dtr-recent-month"><span class="section-kicker">RECENT MONTH</span><strong>${recentLabel}</strong><span class="muted">Showing the latest month with DTR records for this employee.</span></div>
- <div class="dtr-table-wrap">${history.length?table(history,["DATE","SCHEDULED SITE","ACTUAL SITE","TIME IN","TIME OUT","SALES","COMMISSION %","COMMISSION","STATUS"]):'<p class="muted dtr-no-records">No DTR history for this employee yet.</p>'}</div>`;
+ <div class="dtr-table-wrap">${history.length?table(history,["DATE","SCHEDULE","TIME IN","TIME OUT","HOURS","SALES","COMMISSION %","COMMISSION","STATUS"]):'<p class="muted dtr-no-records">No DTR history for this employee yet.</p>'}</div>`;
 }
 function refreshDtrSelector(){
  const select=$("dtrEmployeeSelect"); if(!select)return;
@@ -1092,10 +661,9 @@ function showEmployeeHistory(id){
  const rows=state.attendance.filter(a=>a.employeeId===id).slice().sort((a,b)=>(b.date||"").localeCompare(a.date||"")||(b.clockIn||"").localeCompare(a.clockIn||""));
  const html=rows.length?table(rows.map(a=>{
    const sales=state.sales.filter(x=>x.employeeId===id&&x.date===a.date).reduce((t,x)=>t+Number(x.amount||0),0);
-   const scheduled=scheduledSiteName(e,a.date);
-   const actual=siteLabel(a.actualSiteId||a.siteId||"");
-   return [a.date,scheduled,actual,a.clockIn||"—",a.clockOut||"—",statusBadge(a.status||"awol"),money(sales),money(pay(e,a.date))];
- }),["DATE","SCHEDULED SITE","ACTUAL SITE","TIME IN","TIME OUT","STATUS","SALES","DAILY PAY"]):'<p class="muted">No DTR history for this employee yet.</p>';
+   const hours=a.clockIn&&a.clockOut?((minutes(a.clockOut)-minutes(a.clockIn))/60).toFixed(2):"—";
+   return [a.date,a.clockIn||"—",a.clockOut||"—",statusBadge(a.status||"awol"),hours,money(sales),money(pay(e,a.date))];
+ }),["DATE","TIME IN","TIME OUT","STATUS","HOURS","SALES","DAILY PAY"]):'<p class="muted">No DTR history for this employee yet.</p>';
  const box=$("employeeHistory");
  if(box){
    box.innerHTML=`<div class="history-head"><div><h3>${e.name} — DTR History</h3><p class="muted">${e.id}</p></div><button type="button" id="closeHistory">CLOSE</button></div>${html}`;
@@ -1245,24 +813,8 @@ function renderBusinessSummary(){
  const dates=reportDates();const all=state.sales;const expenses=dates.reduce((t,d)=>t+totalExpensesForDate(d),0);const payroll=dates.reduce((t,d)=>t+state.employees.reduce((z,e)=>z+(state.attendance.some(a=>a.date===d&&a.employeeId===e.id)?pay(e,d):0),0),0);const f={totalSale:sumSales(all),cash:dates.reduce((t,d)=>t+Number(state.dailyReports?.[d]?.cash||0),0),expenses,cashRemitted:dates.reduce((t,d)=>t+Number(state.dailyReports?.[d]?.cashRemitted||0),0),payroll};renderReportSummary(f,all);$("reportSalesBreakdown").innerHTML=breakdownHTML(Object.entries(all.reduce((o,s)=>{const k=s.category||(/detail/i.test(s.note||"")?'Detailing':/wax/i.test(s.note||"")?'Wax':/carwash|wash/i.test(s.note||"")?'Carwash':'Other');o[k]=(o[k]||0)+Number(s.amount||0);return o},{})).map(([label,value])=>({label,value})).sort((a,b)=>b.value-a.value));$("reportPaymentBreakdown").innerHTML=breakdownHTML(Object.entries(all.reduce((o,s)=>{const k=s.paymentMethod||'Cash';o[k]=(o[k]||0)+Number(s.amount||0);return o},{})).map(([label,value])=>({label,value})).sort((a,b)=>b.value-a.value));$("reportTableTitle").textContent='Business Summary';$("reportTableSubtitle").textContent='All available business records';$("reportOutput").innerHTML=table(dates.map(d=>{const x=dailyFinancials(d);return[d,money(x.totalSale),money(x.expenses),money(x.cashRemitted),x.hasRemitted&&x.short?money(x.short):'—',x.hasRemitted&&x.over?money(x.over):'—']}),["Date","Sales","Expenses","Remitted","Short","Over"]);renderExpenseList(date);}
 function renderEmployeeReport(){
  const rows=state.employees.map(e=>{const sales=sumSales(state.sales.filter(s=>String(s.employeeId)===String(e.id)));const days=state.attendance.filter(a=>String(a.employeeId)===String(e.id)).length;const commission=state.sales.filter(s=>String(s.employeeId)===String(e.id)).reduce((t,s)=>{const a=state.attendance.find(x=>x.employeeId===s.employeeId&&x.date===s.date);return t+(a&&isWorkedAttendance(a)?Number(s.amount||0)*effectiveCommissionRate(e,s.date,a.status):0)},0);return[e.id,e.name,money(sales),days,money(commission)]});$("reportSummaryCards").innerHTML=`<div class="report-summary-card report-blue"><span>Total Employees</span><b>${state.employees.length}</b></div><div class="report-summary-card report-green"><span>Employees With Sales</span><b>${new Set(state.sales.map(s=>String(s.employeeId))).size}</b></div><div class="report-summary-card report-purple"><span>Total Sales</span><b>${money(sumSales(state.sales))}</b></div><div class="report-summary-card report-gold"><span>Total Commission</span><b>${money(rows.reduce((t,r)=>t+Number(String(r[4]).replace(/[^0-9.-]/g,'')),0))}</b></div>`;$("reportSalesBreakdown").innerHTML='<p class="muted">Employee performance is calculated from actual sales and attendance.</p>';$("reportPaymentBreakdown").innerHTML='<p class="muted">Select a date/report period for payment breakdown.</p>';$("reportTableTitle").textContent='Employee Performance';$("reportTableSubtitle").textContent='Sales, attendance and commission';$("reportOutput").innerHTML=table(rows,["ID","Employee","Sales","Attendance Days","Commission"]);renderExpenseList($("reportDate")?.value||today());}
-let currentReportView = (() => {
- try { return sessionStorage.getItem('bigGuysReportView') || 'daily'; } catch(e) { return 'daily'; }
-})();
-function syncReportTabButtons(mode){
- document.querySelectorAll('[data-report-view]').forEach(btn=>{
-   btn.classList.toggle('active', btn.dataset.reportView===mode);
-   btn.setAttribute('aria-selected', btn.dataset.reportView===mode ? 'true' : 'false');
- });
-}
-function makeReport(mode){
- mode = ['daily','monthly','yearly','business','employee'].includes(mode) ? mode : 'daily';
- currentReportView = mode;
- try { sessionStorage.setItem('bigGuysReportView', mode); } catch(e) {}
- syncReportTabButtons(mode);
- if(mode==='business') renderBusinessSummary();
- else if(mode==='employee') renderEmployeeReport();
- else renderReports(mode);
-}
+let currentReportView='daily';
+function makeReport(mode){if(mode==='business')renderBusinessSummary();else if(mode==='employee')renderEmployeeReport();else renderReports(mode);}
 
 function salesDateRows(mode,date){
  if(mode==='daily')return salesForDate(date);
@@ -1284,110 +836,40 @@ function renderSalesPage(mode='daily'){
  if($("salesTable"))$("salesTable").innerHTML=rows.length?table(rows.slice().reverse().map(s=>{const expected=Number(s.amount||0)-Number(s.expense||0),v=Number(s.remittance||0)-expected;return[s.time||'—',state.employees.find(e=>String(e.id)===String(s.employeeId))?.name||s.employeeId,money(s.amount),money(s.expense||0),money(expected),money(s.remittance||0),v<0?`<span class="cash-short">Short ${money(Math.abs(v))}</span>`:v>0?`<span class="cash-over">Over ${money(v)}</span>`:'—',s.category||'—'];}),["Date/Time","Employee","Sales","Expenses","Expected","Remitted","Over / Short","Service"]):'<p class="muted">No sales logged for this date.</p>';
 }
 function exportCurrentTable(kind){const source=kind==='sales'?$("salesPeriodTable")||$("salesRecentTransactions"):$("reportOutput");const tableEl=source?.querySelector('table');if(!tableEl){alert('No table data to export.');return;}const csv=[...tableEl.rows].map(r=>[...r.cells].map(c=>'"'+c.textContent.replace(/"/g,'""')+'"').join(',')).join('\n');const blob=new Blob([csv],{type:'text/csv;charset=utf-8'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=`big-guys-${kind}-${today()}.csv`;a.click();URL.revokeObjectURL(url);}
-$("dtrEmployeeSelect")?.addEventListener("change",e=>{
- selectedDtrEmployeeId=e.target.value||"";
- renderEmployeeDtr(selectedDtrEmployeeId);
- requestAnimationFrame(()=>{
-   const box=$("employeeDtrProfile");
-   if(box && selectedDtrEmployeeId) box.scrollIntoView({behavior:"smooth",block:"nearest"});
- });
-});
+$("dtrEmployeeSelect")?.addEventListener("change",e=>{selectedDtrEmployeeId=e.target.value||"";renderEmployeeDtr(selectedDtrEmployeeId);});
 $("payrollMonth")?.addEventListener("change",renderPayroll);
 $("salesViewDate")?.addEventListener("change",()=>renderSalesPage("daily"));
 $("attendanceDate")?.addEventListener("change",()=>renderAttendanceAdmin(attendanceDateValue()));
-$("scheduleWeekOf")?.addEventListener("change",()=>{
- const previous=state.scheduleWeekOf||$("scheduleWeekOf")?.value||today();
- if(scheduleMode==="create" && $("scheduleRoster")) captureCurrentScheduleDraft(previous);
- const selected=$("scheduleWeekOf")?.value||today();
- const weekOf=mondayOfWeek(selected);
- if($("scheduleWeekOf"))$("scheduleWeekOf").value=weekOf;
- state.scheduleWeekOf=weekOf;
- if(scheduleMode==="scheduled"){
-   scheduleEditingWeek=hasSavedScheduleForWeek(weekOf)?weekOf:"";
-   scheduleBlankDraft=!scheduleEditingWeek;
- }else{
-   scheduleEditingWeek="";
-   scheduleBlankDraft=!scheduleDraftForWeek(weekOf);
- }
- renderSchedules();
- persistScheduleUiState();
-});
-$("scheduleModeCreate")?.addEventListener("click",createNewSchedule);
-$("createAnotherSchedule")?.addEventListener("click",createNewSchedule);
-$("scheduleModeScheduled")?.addEventListener("click",()=>{
- if(scheduleMode==="create" && $("scheduleRoster")) captureCurrentScheduleDraft(state.scheduleWeekOf||$("scheduleWeekOf")?.value||today());
- scheduleEditingWeek="";
- setScheduleMode("scheduled");
- renderSavedScheduleWeeks();
- scheduleBlankDraft=true;
- renderSchedules();
-});
-$("saveRosterSchedule")?.addEventListener("click",saveRosterSchedule);
+$("settingsEmployee")?.addEventListener("change",renderSettings);
+$("saveOffDays")?.addEventListener("click",saveEmployeeOffDays);
 
 $("reportDate").value=today();
 $("salesViewDate").value=today();
 if($("attendanceDate"))$("attendanceDate").value=today();
-renderSchedules();
+renderSettings();
 ensureAutomaticAbsences();
 let salesDayKey=today();setInterval(()=>{const d=today();if(d!==salesDayKey){salesDayKey=d;ensureAutomaticAbsences();if($("salesViewDate"))$("salesViewDate").value=d;if(!$('sales').classList.contains('hidden'))renderSalesPage('daily');}},1000);
-setInterval(()=>{if(!$("dashboard")?.classList.contains("hidden"))cleanupExpiredScheduleWeeks();},86400000);
 $("payrollMonth").value=today().slice(0,7);
 
-function updateAdminClock(){
- const n=new Date();
- const time=n.toLocaleTimeString("en-PH",{hour:"numeric",minute:"2-digit",second:"2-digit"});
- const date=n.toLocaleDateString("en-PH",{weekday:"long",month:"long",day:"numeric",year:"numeric"});
- const day=n.toLocaleDateString("en-PH",{weekday:"long"});
- const long=n.toLocaleDateString("en-PH",{month:"long",day:"numeric",year:"numeric"});
- if($("digitalClock"))$("digitalClock").textContent=time;
- if($("rightDate"))$("rightDate").textContent=date;
- if($("headerDay"))$("headerDay").textContent=day;
- if($("headerDate"))$("headerDate").textContent=long;
-}
-async function cleanupExpiredScheduleWeeks(){
- if(!window.BigGuysCloud?.cleanupExpiredSchedules)return;
- const currentWeek=mondayOfWeek(today());
- const cutoff=addDaysISO(currentWeek,-28);
- try{
-   const result=await window.BigGuysCloud.cleanupExpiredSchedules(cutoff);
-   if(result){
-     state=result;
-     cacheState();
-     renderSchedules();
-   }
- }catch(err){
-   console.warn("Old schedule cleanup skipped:",err);
- }
-}
 function startClock(){
- clearInterval(window.bigGuysClock);
- updateAdminClock();
- window.bigGuysClock=setInterval(updateAdminClock,1000);
+ const tick=()=>{const n=new Date();const time=n.toLocaleTimeString("en-PH",{hour:"numeric",minute:"2-digit",second:"2-digit"});const date=n.toLocaleDateString("en-PH",{weekday:"long",month:"long",day:"numeric",year:"numeric"});const day=n.toLocaleDateString("en-PH",{weekday:"long"});const long=n.toLocaleDateString("en-PH",{month:"long",day:"numeric",year:"numeric"});if($("digitalClock"))$("digitalClock").textContent=time;if($("rightDate"))$("rightDate").textContent=date;if($("headerDay"))$("headerDay").textContent=day;if($("headerDate"))$("headerDate").textContent=long};tick();clearInterval(window.bigGuysClock);window.bigGuysClock=setInterval(tick,1000);
 }
-// Keep the admin clock/date live even after tab restore, browser sleep, or visibility changes.
-startClock();
-document.addEventListener("visibilitychange",()=>{if(!document.hidden)startClock();});
 function activateTab(tab){
- if(tab!=="schedules" && scheduleMode==="create" && $("scheduleRoster")) captureCurrentScheduleDraft(state.scheduleWeekOf||$("scheduleWeekOf")?.value||today());
  document.querySelectorAll(".side-nav[data-tab]").forEach(x=>x.classList.toggle("active",x.dataset.tab===tab));
  document.querySelectorAll(".tab-panel").forEach(x=>x.classList.add("hidden"));
  const panel=$(tab);if(panel)panel.classList.remove("hidden");
  if(tab!=="sales")document.getElementById("salesSubnav")?.classList.remove("open");
  if(tab==="attendance")renderAttendanceAdmin(attendanceDateValue());
- if(tab==="schedules")renderSchedules();
+ if(tab==="settings")renderSettings();
  document.getElementById("adminSidebar")?.classList.remove("open");
 }
 document.querySelectorAll(".side-nav[data-tab]").forEach(btn=>btn.addEventListener("click",(ev)=>{ev.preventDefault();if(btn.id==="salesNav"){const sub=document.getElementById("salesSubnav");sub?.classList.toggle("open");activateTab("sales");}else activateTab(btn.dataset.tab)}));
 document.querySelectorAll("[data-tab-target]").forEach(btn=>btn.addEventListener("click",(ev)=>{ev.preventDefault();activateTab(btn.dataset.tabTarget)}));
 document.querySelectorAll("[data-sales-mode]").forEach(btn=>btn.addEventListener("click",(ev)=>{ev.preventDefault();activateTab("sales");renderSalesPage("daily");}));
 
-document.querySelectorAll('[data-report-view]').forEach(btn=>btn.addEventListener('click',()=>makeReport(btn.dataset.reportView)));
+document.querySelectorAll('[data-report-view]').forEach(btn=>btn.addEventListener('click',()=>{document.querySelectorAll('[data-report-view]').forEach(b=>b.classList.toggle('active',b===btn));makeReport(btn.dataset.reportView);}));
 
 $("reportDate")?.addEventListener('change',()=>makeReport(currentReportView));
-
-// Keep the Reports tab and its content synchronized even when the browser restores
-// the previous visual tab state after a reload.
-syncReportTabButtons(currentReportView);
 $("salesAddQuick")?.addEventListener('click',()=>document.getElementById('saleAmount')?.focus());
 $("salesExportBtn")?.addEventListener('click',()=>exportCurrentTable('sales'));
 $("reportExportBtn")?.addEventListener('click',()=>exportCurrentTable('report'));
@@ -1395,8 +877,8 @@ $("reportExportBtn")?.addEventListener('click',()=>exportCurrentTable('report'))
 $("reportPrintBtn")?.addEventListener('click',()=>window.print());$("salesPrintBtn")?.addEventListener('click',()=>window.print());
 
 window.addEventListener("storage",()=>{syncStateFromStorage();if(!document.getElementById("dashboard")?.classList.contains("hidden"))refresh()});
-window.addEventListener("bigguys:cloud-state",ev=>{const remote=ev.detail;if(!remote)return;restoreScheduleUiState();const localDrafts=preserveScheduleDrafts();state=remote;state.scheduleDrafts={...(state.scheduleDrafts||{}),...localDrafts};persistScheduleDrafts();cacheState();if(!document.getElementById("dashboard")?.classList.contains("hidden"))refresh();});
-async function initCloud(){ restoreScheduleUiState(); state.scheduleDrafts={...loadScheduleDrafts(),...(state.scheduleDrafts||{})}; if(window.BigGuysCloud){ await window.BigGuysCloud.init(state,remote=>{ restoreScheduleUiState(); const localDrafts=preserveScheduleDrafts(); state=remote; state.scheduleDrafts={...(state.scheduleDrafts||{}),...localDrafts}; persistScheduleDrafts(); cacheState(); if(!document.getElementById("dashboard")?.classList.contains("hidden"))refresh(); }); } }
+window.addEventListener("bigguys:cloud-state",ev=>{const remote=ev.detail;if(!remote)return;state=remote;cacheState();if(!document.getElementById("dashboard")?.classList.contains("hidden"))refresh();});
+async function initCloud(){ if(window.BigGuysCloud){ await window.BigGuysCloud.init(state,remote=>{ state=remote; cacheState(); if(!document.getElementById("dashboard")?.classList.contains("hidden"))refresh(); }); } }
 setInterval(()=>{if(!document.getElementById("dashboard")?.classList.contains("hidden")){refresh()}},2000); window.addEventListener("load",initCloud);
 $("salesChartPeriod")?.addEventListener("change",refreshDashboardCharts);$("carwashChartPeriod")?.addEventListener("change",refreshDashboardCharts);
 $("mobileMenu")?.addEventListener("click",()=>$("adminSidebar")?.classList.toggle("open"));

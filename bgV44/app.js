@@ -1,22 +1,5 @@
 const KEY="bigguys_dtr_v2";
 const MODEL_URLS=["https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@0.22.2/weights","https://justadudewhohacks.github.io/face-api.js/models"];
-const DTR_WEEKDAYS=["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
-function scheduledSiteIdForEmployee(employee,date=today()){
- const day=DTR_WEEKDAYS[new Date(date+"T00:00:00").getDay()];
- const weekly=employee?.weeklySchedule&&typeof employee.weeklySchedule==="object"?employee.weeklySchedule:{};
- const value=weekly[day];
- if(value==="off")return "";
- if(value&&window.BIGGUYS_DTR_SITES?.[value])return value;
- return employee?.siteId&&window.BIGGUYS_DTR_SITES?.[employee.siteId]?employee.siteId:"";
-}
-function employeeSiteId(employee,date=today()){return scheduledSiteIdForEmployee(employee,date);}
-function employeeSiteName(employee,date=today()){const id=employeeSiteId(employee,date);if(!id){const day=DTR_WEEKDAYS[new Date(date+"T00:00:00").getDay()];return `${day} — OFF`;}const s=window.BIGGUYS_DTR_SITES?.[id];return s?.name||"Unassigned Site";}
-async function verifyEmployeeSite(employee){
- const siteId=employeeSiteId(employee);
- if(!siteId||!window.BIGGUYS_DTR_SITES?.[siteId])return false;
- if(window.BIGGUYS_DTR_IS_AT_SITE)return await window.BIGGUYS_DTR_IS_AT_SITE(siteId);
- return false;
-}
 let state=JSON.parse(localStorage.getItem(KEY)||'{"employees":[],"attendance":[],"sales":[],"faces":{}}');
 let stream=null, modelsReady=false, recognizedEmployee=null, scanning=false, validSince=0, captureBusy=false, recordBusy=false, recognitionToastTimer=null, nextRecognitionAt=0;
 const $=id=>document.getElementById(id);
@@ -32,10 +15,8 @@ function findTodayAttendance(employeeId,date=today()){
  const rows=(state.attendance||[]).filter(a=>String(a.employeeId)===String(employeeId)&&a.date===date&&(a.clockIn||a.clockOut));
  return rows.sort((a,b)=>String(a.clockInAt||a.clockIn||"").localeCompare(String(b.clockInAt||b.clockIn||"")))[0]||null;
 }
-function updateDtrClock(){const n=new Date();if($("liveTime"))$("liveTime").textContent=n.toLocaleTimeString("en-PH",{hour12:true});if($("liveDate"))$("liveDate").textContent=n.toLocaleDateString("en-PH",{weekday:"long",year:"numeric",month:"long",day:"numeric"})}
-function startDtrClock(){clearInterval(window.bigGuysDtrClock);updateDtrClock();window.bigGuysDtrClock=setInterval(updateDtrClock,1000);}
-startDtrClock();
-document.addEventListener("visibilitychange",()=>{if(!document.hidden)startDtrClock();});
+function tick(){const n=new Date();$("liveTime").textContent=n.toLocaleTimeString("en-PH",{hour12:true});$("liveDate").textContent=n.toLocaleDateString("en-PH",{weekday:"long",year:"numeric",month:"long",day:"numeric"})}
+setInterval(tick,1000);tick();
 function setOval(status){const oval=$("ovalFrame");oval.classList.remove("oval-red","oval-green");oval.classList.add(status==="good"?"oval-green":"oval-red")}
 function resetRecognition(message="Place your face inside the oval."){recognizedEmployee=null;validSince=0;captureBusy=false;if(recognitionToastTimer){clearTimeout(recognitionToastTimer);recognitionToastTimer=null;}$("cameraStatus").textContent=message;$("recognized").classList.add("hidden");$("timeIn").disabled=true;$("timeOut").disabled=true}
 async function loadModels(){
@@ -127,13 +108,6 @@ function updateAttendanceControls(employee){
 async function verifyFace(detection){
  const match=bestEmployee(detection.descriptor);
  if(match.employee&&match.distance<=.60){
-  const atAssignedSite=await verifyEmployeeSite(match.employee);
-  if(!atAssignedSite){
-   recognizedEmployee=null;
-   resetRecognition(`${match.employee.name} is assigned to ${employeeSiteName(match.employee)}. You are not at the employee's assigned site.`);
-   setOval("bad");
-   return;
-  }
   recognizedEmployee=match.employee;
   nextRecognitionAt=performance.now()+2000;
   saveFaceSnapshot(match.employee,detection);
@@ -210,11 +184,6 @@ async function record(type){
  if(!recognizedEmployee){$("result").innerHTML='<div class="result late-result">Face not recognized.</div>';return}
  const employee=recognizedEmployee;
  const date=today(), nowDate=new Date(), now=timeNow(), iso=nowDate.toISOString();
- if(!(await verifyEmployeeSite(employee))){
-  $("result").innerHTML=`<div class="result late-result">LOCATION NOT AUTHORIZED<br><br>${employee.name} is assigned to ${employeeSiteName(employee)}.<br>Please move to the assigned site before recording attendance.</div>`;
-  clearAfterAttendance("🔴 Wrong location — attendance is blocked for this employee.");
-  return;
- }
  let attendance=findTodayAttendance(employee.id,date);
  recordBusy=true;
  $("timeIn").disabled=true; $("timeOut").disabled=true;
@@ -228,9 +197,7 @@ async function record(type){
     return;
    }
    const diff=minutes(now)-minutes(employee.start),status=diff>0?"late":diff<0?"early":"ontime";
-   const scheduledSiteId=employeeSiteId(employee,date);
-   const actualSiteId=window.__DTR_CURRENT_SITE_ID__||"";
-   attendance={id:`attendance_${String(employee.id).replace(/[^a-zA-Z0-9_-]/g,"_")}_${date}`,date,employeeId:employee.id,clockIn:now,clockInAt:iso,clockOut:null,clockOutAt:null,status,punchType:"in",scheduledSiteId,actualSiteId};
+   attendance={id:`attendance_${String(employee.id).replace(/[^a-zA-Z0-9_-]/g,"_")}_${date}`,date,employeeId:employee.id,clockIn:now,clockInAt:iso,clockOut:null,clockOutAt:null,status,punchType:"in"};
    if(window.BigGuysCloud?.saveAttendance){ state=await window.BigGuysCloud.saveAttendance(attendance); cacheState(); } else { state.attendance=state.attendance||[]; state.attendance.push(attendance); save(); }
    const statusText=status==="late"?`🔴 LATE — ${diff} minutes late`:status==="early"?`🔵 EARLY — ${Math.abs(diff)} minutes early`:"ON TIME";
    $("result").innerHTML=`<div class="result ${status==="late"?"late-result":"success"}>✓ TIME IN RECORDED<br><br>${employee.name}<br>${now}<br><br>${statusText}</div>`;

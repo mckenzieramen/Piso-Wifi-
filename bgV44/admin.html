@@ -22,7 +22,7 @@
       </div>
       <button type="button" class="side-nav" data-tab="payroll"><span class="nav-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="6" width="18" height="14" rx="2"/><path d="M7 6V4h10v2"/><circle cx="12" cy="13" r="2.5"/><path d="M12 10.5v-1M12 16.5v-1"/></svg></span><span>Payroll</span></button>
       <button type="button" class="side-nav" data-tab="reports"><span class="nav-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h9l4 4v14H6z"/><path d="M15 3v5h5M9 12h6M9 16h6"/></svg></span><span>Reports</span><span class="nav-chevron">⌄</span></button>
-      <button type="button" class="side-nav" data-tab="schedules"><span class="nav-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l1.2 2.1 2.4.7.7 2.4L18.4 10l-.7 2.4.7 2.4-2.1 1.8-.7 2.4-2.4.7L12 21l-1.2-2.1-2.4-.7-.7-2.4L5.6 14l.7-2.4-.7-2.4 2.1-1.8.7-2.4 2.4-.7z"/><circle cx="12" cy="12" r="3"/></svg></span><span>Schedules</span></button>
+      <button type="button" class="side-nav" data-tab="settings"><span class="nav-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l1.2 2.1 2.4.7.7 2.4L18.4 10l-.7 2.4.7 2.4-2.1 1.8-.7 2.4-2.4.7L12 21l-1.2-2.1-2.4-.7-.7-2.4L5.6 14l.7-2.4-.7-2.4 2.1-1.8.7-2.4 2.4-.7z"/><circle cx="12" cy="12" r="3"/></svg></span><span>Settings</span></button>
     </nav>
     <button type="button" class="side-nav logout-nav" id="logoutBtn"><span class="nav-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 4H5v16h5M15 8l5 4-5 4M20 12H9"/></svg></span><span>Logout</span></button>
     <div class="sidebar-profile">
@@ -80,7 +80,7 @@
           <div class="card inner employee-management-card">
             <div class="section-kicker">EMPLOYEE SETUP</div>
             <h2>Add Employee</h2>
-            <p class="muted">Enter the employee details. The Employee ID is generated automatically. Site assignment is managed in <strong>Schedules</strong> by day and is not edited from this employee form.</p>
+            <p class="muted">Enter the employee details. The Employee ID is generated automatically from the start date and hiring sequence.</p>
             <form id="employeeForm" class="form-grid employee-form-grid">
               <div class="field"><label for="empFirstName">First Name</label><input id="empFirstName" placeholder="First name" autocomplete="given-name" required></div>
               <div class="field"><label for="empLastName">Last Name</label><input id="empLastName" placeholder="Last name" autocomplete="family-name" required></div>
@@ -148,34 +148,17 @@
   <div class="dashboard-card report-transactions-card"><div class="card-heading"><div><h2 id="reportTableTitle">Daily Sales Transactions</h2><span id="reportTableSubtitle" class="muted">Selected date</span></div><button type="button" class="small-action" id="reportExportBtn">EXPORT CSV</button></div><div id="reportOutput"></div></div>
   <div class="dashboard-card"><div class="card-heading"><div><h2>Monthly Employee Sales</h2><span class="muted">Accumulated sales by employee for the selected month.</span></div></div><div id="reportMonthlyEmployees"></div></div>
 </section>
-        <section id="schedules" class="tab-panel hidden">
-  <div class="card inner schedule-manager-card">
-    <div class="section-kicker">WEEKLY SITE SCHEDULE</div>
-    <h2>Schedules</h2>
-    <p class="muted">Create a weekly schedule, save it, then find it under Scheduled. Saved schedules can be opened, edited, and saved again. Schedules older than 4 weeks are automatically removed from Firebase to reduce storage.</p>
-
-    <div class="schedule-mode-tabs" role="tablist" aria-label="Schedule category">
-      <button type="button" id="scheduleModeCreate" class="schedule-mode-tab active" role="tab" aria-selected="true">CREATE SCHEDULE</button>
-      <button type="button" id="scheduleModeScheduled" class="schedule-mode-tab" role="tab" aria-selected="false">SCHEDULED</button>
+        <section id="settings" class="tab-panel hidden">
+  <div class="card inner">
+    <div class="section-kicker">ATTENDANCE SETTINGS</div>
+    <h2>Employee Days Off</h2>
+    <p class="muted">Set the regular days off for each employee. Days marked OFF are not treated as Absence and do not generate pay.</p>
+    <div class="settings-form-grid">
+      <div class="field"><label for="settingsEmployee">Employee</label><select id="settingsEmployee"><option value="">Select Employee</option></select></div>
+      <div class="field"><label>Regular Days Off</label><div id="employeeOffDays" class="off-days-grid"></div></div>
+      <div class="settings-actions"><button type="button" id="saveOffDays" class="small-action">SAVE DAYS OFF</button></div>
     </div>
-
-    <div class="settings-form-grid schedule-select-grid">
-      <div class="field"><label for="scheduleWeekOf">Schedule Week / Date</label><input id="scheduleWeekOf" type="date" aria-label="Schedule week date"></div>
-      <div class="field"><label>How to use</label><div class="schedule-date-help">Choose any date. The table automatically shows that Monday through Sunday. New weeks are blank until you assign employees.</div></div>
-      <div class="settings-actions"><button type="button" id="saveRosterSchedule" class="small-action">SAVE SCHEDULE</button></div>
-    </div>
-    <div id="scheduleWeekSummary" class="off-days-summary"></div>
-
-    <div id="scheduleCreatePanel" class="schedule-mode-panel">
-      <div class="schedule-create-note"><strong>Create Schedule</strong><span>New weeks start blank. Assign employees in the table, then save.</span></div>
-    </div>
-
-    <div id="scheduleScheduledPanel" class="schedule-mode-panel hidden">
-      <div class="schedule-scheduled-head"><div><strong>Scheduled</strong><span>Saved weekly schedules from Firebase. Select one to view or edit it, then click SAVE SCHEDULE.</span></div><button type="button" id="createAnotherSchedule" class="small-action">+ CREATE NEXT WEEK</button></div>
-      <div id="scheduleSavedWeeks" class="schedule-saved-weeks"></div>
-    </div>
-
-    <div class="schedule-board-wrap"><div class="section-kicker">SITE ROSTER</div><p class="muted">Every slot is a dropdown containing all employees. The selected employee becomes valid only for that site's day. Blank slots stay blank.</p><div id="scheduleRoster" class="schedule-roster"></div></div>
+    <div id="offDaysSummary" class="off-days-summary"></div>
   </div>
 </section>
       </div>

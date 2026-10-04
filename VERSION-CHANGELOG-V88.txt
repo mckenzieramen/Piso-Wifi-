@@ -1,0 +1,10 @@
+V88 — Schedule Draft Persistence + Scheduled Edit Reliability
+
+FIXES
+- Schedule Create draft UI state now persists locally: selected week, CREATE/SCHEDULED mode, and edit week survive navigation to any admin page.
+- Leaving Schedules while a draft is being edited captures the current roster before navigation.
+- Returning to Schedules restores the exact draft/week instead of switching to an older saved schedule.
+- Saved schedule edit state also survives navigation so the selected saved week remains loaded.
+- Saved schedule writes now use a dedicated Firestore saveScheduleWeek operation that updates the selected weeklySchedules[week] for all employees in one batch and then reads the fresh cloud state.
+- Scheduled list therefore refreshes from the confirmed Firebase state and saved weeks remain available for EDIT.
+- Existing attendance, time in/out, sales, payroll, employee, and face records are not modified by these changes.

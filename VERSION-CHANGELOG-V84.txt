@@ -1,0 +1,15 @@
+BIG GUY'S CARWASH — V84
+Schedule Categories + Saved Weeks + 4-Week Firebase Cleanup
+
+Changes:
+- Added CREATE SCHEDULE and SCHEDULED categories on the Schedules page.
+- CREATE SCHEDULE starts a new weekly draft blank while retaining dropdowns in every slot.
+- SAVE SCHEDULE automatically switches to SCHEDULED.
+- SCHEDULED lists saved weeks stored in employee weeklySchedules.
+- Saved weeks can be opened, viewed, edited, and saved again.
+- Added CREATE NEXT WEEK action; the next week starts blank and does not copy the previous schedule.
+- Schedule Week / Date still controls the Monday-Sunday seven-day table.
+- Saved schedule data is retained per week instead of overwriting another week.
+- Added automatic Firebase cleanup for schedules older than 4 weeks. Only old weeklySchedules keys are removed; attendance, sales, payroll, employees, faces, and other records are untouched.
+- Cleanup runs when the admin cloud state loads and on the existing admin session maintenance cycle.
+- Preserved all existing DTR, face recognition, attendance, payroll, sales, reports, employee, and location logic.
