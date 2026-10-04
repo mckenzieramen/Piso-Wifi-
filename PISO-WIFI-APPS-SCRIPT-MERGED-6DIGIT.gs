@@ -595,398 +595,490 @@ const PASSWORD_RESET_MAILER_SECRET = '-P4NqUwISia-WpONGB2WipjobxXOC0Jnh9bdnyQMF2
 
 
 /*************************************************
- * 10. PASSWORD RESET WEB APP ENDPOINT
+ * 9. CUSTOM PASSWORD RECOVERY — 6-DIGIT CODE
+ *
+ * Flow:
+ * 1) Website sends Client ID + registered Gmail.
+ * 2) Apps Script verifies the customer in the Clients sheet.
+ * 3) A 6-digit one-time code is generated and emailed.
+ * 4) Website verifies the code.
+ * 5) Apps Script returns a short-lived one-time reset token.
+ * 6) Website submits the new password; Apps Script updates
+ *    Firebase Authentication through the Identity Platform
+ *    admin REST API using the Apps Script OAuth token.
+ *
+ * The final password is NEVER stored in Google Sheets or
+ * Apps Script Properties.
+ *************************************************/
+
+const FIREBASE_PROJECT_ID = 'piso-wifi-f2b5c';
+const PASSWORD_CODE_TTL_MS = 10 * 60 * 1000;
+const PASSWORD_RESET_TOKEN_TTL_MS = 10 * 60 * 1000;
+const PASSWORD_CODE_RESEND_COOLDOWN_MS = 60 * 1000;
+const PASSWORD_CODE_MAX_ATTEMPTS = 5;
+const PASSWORD_RESET_STORE_PREFIX = 'PISO_WIFI_RESET_V2_';
+
+
+/*************************************************
+ * 10. PASSWORD RECOVERY WEB APP ENDPOINT
  *************************************************/
 
 function doPost(e) {
   try {
-    const payload = JSON.parse(e && e.postData && e.postData.contents ? e.postData.contents : '{}');
+    const payload = JSON.parse(
+      e && e.postData && e.postData.contents
+        ? e.postData.contents
+        : '{}'
+    );
+
     const action = String(payload.action || '').trim();
 
-    // Existing server-to-server reset-link mailer remains available.
-    if (!action) {
-      const suppliedSecret = String((e && e.parameter && e.parameter.secret) || payload.secret || '').trim();
-      if (suppliedSecret !== PASSWORD_RESET_MAILER_SECRET) return jsonResponse_({ ok:false, error:'Unauthorized request.' });
-      const email = String(payload.email || '').trim().toLowerCase();
-      const clientId = String(payload.clientId || '').trim().toUpperCase();
-      const firstName = String(payload.firstName || 'Customer').trim() || 'Customer';
-      const resetLink = String(payload.resetLink || '').trim();
-      if (!email || !email.includes('@')) return jsonResponse_({ ok:false, error:'A valid recipient email is required.' });
-      if (!/^CID-\d{3,}$/.test(clientId)) return jsonResponse_({ ok:false, error:'Invalid Client ID.' });
-      if (!/^https:\/\//i.test(resetLink) || resetLink.length < 80) return jsonResponse_({ ok:false, error:'Invalid password-reset link.' });
-      sendCustomPasswordResetEmail_(firstName,email,clientId,resetLink);
-      return jsonResponse_({ ok:true, emailSent:true });
+    if (action === 'requestCode') {
+      return jsonResponse_(requestPasswordCode_(payload));
     }
 
-    if (action === 'requestCode') return passwordResetRequestCode_(payload);
-    if (action === 'verifyCode') return passwordResetVerifyCode_(payload);
+    if (action === 'verifyCode') {
+      return jsonResponse_(verifyPasswordCode_(payload));
+    }
 
-    return jsonResponse_({ ok:false, error:'Invalid password recovery action.' });
+    if (action === 'resetPassword') {
+      return jsonResponse_(resetPassword_(payload));
+    }
+
+    return jsonResponse_({
+      ok: false,
+      error: 'Unsupported password recovery action.'
+    });
+
   } catch (error) {
     console.error(error);
-    return jsonResponse_({ ok:false, error:error && error.message ? error.message : 'Unable to process the password recovery request.' });
+    return jsonResponse_({
+      ok: false,
+      error: error && error.message
+        ? error.message
+        : 'Password recovery request failed.'
+    });
   }
 }
 
 
 /*************************************************
- * 11. SEND CUSTOM PASSWORD RESET EMAIL
+ * 11. REQUEST 6-DIGIT CODE
  *************************************************/
 
-function sendCustomPasswordResetEmail_(
-  firstName,
-  email,
-  clientId,
-  resetLink
-) {
+function requestPasswordCode_(payload) {
+  const clientId = String(payload.clientId || '').trim().toUpperCase();
+  const email = String(payload.email || '').trim().toLowerCase();
 
-  const safeFirstName = escapeHtml(firstName);
+  if (!/^CID-\d{3,}$/.test(clientId)) {
+    throw new Error('Enter a valid Client ID.');
+  }
+
+  if (!email || !email.includes('@')) {
+    throw new Error('Enter a valid registered Gmail address.');
+  }
+
+  const client = findClientForPasswordReset_(clientId, email);
+  if (!client) {
+    throw new Error('The Client ID and registered Gmail do not match our records.');
+  }
+
+  const key = passwordResetStoreKey_(clientId, email);
+  const properties = PropertiesService.getScriptProperties();
+  const existing = readJsonProperty_(properties, key);
+  const now = Date.now();
+
+  if (existing && existing.cooldownUntil && Number(existing.cooldownUntil) > now) {
+    const seconds = Math.max(1, Math.ceil((Number(existing.cooldownUntil) - now) / 1000));
+    throw new Error(`Please wait ${seconds} seconds before requesting another code.`);
+  }
+
+  const code = generateSixDigitCode_();
+  const record = {
+    clientId,
+    email,
+    codeHash: sha256Hex_(code),
+    codeExpiresAt: now + PASSWORD_CODE_TTL_MS,
+    cooldownUntil: now + PASSWORD_CODE_RESEND_COOLDOWN_MS,
+    attempts: 0,
+    verified: false,
+    resetTokenHash: '',
+    resetTokenExpiresAt: 0,
+    createdAt: now
+  };
+
+  properties.setProperty(key, JSON.stringify(record));
+  sendPasswordVerificationEmail_(client.firstName || 'Customer', email, clientId, code);
+
+  return {
+    ok: true,
+    emailSent: true,
+    expiresInSeconds: Math.floor(PASSWORD_CODE_TTL_MS / 1000)
+  };
+}
+
+
+/*************************************************
+ * 12. VERIFY 6-DIGIT CODE
+ *************************************************/
+
+function verifyPasswordCode_(payload) {
+  const clientId = String(payload.clientId || '').trim().toUpperCase();
+  const email = String(payload.email || '').trim().toLowerCase();
+  const code = String(payload.code || '').trim();
+
+  if (!/^CID-\d{3,}$/.test(clientId) || !email || !/^\d{6}$/.test(code)) {
+    throw new Error('Enter the 6-digit verification code.');
+  }
+
+  const key = passwordResetStoreKey_(clientId, email);
+  const properties = PropertiesService.getScriptProperties();
+  const record = readJsonProperty_(properties, key);
+  const now = Date.now();
+
+  if (!record) {
+    throw new Error('No active verification code was found. Request a new code.');
+  }
+
+  if (Number(record.codeExpiresAt) <= now) {
+    properties.deleteProperty(key);
+    throw new Error('That verification code has expired. Request a new code.');
+  }
+
+  if (Number(record.attempts || 0) >= PASSWORD_CODE_MAX_ATTEMPTS) {
+    properties.deleteProperty(key);
+    throw new Error('Too many incorrect attempts. Request a new code.');
+  }
+
+  if (record.codeHash !== sha256Hex_(code)) {
+    record.attempts = Number(record.attempts || 0) + 1;
+    properties.setProperty(key, JSON.stringify(record));
+    const remaining = Math.max(0, PASSWORD_CODE_MAX_ATTEMPTS - record.attempts);
+    throw new Error(`Incorrect verification code. ${remaining} attempt(s) remaining.`);
+  }
+
+  const resetToken = randomToken_();
+  record.verified = true;
+  record.resetTokenHash = sha256Hex_(resetToken);
+  record.resetTokenExpiresAt = now + PASSWORD_RESET_TOKEN_TTL_MS;
+  record.codeHash = '';
+  record.codeExpiresAt = 0;
+  record.attempts = PASSWORD_CODE_MAX_ATTEMPTS;
+  properties.setProperty(key, JSON.stringify(record));
+
+  return {
+    ok: true,
+    resetToken,
+    expiresInSeconds: Math.floor(PASSWORD_RESET_TOKEN_TTL_MS / 1000)
+  };
+}
+
+
+/*************************************************
+ * 13. RESET FIREBASE PASSWORD
+ *************************************************/
+
+function resetPassword_(payload) {
+  const clientId = String(payload.clientId || '').trim().toUpperCase();
+  const email = String(payload.email || '').trim().toLowerCase();
+  const resetToken = String(payload.resetToken || '').trim();
+  const newPassword = String(payload.newPassword || '');
+
+  if (!/^CID-\d{3,}$/.test(clientId) || !email || !resetToken) {
+    throw new Error('Your password recovery session is invalid. Request a new code.');
+  }
+
+  if (newPassword.length < 8) {
+    throw new Error('Your new password must be at least 8 characters.');
+  }
+
+  const key = passwordResetStoreKey_(clientId, email);
+  const properties = PropertiesService.getScriptProperties();
+  const lock = LockService.getScriptLock();
+  lock.waitLock(10000);
+
+  try {
+    const record = readJsonProperty_(properties, key);
+    const now = Date.now();
+
+    if (!record || record.verified !== true) {
+      throw new Error('Your verification session is invalid. Request a new code.');
+    }
+
+    if (Number(record.resetTokenExpiresAt) <= now) {
+      properties.deleteProperty(key);
+      throw new Error('Your verification session has expired. Request a new code.');
+    }
+
+    if (record.resetTokenHash !== sha256Hex_(resetToken)) {
+      throw new Error('Your verification session is invalid. Request a new code.');
+    }
+
+    const client = findClientForPasswordReset_(clientId, email);
+    if (!client) {
+      throw new Error('The customer account could not be verified.');
+    }
+
+    const firebaseUser = firebaseLookupUserByEmail_(email);
+    if (!firebaseUser || !firebaseUser.localId) {
+      throw new Error('The Firebase customer account could not be found.');
+    }
+
+    firebaseUpdatePassword_(firebaseUser.localId, newPassword);
+
+    // Consume the recovery token immediately after Firebase confirms the update.
+    properties.deleteProperty(key);
+
+    return {
+      ok: true,
+      passwordChanged: true,
+      email: email
+    };
+
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+
+/*************************************************
+ * 14. CLIENT LOOKUP — GOOGLE SHEETS
+ *************************************************/
+
+function findClientForPasswordReset_(clientId, email) {
+  const response = Sheets.Spreadsheets.Values.get(
+    SPREADSHEET_ID,
+    `${CLIENTS_SHEET}!A2:J`
+  );
+
+  const rows = response.values || [];
+  const targetId = String(clientId).trim().toUpperCase();
+  const targetEmail = String(email).trim().toLowerCase();
+
+  for (const row of rows) {
+    const unitId = String(row[0] || '').trim().toUpperCase();
+    const rowEmail = String(row[3] || '').trim().toLowerCase();
+
+    if (unitId === targetId && rowEmail === targetEmail) {
+      return {
+        unitId,
+        firstName: String(row[1] || '').trim(),
+        lastName: String(row[2] || '').trim(),
+        email: rowEmail
+      };
+    }
+  }
+
+  return null;
+}
+
+
+/*************************************************
+ * 15. FIREBASE AUTH — ADMIN REST API
+ *************************************************/
+
+function firebaseLookupUserByEmail_(email) {
+  const accessToken = ScriptApp.getOAuthToken();
+  const url = `https://identitytoolkit.googleapis.com/v1/projects/${encodeURIComponent(FIREBASE_PROJECT_ID)}/accounts:lookup`;
+
+  const response = UrlFetchApp.fetch(url, {
+    method: 'post',
+    contentType: 'application/json',
+    headers: {
+      Authorization: `Bearer ${accessToken}`
+    },
+    payload: JSON.stringify({
+      email: [email]
+    }),
+    muteHttpExceptions: true
+  });
+
+  const code = response.getResponseCode();
+  const body = response.getContentText();
+  let data = {};
+  try { data = JSON.parse(body); } catch (_) {}
+
+  if (code < 200 || code >= 300) {
+    console.error('[PISO WIFI] Firebase account lookup failed', code, body);
+    if (code === 403) {
+      throw new Error('Firebase password service is not authorized. The Apps Script project needs Identity Platform user-management permission.');
+    }
+    throw new Error('Unable to verify the Firebase customer account.');
+  }
+
+  const users = Array.isArray(data.users) ? data.users : [];
+  return users.find(user => String(user.email || '').trim().toLowerCase() === email) || null;
+}
+
+function firebaseUpdatePassword_(localId, newPassword) {
+  const accessToken = ScriptApp.getOAuthToken();
+  const url = `https://identitytoolkit.googleapis.com/v1/projects/${encodeURIComponent(FIREBASE_PROJECT_ID)}/accounts:update`;
+
+  const response = UrlFetchApp.fetch(url, {
+    method: 'post',
+    contentType: 'application/json',
+    headers: {
+      Authorization: `Bearer ${accessToken}`
+    },
+    payload: JSON.stringify({
+      localId,
+      password: newPassword
+    }),
+    muteHttpExceptions: true
+  });
+
+  const code = response.getResponseCode();
+  const body = response.getContentText();
+  let data = {};
+  try { data = JSON.parse(body); } catch (_) {}
+
+  if (code < 200 || code >= 300) {
+    console.error('[PISO WIFI] Firebase password update failed', code, body);
+    if (code === 403) {
+      throw new Error('Firebase password service is not authorized. The Apps Script project needs Identity Platform user-management permission.');
+    }
+    const apiMessage = data && data.error && data.error.message;
+    if (apiMessage === 'WEAK_PASSWORD') {
+      throw new Error('The new password is too weak. Use at least 8 characters.');
+    }
+    throw new Error('Firebase could not update the password.');
+  }
+
+  return true;
+}
+
+
+/*************************************************
+ * 16. SEND 6-DIGIT HTML EMAIL
+ *************************************************/
+
+function sendPasswordVerificationEmail_(firstName, email, clientId, code) {
+  const safeFirstName = escapeHtml(firstName || 'Customer');
   const safeClientId = escapeHtml(clientId);
-  const safeResetLink = escapeHtml(resetLink);
+  const safeCode = escapeHtml(code);
 
-  const subject =
-    'Reset your password — PISO WIFI Customer Account';
-
-  /*
-   * Same sending pattern as the working STEADFAST Gmail Bridge:
-   * GmailApp.sendEmail(..., { name, replyTo, htmlBody })
-   *
-   * The reset link is generated by the existing website/server flow.
-   * This function only formats and sends the email.
-   */
-
-  const plainText =
-`Dear ${firstName},
-
-We received a request to reset the password for your PISO WIFI Customer Account.
-
-Please use the link below to securely create a new private password:
-
-${resetLink}
-
-For your security:
-- Do not share the reset link or your new password.
-- PISO WIFI Admin will never ask for your private password.
-- If you did not request this reset, you may safely ignore this email.
-
-Customer ID: ${clientId}
-
-Thank you,
-PISO WIFI Management System
-Connect · Earn · Grow Together
-
-This is an automated account-security email. Please do not reply directly to this message.`;
+  const subject = 'Your PISO WIFI verification code';
 
   const htmlBody = `<!doctype html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>PISO WIFI Password Reset</title>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>PISO WIFI Verification Code</title>
 </head>
-
-<body style="margin:0;background:#f4f7fb;font-family:Arial,Helvetica,sans-serif;color:#17243a;line-height:1.6;">
-
-  <div style="max-width:680px;margin:0 auto;padding:28px 16px;">
-
-    <div style="background:#ffffff;border:1px solid #e3eaf2;border-radius:18px;overflow:hidden;">
-
-      <!-- HEADER -->
-      <div style="background:#0a2344;padding:30px 28px;text-align:center;color:#ffffff;">
-        <div style="font-size:28px;font-weight:800;letter-spacing:.05em;">
-          PISO WIFI
-        </div>
-
-        <div style="margin-top:7px;font-size:12px;color:#b9d7f7;letter-spacing:.08em;">
-          CONNECT · EARN · GROW TOGETHER
-        </div>
-      </div>
-
-      <!-- CONTENT -->
-      <div style="padding:34px 30px;">
-
-        <div style="font-size:11px;font-weight:800;color:#0877e8;letter-spacing:1.5px;">
-          CUSTOMER ACCOUNT SECURITY
-        </div>
-
-        <h1 style="margin:9px 0 14px;font-size:27px;line-height:1.25;color:#102a4c;">
-          Reset your password
-        </h1>
-
-        <p style="font-size:15px;margin:0 0 14px;">
-          Dear <strong>${safeFirstName}</strong>,
-        </p>
-
-        <p style="font-size:14px;line-height:1.75;color:#5e7187;margin:0 0 18px;">
-          We received a request to reset the password for your PISO WIFI Customer Account.
-        </p>
-
-        <!-- ACCOUNT CARD -->
-        <div style="background:#f8fafc;border:1px solid #e4ebf3;border-radius:14px;padding:18px;margin:20px 0;">
-
-          <div style="font-size:11px;font-weight:800;color:#7b8999;letter-spacing:1px;">
-            CUSTOMER ID
+<body style="margin:0;background:#f4f7fb;font-family:Arial,Helvetica,sans-serif;color:#17243a;">
+  <div style="padding:32px 14px;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:620px;margin:0 auto;background:#ffffff;border:1px solid #e3eaf2;border-radius:18px;overflow:hidden;">
+      <tr>
+        <td style="background:#0a2344;padding:28px 32px;text-align:center;">
+          <div style="font-size:24px;font-weight:800;letter-spacing:.04em;color:#ffffff;">PISO WIFI</div>
+          <div style="margin-top:6px;font-size:12px;color:#b9d7f7;letter-spacing:.06em;">CONNECT · EARN · GROW TOGETHER</div>
+        </td>
+      </tr>
+      <tr>
+        <td style="padding:38px 36px;">
+          <div style="font-size:12px;font-weight:800;color:#0877e8;letter-spacing:.1em;">CUSTOMER ACCOUNT SECURITY</div>
+          <h1 style="margin:10px 0 16px;font-size:28px;line-height:1.2;color:#102a4c;">Verify your password reset</h1>
+          <p style="font-size:15px;line-height:1.7;margin:0 0 16px;">Dear <strong>${safeFirstName}</strong>,</p>
+          <p style="font-size:14px;line-height:1.75;color:#5e7187;margin:0 0 20px;">We received a request to reset the password for your PISO WIFI Customer Account.</p>
+          <div style="background:#f8fafc;border:1px solid #e4ebf3;border-radius:14px;padding:18px;margin:22px 0;text-align:center;">
+            <div style="font-size:11px;font-weight:800;color:#7b8999;letter-spacing:1px;">YOUR 6-DIGIT VERIFICATION CODE</div>
+            <div style="font-size:34px;font-weight:900;letter-spacing:8px;color:#102a4c;margin-top:10px;">${safeCode}</div>
+            <div style="font-size:12px;color:#718096;margin-top:10px;">This code expires in 10 minutes.</div>
           </div>
-
-          <div style="font-size:20px;font-weight:800;color:#102a4c;margin-top:5px;">
-            ${safeClientId}
+          <div style="background:#f6f9fc;border:1px solid #e4ebf3;border-radius:12px;padding:16px 18px;">
+            <div style="font-size:12px;font-weight:800;color:#33445d;margin-bottom:8px;">For your security</div>
+            <ul style="margin:0;padding-left:18px;color:#6a7c91;font-size:12px;line-height:1.8;">
+              <li>Never share this code with anyone.</li>
+              <li>PISO WIFI Admin will never ask for your private password.</li>
+              <li>If you did not request this, you can safely ignore this email.</li>
+            </ul>
           </div>
-
-        </div>
-
-        <p style="font-size:14px;line-height:1.75;color:#5e7187;margin:0 0 22px;">
-          Click the button below to securely create your new private password.
-        </p>
-
-        <!-- RESET BUTTON -->
-        <div style="text-align:center;margin:28px 0 30px;">
-
-          <a
-            href="${safeResetLink}"
-            style="
-              display:inline-block;
-              background:#0877e8;
-              color:#ffffff;
-              text-decoration:none;
-              font-size:14px;
-              font-weight:800;
-              padding:14px 28px;
-              border-radius:10px;
-            "
-          >
-            Reset My Password
-          </a>
-
-        </div>
-
-        <!-- SECURITY NOTICE -->
-        <div style="background:#f6f9fc;border:1px solid #e4ebf3;border-radius:12px;padding:17px 18px;">
-
-          <div style="font-size:12px;font-weight:800;color:#33445d;margin-bottom:8px;">
-            For your security
-          </div>
-
-          <ul style="margin:0;padding-left:19px;color:#6a7c91;font-size:12px;line-height:1.8;">
-            <li>Do not share the reset link or your new password.</li>
-            <li>PISO WIFI Admin will never ask for your private password.</li>
-            <li>If you did not request this reset, you may safely ignore this email.</li>
-          </ul>
-
-        </div>
-
-        <p style="font-size:13px;line-height:1.7;color:#6a7c91;margin:24px 0 0;">
-          If you have any concerns regarding your account, please contact PISO WIFI Support.
-        </p>
-
-        <p style="font-size:14px;line-height:1.7;margin:24px 0 0;">
-          Thank you,<br>
-          <strong>PISO WIFI Management System</strong><br>
-          Connect · Earn · Grow Together
-        </p>
-
-      </div>
-
-      <!-- FOOTER -->
-      <div style="background:#f8fafc;border-top:1px solid #e8eef5;padding:18px 24px;text-align:center;color:#8a98a8;font-size:11px;line-height:1.6;">
-        This is an automated account-security email.
-        <br>
-        Please do not reply directly to this message.
-      </div>
-
-    </div>
-
+          <p style="font-size:12px;color:#8a98a8;margin:22px 0 0;">Customer ID: <strong>${safeClientId}</strong></p>
+          <p style="font-size:14px;line-height:1.7;margin:24px 0 0;">Thank you,<br><strong>PISO WIFI Management System</strong></p>
+        </td>
+      </tr>
+      <tr>
+        <td style="background:#f8fafc;border-top:1px solid #e8eef5;padding:18px 30px;text-align:center;color:#8a98a8;font-size:11px;line-height:1.6;">This is an automated account-security email. Please do not reply directly to this message.</td>
+      </tr>
+    </table>
   </div>
-
 </body>
 </html>`;
 
-  GmailApp.sendEmail(
-    email,
-    subject,
-    plainText,
-    {
-      name: 'PISO WIFI Management System',
-      replyTo: Session.getEffectiveUser().getEmail(),
-      htmlBody: htmlBody
-    }
-  );
-}
+  const plainText =
+`Dear ${firstName || 'Customer'},
 
+We received a request to reset the password for your PISO WIFI Customer Account.
 
-/*************************************************
- * 12. JSON RESPONSE HELPER
- *************************************************/
+Your 6-digit verification code is: ${code}
 
-function jsonResponse_(data) {
+This code expires in 10 minutes and can only be used once.
 
-  return ContentService
-    .createTextOutput(JSON.stringify(data))
-    .setMimeType(ContentService.MimeType.JSON);
-}
+Customer ID: ${clientId}
 
+If you did not request this, you can safely ignore this email.
 
-/*************************************************
- * 13. SIX-DIGIT CUSTOMER PASSWORD RECOVERY
- *************************************************/
-
-const PISO_PASSWORD_RESET_BRIDGE_URL = 'https://piso-wifi.pages.dev/api/password-reset-code';
-const PISO_PASSWORD_RESET_BRIDGE_SECRET = PASSWORD_RESET_MAILER_SECRET;
-const PISO_PASSWORD_RESET_TTL_MS = 10 * 60 * 1000;
-const PISO_PASSWORD_RESET_MAX_ATTEMPTS = 5;
-
-function passwordResetRequestCode_(payload) {
-  const clientId = String(payload.clientId || '').trim().toUpperCase();
-  const email = String(payload.email || '').trim().toLowerCase();
-
-  if (!/^CID-\d{3,}$/.test(clientId) || !/^\S+@\S+\.\S+$/.test(email)) {
-    return passwordResetJson_({ ok: false, error: 'Enter a valid Client ID and registered Gmail.' });
-  }
-
-  // The website never learns whether a customer exists from Firebase directly.
-  // Apps Script asks the trusted server to verify the Client ID + Gmail pair.
-  const accountCheck = passwordResetBridge_({
-    action: 'verifyAccount',
-    clientId,
-    email
-  });
-
-  if (!accountCheck.ok) {
-    return passwordResetJson_({ ok: false, error: accountCheck.error || 'The Client ID and registered Gmail do not match.' });
-  }
-
-  const code = String(Math.floor(100000 + Math.random() * 900000));
-  const now = Date.now();
-  const key = passwordResetKey_(clientId, email);
-
-  PropertiesService.getScriptProperties().setProperty(key, JSON.stringify({
-    codeHash: passwordResetHash_(code),
-    clientId,
-    email,
-    createdAt: now,
-    expiresAt: now + PISO_PASSWORD_RESET_TTL_MS,
-    attempts: 0
-  }));
-
-  const subject = 'Your PISO WIFI verification code';
-  const plainText = [
-    'Hello,',
-    '',
-    'We received a request to reset the password for your PISO WIFI Customer Account.',
-    '',
-    'Your 6-digit verification code is:',
-    '',
-    code,
-    '',
-    'This code expires in 10 minutes and can only be used once.',
-    'After verification, this code will become your temporary password. You will then be required to create a new private password when you log in.',
-    '',
-    'If you did not request this, you can safely ignore this email.',
-    '',
-    'Thank you,',
-    'PISO WIFI Management System'
-  ].join('\n');
-
-  const html = `<!doctype html><html><body style="margin:0;background:#f4f7fb;font-family:Arial,sans-serif;color:#17243a"><div style="max-width:560px;margin:30px auto;background:#fff;border:1px solid #e3eaf2;border-radius:18px;overflow:hidden"><div style="background:#0a2344;color:#fff;padding:28px;text-align:center"><div style="font-size:25px;font-weight:800">PISO WIFI</div><div style="font-size:11px;color:#b9d7f7;margin-top:6px;letter-spacing:.08em">CUSTOMER ACCOUNT SECURITY</div></div><div style="padding:32px"><p>Hello,</p><p>We received a request to reset the password for your PISO WIFI Customer Account.</p><p style="margin-top:26px;text-align:center;color:#64748b;font-size:12px;font-weight:700;letter-spacing:.08em">YOUR 6-DIGIT VERIFICATION CODE</p><div style="text-align:center;font-size:34px;font-weight:800;letter-spacing:8px;color:#0877e8;margin:10px 0 24px">${code}</div><div style="background:#f6f9fc;border:1px solid #e4ebf3;border-radius:12px;padding:15px;font-size:13px;line-height:1.7;color:#5e7187">This code expires in <strong>10 minutes</strong> and can only be used once. After verification, this code becomes your temporary password. You will then be required to create a new private password when you log in.</div><p style="font-size:13px;color:#6b7c90;line-height:1.7;margin-top:22px">If you did not request this, you can safely ignore this email.</p><p style="margin-top:24px">Thank you,<br><strong>PISO WIFI Management System</strong></p></div></div></body></html>`;
+Thank you,
+PISO WIFI Management System`;
 
   MailApp.sendEmail({
     to: email,
     subject,
     body: plainText,
-    htmlBody: html,
+    htmlBody,
     name: 'PISO WIFI Management System'
   });
-
-  return passwordResetJson_({ ok: true, codeSent: true });
 }
 
-function passwordResetVerifyCode_(payload) {
-  const clientId = String(payload.clientId || '').trim().toUpperCase();
-  const email = String(payload.email || '').trim().toLowerCase();
-  const code = String(payload.code || '').trim();
 
-  if (!/^CID-\d{3,}$/.test(clientId) || !/^\S+@\S+\.\S+$/.test(email) || !/^\d{6}$/.test(code)) {
-    return passwordResetJson_({ ok: false, error: 'Enter the 6-digit verification code.' });
-  }
+/*************************************************
+ * 17. HELPERS
+ *************************************************/
 
-  const key = passwordResetKey_(clientId, email);
-  const props = PropertiesService.getScriptProperties();
-  const raw = props.getProperty(key);
-  if (!raw) return passwordResetJson_({ ok: false, error: 'The verification code is invalid or expired. Request a new code.' });
-
-  const record = JSON.parse(raw);
-  if (Date.now() > Number(record.expiresAt || 0)) {
-    props.deleteProperty(key);
-    return passwordResetJson_({ ok: false, error: 'The verification code has expired. Request a new code.' });
-  }
-
-  const attempts = Number(record.attempts || 0);
-  if (attempts >= PISO_PASSWORD_RESET_MAX_ATTEMPTS) {
-    props.deleteProperty(key);
-    return passwordResetJson_({ ok: false, error: 'Too many incorrect attempts. Request a new code.' });
-  }
-
-  if (passwordResetHash_(code) !== String(record.codeHash || '')) {
-    record.attempts = attempts + 1;
-    props.setProperty(key, JSON.stringify(record));
-    return passwordResetJson_({ ok: false, error: 'Incorrect verification code.' });
-  }
-
-  // The 6-digit code becomes the temporary Firebase password.
-  const result = passwordResetBridge_({
-    action: 'resetPassword',
-    clientId,
-    email,
-    newPassword: code
-  });
-
-  if (!result.ok) {
-    return passwordResetJson_({ ok: false, error: result.error || 'Unable to reset the customer password.' });
-  }
-
-  // One-time use: remove the code only after Firebase confirms the password reset.
-  props.deleteProperty(key);
-
-  return passwordResetJson_({ ok: true, passwordReset: true, temporaryPasswordSet: true });
+function generateSixDigitCode_() {
+  return String(Math.floor(100000 + Math.random() * 900000));
 }
 
-function passwordResetBridge_(payload) {
-  const body = Object.assign({}, payload, {
-    bridgeSecret: PISO_PASSWORD_RESET_BRIDGE_SECRET
-  });
-
-  const response = UrlFetchApp.fetch(PISO_PASSWORD_RESET_BRIDGE_URL, {
-    method: 'post',
-    contentType: 'application/json',
-    payload: JSON.stringify(body),
-    muteHttpExceptions: true,
-    followRedirects: true
-  });
-
-  let data = {};
-  try {
-    data = JSON.parse(response.getContentText() || '{}');
-  } catch (error) {
-    return { ok: false, error: 'Password recovery server returned an invalid response.' };
-  }
-
-  return response.getResponseCode() >= 200 && response.getResponseCode() < 300
-    ? data
-    : { ok: false, error: data.error || 'Password recovery server rejected the request.' };
+function randomToken_() {
+  const bytes = Utilities.getUuid() + '-' + Utilities.getUuid() + '-' + new Date().getTime();
+  return Utilities.base64EncodeWebSafe(
+    Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, bytes, Utilities.Charset.UTF_8)
+  ).replace(/=+$/g, '');
 }
 
-function passwordResetHash_(value) {
-  const bytes = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, String(value), Utilities.Charset.UTF_8);
-  return bytes.map(function(byte) {
+function sha256Hex_(value) {
+  const digest = Utilities.computeDigest(
+    Utilities.DigestAlgorithm.SHA_256,
+    String(value),
+    Utilities.Charset.UTF_8
+  );
+  return digest.map(byte => {
     const v = byte < 0 ? byte + 256 : byte;
     return ('0' + v.toString(16)).slice(-2);
   }).join('');
 }
 
-function passwordResetKey_(clientId, email) {
-  return 'PISO_RESET_CODE_' + passwordResetHash_(String(clientId).toUpperCase() + '|' + String(email).toLowerCase());
+function passwordResetStoreKey_(clientId, email) {
+  return PASSWORD_RESET_STORE_PREFIX + sha256Hex_(`${clientId}|${email}`).slice(0, 48);
 }
 
-function passwordResetJson_(data) {
+function readJsonProperty_(properties, key) {
+  const raw = properties.getProperty(key);
+  if (!raw) return null;
+  try { return JSON.parse(raw); } catch (_) { return null; }
+}
+
+function escapeHtml(value) {
+  return String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
+function jsonResponse_(data) {
   return ContentService
     .createTextOutput(JSON.stringify(data))
     .setMimeType(ContentService.MimeType.JSON);
