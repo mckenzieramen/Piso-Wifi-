@@ -10,6 +10,42 @@ import {
 } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-firestore.js";
 
 const $ = (s) => document.querySelector(s);
+const APPS_SCRIPT_SHEET_SYNC_URL = "https://script.google.com/macros/s/AKfycbw0V3j5VPpFq2Ui0Y28CAC9owTXLawEsjEllq12W9wtzpFjFgXLgI5VCRDHzc26raWJ/exec";
+async function syncClientToSheet(client){
+  const idToken=currentUser ? await currentUser.getIdToken() : "";
+  const payload={
+    action:"syncClient",
+    idToken,
+    clientId:String(client.clientCode||"").trim().toUpperCase(),
+    unitCode:String(client.unitCode||"").trim(),
+    firstName:String(client.firstName||"").trim(),
+    lastName:String(client.lastName||"").trim(),
+    email:String(client.email||"").trim().toLowerCase(),
+    phone:String(client.contact||"").trim(),
+    temporaryPassword:String(client.temporaryPassword||client.clientCode||"").trim(),
+    passwordChanged:client.passwordChanged===true,
+    accountStatus:client.active===false?"Inactive":"Active",
+    createdAt:client.createdAt||new Date().toISOString(),
+    lastLogin:client.lastLogin||""
+  };
+  const response=await fetch(APPS_SCRIPT_SHEET_SYNC_URL,{
+    method:"POST",
+    headers:{"Content-Type":"text/plain;charset=utf-8"},
+    body:JSON.stringify(payload)
+  });
+  const text=await response.text();
+  let data={};
+  try{data=JSON.parse(text||"{}");}catch(_){throw new Error("Google Sheets sync returned an invalid response.");}
+  if(!data.ok) throw new Error(data.error||"Unable to sync client to Google Sheets.");
+  return data;
+}
+async function syncAllClientsToSheet(){
+  for(const u of units){
+    if(!u?.clientCode||!u?.email) continue;
+    await syncClientToSheet({...u,temporaryPassword:u.clientCode,passwordChanged:u.forcePasswordChange===false});
+  }
+}
+
 const view = $("#view");
 const toastEl = $("#toast");
 const money = (n) => `₱${Number(n || 0).toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -132,6 +168,10 @@ async function loadData(){
 
   units=u.docs.map(d=>({id:d.id,...d.data()}));
   try { await syncCustomerDirectory(); } catch(e) { console.warn("Customer directory sync skipped",e); }
+  if(localStorage.getItem("pisoSheetSyncV1") !== "1") {
+    try { await syncAllClientsToSheet(); localStorage.setItem("pisoSheetSyncV1","1"); }
+    catch(e) { console.warn("Google Sheets client backfill skipped",e); }
+  }
   records=r.docs.map(d=>({id:d.id,...d.data()}));
   payments=p.docs.map(d=>({id:d.id,...d.data()}));
   if(s.exists()) settings={...settings,...s.data()};
@@ -633,6 +673,14 @@ async function openUnitModal(id=null){
       };
       if(id){
         await updateDoc(doc(db,"units",id),data);
+        await syncClientToSheet({
+          ...u,
+          ...data,
+          temporaryPassword:u?.clientCode||clientCode,
+          passwordChanged:u?.forcePasswordChange===false,
+          createdAt:u?.createdAt||new Date().toISOString(),
+          lastLogin:u?.lastLogin||""
+        });
         if(u?.authUserId) await setDoc(doc(db,"users",u.authUserId),{role:"client",clientUnitId:id,unitId:id,clientCode,username,email,updatedAt:serverTimestamp()},{merge:true});
         await logActivity("Clients",`Edited ${unitCode} — ${name}`,id);
         await addNotification("client","Client profile updated.",`${name} (${clientCode}) was updated.`,id);
@@ -650,6 +698,13 @@ async function openUnitModal(id=null){
         data.loginId=username;
         data.authEmail=authEmail;
         const ref=await addDoc(collection(db,"units"),{...data,createdAt:serverTimestamp()});
+        await syncClientToSheet({
+          ...data,
+          temporaryPassword,
+          passwordChanged:false,
+          createdAt:new Date().toISOString(),
+          lastLogin:""
+        });
         await setDoc(doc(db,"users",cred.user.uid),{role:"client",clientUnitId:ref.id,unitId:ref.id,clientCode,username,email,createdAt:serverTimestamp(),updatedAt:serverTimestamp()});
         await logActivity("Clients",`Added client account ${clientCode} — ${username} — ${name}`,ref.id);
         await addNotification("client","New client account created.",`${name} (${clientCode}) can now log in using username ${username}.`,ref.id);

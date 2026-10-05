@@ -1,0 +1,24 @@
+PISO WIFI — WEBSITE SHEET SYNC FIX
+
+This website build adds a secure Firebase-admin-authenticated sync from the Admin
+Units / Clients page to the Google Sheets Clients sheet through the existing
+Apps Script Web App.
+
+IMPORTANT:
+The separate Apps Script patch must also be installed in the existing
+Piso WiFi Backend Code.gs before deploying this website build.
+
+The website sends:
+- Client ID
+- First Name
+- Last Name
+- Registered Gmail
+- Contact Number
+- Temporary Password
+- Password Changed
+- Account Status
+- Created At
+- Last Login
+
+Existing Firebase client creation remains the source of truth for the Admin UI.
+Google Sheets becomes a synchronized client-record copy for recovery/backend use.
