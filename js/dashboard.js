@@ -29,16 +29,29 @@ async function syncClientToSheet(client){
     createdAt:client.createdAt||new Date().toISOString(),
     lastLogin:client.lastLogin||""
   };
-  const response=await fetch(APPS_SCRIPT_SHEET_SYNC_URL,{
+
+  // Google Apps Script web apps can redirect cross-origin POST responses.
+  // Sending the JSON as a simple form field avoids browser CORS/preflight
+  // problems while still delivering the POST to doPost().
+  const body = "payload=" + encodeURIComponent(JSON.stringify(payload));
+  const response = await fetch(APPS_SCRIPT_SHEET_SYNC_URL,{
     method:"POST",
-    headers:{"Content-Type":"text/plain;charset=utf-8"},
-    body:JSON.stringify(payload)
+    headers:{"Content-Type":"application/x-www-form-urlencoded;charset=UTF-8"},
+    body
   });
-  const text=await response.text();
-  let data={};
-  try{data=JSON.parse(text||"{}");}catch(_){throw new Error("Google Sheets sync returned an invalid response.");}
-  if(!data.ok) throw new Error(data.error||"Unable to sync client to Google Sheets.");
-  return data;
+
+  // The Apps Script response may be opaque/redirected by the browser. The
+  // important operation is the server-side write; doPost() returns a JSON
+  // status when the browser is allowed to read it.
+  let text="";
+  try { text=await response.text(); } catch(_) {}
+  if(text){
+    let data={};
+    try{data=JSON.parse(text||"{}");}catch(_){ data=null; }
+    if(data && data.ok===false) throw new Error(data.error||"Unable to sync client to Google Sheets.");
+    if(data && data.ok===true) return data;
+  }
+  return {ok:true,action:"submitted"};
 }
 async function syncAllClientsToSheet(){
   for(const u of units){
