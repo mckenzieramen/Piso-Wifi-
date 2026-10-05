@@ -47,8 +47,13 @@ async function nextClientId(){
   },0);
   return await runTransaction(db,async tx=>{
     const snap=await tx.get(ref);
-    let next=Number(snap.exists()?snap.data().next:(maxExisting+1));
-    if(!Number.isInteger(next)||next<1) next=maxExisting+1;
+    const storedNext=Number(snap.exists()?snap.data().next:0);
+    // Never trust a stale/lower sequence value. Existing client IDs are the source of truth.
+    // This guarantees the next ID is always greater than every existing CID and never reused.
+    let next=Math.max(
+      Number.isInteger(storedNext) && storedNext > 0 ? storedNext : 1,
+      maxExisting + 1
+    );
     tx.set(ref,{next:next+1,updatedAt:serverTimestamp()},{merge:true});
     return `CID-${String(next).padStart(4,"0")}`;
   });
