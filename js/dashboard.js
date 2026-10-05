@@ -12,17 +12,18 @@ import {
 const $ = (s) => document.querySelector(s);
 const APPS_SCRIPT_SHEET_SYNC_URL = "https://script.google.com/macros/s/AKfycbw0V3j5VPpFq2Ui0Y28CAC9owTXLawEsjEllq12W9wtzpFjFgXLgI5VCRDHzc26raWJ/exec";
 async function syncClientToSheet(client){
-  const idToken=currentUser ? await currentUser.getIdToken() : "";
+  if(!currentUser) throw new Error("Admin session is not ready for Google Sheets sync.");
+  const idToken=await currentUser.getIdToken(true);
   const payload={
     action:"syncClient",
     idToken,
-    clientId:String(client.clientCode||"").trim().toUpperCase(),
+    clientId:String(client.clientCode||client.clientId||"").trim().toUpperCase(),
     unitCode:String(client.unitCode||"").trim(),
     firstName:String(client.firstName||"").trim(),
     lastName:String(client.lastName||"").trim(),
     email:String(client.email||"").trim().toLowerCase(),
     phone:String(client.contact||"").trim(),
-    temporaryPassword:String(client.temporaryPassword||client.clientCode||"").trim(),
+    temporaryPassword:String(client.temporaryPassword||client.clientCode||client.clientId||"").trim(),
     passwordChanged:client.passwordChanged===true,
     accountStatus:client.active===false?"Inactive":"Active",
     createdAt:client.createdAt||new Date().toISOString(),
@@ -41,8 +42,8 @@ async function syncClientToSheet(client){
 }
 async function syncAllClientsToSheet(){
   for(const u of units){
-    if(!u?.clientCode||!u?.email) continue;
-    await syncClientToSheet({...u,temporaryPassword:u.clientCode,passwordChanged:u.forcePasswordChange===false});
+    if(!(u?.clientCode||u?.clientId)||!u?.email) continue;
+    await syncClientToSheet({...u,clientCode:u.clientCode||u.clientId,temporaryPassword:u.temporaryPassword||u.clientCode||u.clientId,passwordChanged:u.forcePasswordChange===false});
   }
 }
 
@@ -168,9 +169,11 @@ async function loadData(){
 
   units=u.docs.map(d=>({id:d.id,...d.data()}));
   try { await syncCustomerDirectory(); } catch(e) { console.warn("Customer directory sync skipped",e); }
-  if(localStorage.getItem("pisoSheetSyncV1") !== "1") {
-    try { await syncAllClientsToSheet(); localStorage.setItem("pisoSheetSyncV1","1"); }
-    catch(e) { console.warn("Google Sheets client backfill skipped",e); }
+  try {
+    await syncAllClientsToSheet();
+    localStorage.setItem("pisoSheetSyncV2","1");
+  } catch(e) {
+    console.error("Google Sheets client backfill failed",e);
   }
   records=r.docs.map(d=>({id:d.id,...d.data()}));
   payments=p.docs.map(d=>({id:d.id,...d.data()}));
