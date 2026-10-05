@@ -58,6 +58,18 @@ async function nextClientId(){
     return `CID-${String(next).padStart(4,"0")}`;
   });
 }
+async function previewNextClientId(){
+  const ref=doc(db,"settings","clientSequence");
+  const maxExisting=units.reduce((max,u)=>{
+    const m=String(u.clientCode||"").match(/^CID-(\d+)$/i);
+    return m?Math.max(max,Number(m[1])):max;
+  },0);
+  const snap=await getDoc(ref);
+  const storedNext=Number(snap.exists()?snap.data().next:0);
+  const next=Math.max(Number.isInteger(storedNext)&&storedNext>0?storedNext:1,maxExisting+1);
+  return `CID-${String(next).padStart(4,"0")}`;
+}
+
 function availableUnitCodes(currentCode=""){
   const activeCodes=new Set(units.filter(u=>u.active!==false && String(u.unitCode)!==String(currentCode)).map(u=>String(u.unitCode)));
   return Array.from({length:50},(_,i)=>String(i+1)).map(code=>({code,used:activeCodes.has(code)}));
@@ -556,7 +568,7 @@ function openModal(title,body,saveText,onSave,{danger=false}={}){
   setTimeout(()=>document.querySelector("#modalRoot input, #modalRoot select")?.focus(),50);
 }
 function closeModal(){ $("#modalRoot").innerHTML=""; }
-function openUnitModal(id=null){
+async function openUnitModal(id=null){
   const u=id?units.find(x=>x.id===id):null;
   const suggestedDate = u?.dateJoined || new Date().toISOString().slice(0,10);
   const codes=availableUnitCodes(u?.unitCode||"");
@@ -564,7 +576,7 @@ function openUnitModal(id=null){
   const codeOptions=codes.map(x=>`<button type="button" class="unit-option ${x.used?"is-used":""}" data-unit-code="${x.code}" ${x.used?"disabled":""}><span>${x.code}</span><small>${x.used?"Active / Unavailable":"Available"}</small></button>`).join("");
   openModal(id?"Edit Client / Unit":"Add New Client",`
     <div class="form-grid">
-      <div class="field"><label>Client ID *</label><input id="fClientCode" value="${esc(u?.clientCode||"")}" placeholder="CID-0001" ${id?"disabled":"disabled"}><small class="hint">Automatically generated in sequence. This ID is never reused.</small></div>
+      <div class="field"><label>Client ID *</label><input id="fClientCode" value="${esc(u?.clientCode || (id ? "" : await previewNextClientId()))}" placeholder="CID-0001" disabled><small class="hint">Automatically generated in sequence. This ID is never reused.</small></div>
       <div class="field"><label>Unit Code *</label><div class="unit-combobox"><input id="fCodeSearch" value="${esc(currentCode)}" placeholder="Search or select 1–50" autocomplete="off" aria-autocomplete="list"><input id="fCode" type="hidden" value="${esc(currentCode)}"><div id="unitCodeOptions" class="unit-options">${codeOptions}</div></div><small class="hint">Active unit codes cannot be selected. Deactivated unit codes become available again.</small></div>
       <div class="field"><label>First Name *</label><input id="fFirstName" value="${esc(u?.firstName||"")}" placeholder="First Name" autocomplete="off"></div>
       <div class="field"><label>Last Name *</label><input id="fLastName" value="${esc(u?.lastName||String(u?.name||"").trim().split(/\s+/).slice(1).join(" "))}" placeholder="Last Name" autocomplete="off"></div>

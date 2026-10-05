@@ -53,9 +53,21 @@ async function nextClientId(){
       maxExisting + 1
     );
     tx.set(ref,{next:next+1,updatedAt:serverTimestamp()},{merge:true});
-    return `CID-${String(next).padStart(3,"0")}`;
+    return `CID-${String(next).padStart(4,"0")}`;
   });
 }
+async function previewNextClientId(){
+  const ref=doc(db,"settings","clientSequence");
+  const maxExisting=units.reduce((max,u)=>{
+    const m=String(u.clientCode||"").match(/^CID-(\d+)$/i);
+    return m?Math.max(max,Number(m[1])):max;
+  },0);
+  const snap=await getDoc(ref);
+  const storedNext=Number(snap.exists()?snap.data().next:0);
+  const next=Math.max(Number.isInteger(storedNext)&&storedNext>0?storedNext:1,maxExisting+1);
+  return `CID-${String(next).padStart(4,"0")}`;
+}
+
 function availableUnitCodes(currentCode=""){
   const activeCodes=new Set(units.filter(u=>u.active!==false && String(u.unitCode)!==String(currentCode)).map(u=>String(u.unitCode)));
   return Array.from({length:50},(_,i)=>String(i+1)).map(code=>({code,used:activeCodes.has(code)}));
@@ -580,7 +592,7 @@ function openModal(title,body,saveText,onSave,{danger=false}={}){
   setTimeout(()=>document.querySelector("#modalRoot input, #modalRoot select")?.focus(),50);
 }
 function closeModal(){ $("#modalRoot").innerHTML=""; }
-function openUnitModal(id=null){
+async function openUnitModal(id=null){
   const u=id?units.find(x=>x.id===id):null;
   const suggestedDate = u?.dateJoined || new Date().toISOString().slice(0,10);
   const codes=availableUnitCodes(u?.unitCode||"");
@@ -588,7 +600,7 @@ function openUnitModal(id=null){
   const codeOptions=codes.map(x=>`<button type="button" class="unit-option ${x.used?"is-used":""}" data-unit-code="${x.code}" ${x.used?"disabled":""}><span>${x.code}</span><small>${x.used?"Active / Unavailable":"Available"}</small></button>`).join("");
   openModal(id?"Edit Client / Unit":"Add New Client",`
     <div class="form-grid">
-      <div class="field"><label>Client ID *</label><input id="fClientCode" value="${esc(u?.clientCode||"")}" placeholder="CID-0001" ${id?"disabled":"disabled"}><small class="hint">Automatically generated in sequence. This ID is never reused.</small></div>
+      <div class="field"><label>Client ID *</label><input id="fClientCode" value="${esc(u?.clientCode || (id ? "" : await previewNextClientId()))}" placeholder="CID-0001" disabled><small class="hint">Automatically generated in sequence. This ID is never reused.</small></div>
       <div class="field"><label>Unit Code *</label><div class="unit-combobox"><input id="fCodeSearch" value="${esc(currentCode)}" placeholder="Search or select 1–50" autocomplete="off" aria-autocomplete="list"><input id="fCode" type="hidden" value="${esc(currentCode)}"><div id="unitCodeOptions" class="unit-options">${codeOptions}</div></div><small class="hint">Active unit codes cannot be selected. Deactivated unit codes become available again.</small></div>
       <div class="field"><label>First Name *</label><input id="fFirstName" value="${esc(u?.firstName||"")}" placeholder="First Name" autocomplete="off"></div>
       <div class="field"><label>Last Name *</label><input id="fLastName" value="${esc(u?.lastName||String(u?.name||"").trim().split(/\s+/).slice(1).join(" "))}" placeholder="Last Name" autocomplete="off"></div>
@@ -598,7 +610,7 @@ function openUnitModal(id=null){
       <div class="field full"><label>Unit Location</label><input id="fLocation" value="${esc(u?.location||"")}" placeholder="Brgy. San Isidro, Antipolo" autocomplete="off"></div>
       <div class="field full"><label>Client Address</label><input id="fAddress" value="${esc(u?.address||u?.location||"")}" placeholder="Client residential/contact address" autocomplete="off"></div>
       <div class="field"><label>Status</label><select id="fStatus"><option value="active" ${u?.active!==false?"selected":""}>Active</option><option value="inactive" ${u?.active===false?"selected":""}>Inactive</option></select></div>
-      <div class="field"><label>Username</label><input id="fUsername" value="${esc(u?.username||"")}" placeholder="Generated automatically" disabled><small class="hint">Generated as FirstName + Client ID, e.g. JuanCID-001.</small></div>
+      <div class="field"><label>Username</label><input id="fUsername" value="${esc(u?.username||"")}" placeholder="Generated automatically" disabled><small class="hint">Generated as FirstName + Client ID, e.g. JuanCID-0001.</small></div>
       <div class="field full"><label>Notes</label><textarea id="fNotes" rows="3">${esc(u?.notes||"")}</textarea></div>
     </div>`,`Save Client`,async()=>{
       const clientCode=id?String(u?.clientCode||"").trim().toUpperCase():await nextClientId();
@@ -608,7 +620,7 @@ function openUnitModal(id=null){
       const name=`${firstName} ${lastName}`.trim();
       const email=$("#fEmail").value.trim().toLowerCase();
       if(!clientCode||!unitCode||!firstName||!lastName||!email) throw new Error("Client ID, Unit Code, First Name, Last Name and Registered Gmail are required.");
-      if(!/^CID-\d{3,}$/.test(clientCode)) throw new Error("Client ID must use the CID-001 format.");
+      if(!/^CID-\d{4,}$/.test(clientCode)) throw new Error("Client ID must use the CID-0001 format.");
       if(!/^([1-9]|[1-4]\d|50)$/.test(unitCode)) throw new Error("Unit Code must be between 1 and 50.");
       if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new Error("Enter a valid Gmail address.");
       const activeConflict=units.find(x=>x.id!==id&&x.active!==false&&String(x.unitCode)===unitCode);
