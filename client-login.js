@@ -143,6 +143,7 @@ document.querySelector("#clientForgotPassword").onclick = () => {
 const APPS_SCRIPT_OTP_URL = "https://script.google.com/macros/s/AKfycbw0V3j5VPpFq2Ui0Y28CAC9owTXLawEsjEllq12W9wtzpFjFgXLgI5VCRDHzc26raWJ/exec";
 let recoveryToken = "";
 let recoveryEmail = "";
+let recoveryClientId = "";
 
 function esc(v){return String(v??"").replace(/[&<>\"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'\"':"&quot;","'":"&#39;"}[c]));}
 function recoveryCard(){return document.querySelector("#forgotPasswordModal .client-reset-card");}
@@ -198,9 +199,10 @@ async function submitResetRequest(e){
   if(!/^CID-\d{3,}$/.test(clientId)||!email){msgEl.textContent="Enter a valid Client ID and registered Gmail.";msgEl.className="client-login-message error";return;}
   btn.disabled=true;btn.textContent="Sending OTP…";msgEl.textContent="Checking your account…";msgEl.className="client-login-message";
   try{
-    const result=await callRecovery({action:"requestOtp",clientId,email});
-    recoveryToken=result.verificationToken||"";
+    const result=await callRecovery({action:"requestCode",clientId,email});
+    recoveryToken=result.resetToken||result.verificationToken||"";
     recoveryEmail=result.email||email;
+    recoveryClientId=clientId;
     closeRecovery();
     openOtpModal(result);
   }catch(err){
@@ -245,7 +247,7 @@ async function verifyOtp(e){
   if(!/^\\d{6}$/.test(code)){msgEl.textContent="Enter the 6-digit OTP.";msgEl.className="client-login-message error";return;}
   btn.disabled=true;btn.textContent="Verifying…";msgEl.textContent="Verifying your code…";msgEl.className="client-login-message";
   try{
-    await callRecovery({action:"verifyOtp",verificationToken:recoveryToken,code});
+    await callRecovery({action:"verifyCode",clientId:recoveryClientId,email:recoveryEmail,code});
     document.querySelector("#otpModal")?.remove();
     openNewPasswordModal();
   }catch(err){
@@ -288,7 +290,7 @@ async function saveNewPassword(e){
   if(password!==confirm){msgEl.textContent="The passwords do not match.";msgEl.className="client-login-message error";return;}
   btn.disabled=true;btn.textContent="Updating…";msgEl.textContent="Updating your password…";msgEl.className="client-login-message";
   try{
-    await callRecovery({action:"resetPassword",verificationToken:recoveryToken,newPassword:password});
+    await callRecovery({action:"resetPassword",clientId:recoveryClientId,email:recoveryEmail,resetToken:recoveryToken,newPassword:password});
     recoveryToken="";
     wrapSuccessAndReturn();
   }catch(err){

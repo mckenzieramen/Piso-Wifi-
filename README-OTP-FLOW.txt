@@ -1,12 +1,23 @@
-PISO WIFI v47 — OTP PASSWORD RECOVERY
+PISO WIFI — WEBSITE OTP RECOVERY
 
-This package is based on locked v46. Existing client sequence/data are untouched.
+This website package uses the deployed Google Apps Script backend for customer password recovery.
 
-NEW recovery flow:
-1. Client ID + registered Gmail
-2. 6-digit OTP email
-3. OTP verification
-4. Create New Password modal
-5. Password updated
+Frontend actions:
+1. requestCode
+2. verifyCode
+3. resetPassword
 
-IMPORTANT: The website JS expects the deployed Apps Script URL and the three OTP branches in the separate patch file. Do not remove existing admin/client data.
+Flow:
+Client ID + registered Gmail -> 6-digit OTP email -> verify OTP -> Create New Password -> success.
+
+Backend URL is configured in:
+- js/client-login.js
+- client-login.js
+
+This ZIP intentionally does NOT include:
+- Google Apps Script source
+- Firebase Firestore/Storage rules
+- service-account credentials
+- private secrets
+
+Do not replace the Apps Script with an older reset-link implementation.
