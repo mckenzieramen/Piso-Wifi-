@@ -1,0 +1,16 @@
+PISO WIFI — FINAL WEBSITE SHEET SYNC BASELINE
+
+Google Apps Script Web App endpoint:
+https://script.google.com/macros/s/AKfycbzJcIf9rpdunJ8-1kDvgePWTT1L-cQOFzZLQHFQMaqBYTlviovyxjz4JOX-FpvUrjFu/exec
+
+Sheet sync flow:
+Admin Dashboard -> Firebase -> Apps Script -> PISO WIFI DATABASE / Clients
+
+This website package contains website files only.
+It does not contain Code.gs, Firebase rules, service-account credentials, or private secrets.
+
+Fixes in this baseline:
+- Uses the new Apps Script execution URL everywhere needed.
+- Client ID validation accepts CID-001 and higher (3+ digits).
+- Admin Firebase session token is sent with syncClient.
+- Existing clients are backfilled by the dashboard loader.

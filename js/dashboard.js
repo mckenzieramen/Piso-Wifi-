@@ -663,7 +663,7 @@ async function openUnitModal(id=null){
       const name=`${firstName} ${lastName}`.trim();
       const email=$("#fEmail").value.trim().toLowerCase();
       if(!clientCode||!unitCode||!firstName||!lastName||!email) throw new Error("Client ID, Unit Code, First Name, Last Name and Registered Gmail are required.");
-      if(!/^CID-\d{4,}$/.test(clientCode)) throw new Error("Client ID must use the CID-0001 format.");
+      if(!/^CID-\d{3,}$/.test(clientCode)) throw new Error("Invalid Client ID format.");
       if(!/^([1-9]|[1-4]\d|50)$/.test(unitCode)) throw new Error("Unit Code must be between 1 and 50.");
       if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new Error("Enter a valid Gmail address.");
       const activeConflict=units.find(x=>x.id!==id&&x.active!==false&&String(x.unitCode)===unitCode);
