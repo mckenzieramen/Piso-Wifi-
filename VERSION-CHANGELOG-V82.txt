@@ -1,7 +1,0 @@
-V82 - Weekly Schedule Date/Week Selection + Safe Saved Week Viewing
-- Schedule Week / Date may be any selected date; the roster always calculates that date's Monday-Sunday week.
-- Monday-Sunday headers update from the selected week, with all 7 days retained.
-- Saved weekly schedules load when viewing a week that has previously been saved.
-- A week with no saved schedule starts completely blank while every cell remains a full employee dropdown.
-- Saving a week stores that week only; creating/viewing another unsaved week does not copy the prior week's schedule.
-- Existing attendance, Time In/Time Out, sales, payroll, employee, and face data are not deleted or reset by schedule viewing.

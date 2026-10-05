@@ -1,9 +1,0 @@
-V83 — Schedule Data Integrity + Saved Week View + Unassigned Employee Fix
-
-- New employees are created with NO site and NO pre-assigned weekly schedule.
-- Employee Today's Site now follows saved weeklySchedules only; no fallback to a default site.
-- Blank/unscheduled days are treated as unscheduled/off for attendance/payroll eligibility until a schedule is explicitly saved.
-- Schedule Week / Date is normalized to Monday and always renders the full 7-day Monday–Sunday period.
-- Added a Saved Weeks area so previously saved weekly schedules can be selected and viewed again.
-- New weeks remain blank until explicitly saved; previous weeks are preserved.
-- Existing attendance, Time In/Out, sales, payroll, employee, and face data are not deleted or reset by these changes.
