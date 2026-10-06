@@ -128,6 +128,23 @@ input,select,textarea{font-size:16px}
 <style>
 .client-login-official-logo{display:block;width:158px;height:auto;object-fit:contain;filter:drop-shadow(0 10px 22px rgba(0,0,0,.16))}.client-login-official-logo.mobile{width:132px}.mobile-brand{margin-bottom:24px}.mobile-brand .client-login-official-logo{filter:none}
 </style>
+
+<!-- PISO WIFI ADMIN LOGIN CLICK SAFETY -->
+<style>
+  #loginBtn, #signInBtn, button[type="submit"] {
+    pointer-events:auto !important;
+    cursor:pointer !important;
+  }
+</style>
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+  document.querySelectorAll('#loginBtn, #signInBtn, button[type="submit"]').forEach(function(btn) {
+    btn.disabled = false;
+    btn.removeAttribute("disabled");
+    btn.style.pointerEvents = "auto";
+  });
+});
+</script>
 </head>
 <body class="client-login-page">
   <noscript><div style="padding:16px;background:#fff3cd;color:#664d03;text-align:center;font-family:Arial,sans-serif">JavaScript is required for the PISO WIFI Customer Account.</div></noscript>
