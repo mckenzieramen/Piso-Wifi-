@@ -1,7 +1,7 @@
 import { auth, db } from "./firebase.js";
 import { firebaseConfig } from "./firebase-config.js";
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-app.js";
-import { getAuth, createUserWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-auth.js";
+import { getAuth, setPersistence, inMemoryPersistence, createUserWithEmailAndPassword, deleteUser } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-auth.js";
 import { calculateFinancialRecord } from "./finance.js";
 import { onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-auth.js";
 import {
@@ -88,6 +88,15 @@ const ENABLE_CLIENT_DELETE = true;
 const CLIENT_AUTH_DOMAIN="@client-login.pisowifi.local";
 const clientProvisionerApp=initializeApp(firebaseConfig,"clientProvisioner");
 const clientProvisionerAuth=getAuth(clientProvisionerApp);
+// IMPORTANT: client account provisioning must never replace or persist over the Admin
+// browser session. Keep the secondary Auth instance strictly in-memory.
+let clientProvisionerReady=null;
+async function prepareClientProvisioner(){
+  if(!clientProvisionerReady){
+    clientProvisionerReady=setPersistence(clientProvisionerAuth,inMemoryPersistence);
+  }
+  return clientProvisionerReady;
+}
 const clientAuthEmailFromUsername=(username)=>`${String(username||"").trim().toLowerCase().replace(/[^a-z0-9]+/g,"-")}${CLIENT_AUTH_DOMAIN}`;
 const firstNameFromFullName=(name)=>String(name||"").trim().split(/\s+/)[0]||"Client";
 const sanitizeUsernamePart=(name)=>firstNameFromFullName(name).replace(/[^A-Za-z0-9]/g,"")||"Client";
@@ -715,6 +724,7 @@ async function openUnitModal(id=null){
         const authEmail=clientAuthEmailFromUsername(username);
         const temporaryPassword=clientCode;
         let cred;
+        await prepareClientProvisioner();
         try{ cred=await createUserWithEmailAndPassword(clientProvisionerAuth,authEmail,temporaryPassword); }
         catch(e){
           if(e?.code==="auth/email-already-in-use") throw new Error("This generated username already has a login account. Please try again.");
@@ -724,7 +734,16 @@ async function openUnitModal(id=null){
         data.forcePasswordChange=true;
         data.loginId=username;
         data.authEmail=authEmail;
-        const ref=await addDoc(collection(db,"units"),{...data,createdAt:serverTimestamp()});
+        let ref;
+        try{
+          ref=await addDoc(collection(db,"units"),{...data,createdAt:serverTimestamp()});
+        }catch(e){
+          // Roll back the newly-created secondary Auth account so a failed Firestore
+          // permission check never leaves an orphaned customer login.
+          try{ await deleteUser(cred.user); }catch(rollbackError){ console.warn("[PISO WIFI CLIENT AUTH ROLLBACK]",rollbackError); }
+          if(String(e?.code||"")==="permission-denied") throw new Error("Admin Firestore permission is not active yet. The website session was kept intact.");
+          throw e;
+        }
         await syncClientToSheet({
           ...data,
           temporaryPassword,
@@ -919,4 +938,23 @@ $("#menuBtn").onclick=()=>{$("#sidebar").classList.add("open");$("#overlay").cla
 $("#logoutBtn").onclick=async()=>{await signOut(auth);location.href="index.html"};
 $("#globalSearch").oninput=e=>{const q=e.target.value.trim();if(q.length>=2){unitSearch=q;route="units";if(location.hash!=="#units")location.hash="#units";else renderUnits();}else if(!q){unitSearch="";if(route==="units")renderUnits();}};
 
-onAuthStateChanged(auth,user=>{bootstrap(user).catch(e=>showAuthError(e?.message||"Unable to initialize the Admin dashboard."));});
+let adminAuthResolved=false;
+let adminAuthGraceTimer=null;
+onAuthStateChanged(auth,user=>{
+  if(user){
+    adminAuthResolved=true;
+    if(adminAuthGraceTimer) clearTimeout(adminAuthGraceTimer);
+    bootstrap(user).catch(e=>showAuthError(e?.message||"Unable to initialize the Admin dashboard."));
+    return;
+  }
+  // Firebase can briefly emit null while restoring the persisted Admin session.
+  // Never redirect during that restoration window.
+  if(!adminAuthResolved){
+    if(adminAuthGraceTimer) clearTimeout(adminAuthGraceTimer);
+    adminAuthGraceTimer=setTimeout(()=>{
+      if(!auth.currentUser) location.replace("index.html");
+    },5000);
+  }else if(!auth.currentUser){
+    location.replace("index.html");
+  }
+});
