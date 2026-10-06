@@ -269,11 +269,44 @@ function pageLoader(){ view.innerHTML=`<div class="loading-panel"><div class="lo
 
 function render(){
   nav();
-  const renderers={dashboard:renderDashboard,units:renderUnits,reports:renderReports,payments:renderPayments,statements:renderStatements,notifications:renderNotifications,activity:renderActivity,settings:renderSettings,profile:renderProfile,support:renderSupport};
-  (renderers[route]||renderDashboard)();
+  const renderers={
+    dashboard:renderDashboard,
+    units:renderUnits,
+    reports:renderReports,
+    payments:renderPayments,
+    support:renderSupport,
+    notifications:renderNotifications,
+    statements:renderStatements,
+    activity:renderActivity,
+    settings:renderSettings,
+    profile:renderProfile
+  };
+  const renderer=renderers[route]||renderDashboard;
+  try{
+    renderer();
+  }catch(e){
+    console.error("[PISO WIFI NAVIGATION]",route,e);
+    view.innerHTML=`
+      <div class="panel" style="margin:24px;padding:32px;text-align:center">
+        <h2>Unable to open this section</h2>
+        <p>${esc(e?.message||"This section could not be loaded.")}</p>
+        <button class="primary-btn" data-route="dashboard">Back to Dashboard</button>
+      </div>`;
+  }
   closeMenu();
   updateNotificationBadge();
   window.scrollTo({top:0,behavior:"smooth"});
+}
+
+function navigateTo(target){
+  const clean=String(target||"dashboard").replace(/^#/,"").split("?")[0]||"dashboard";
+  route=clean;
+  const current=location.hash.replace(/^#/,"").split("?")[0];
+  if(current===clean){
+    render();
+  }else{
+    location.hash="#"+clean;
+  }
 }
 
 function renderDashboard(){
@@ -845,7 +878,43 @@ async function bootstrap(user){
 }
 
 function parseRoute(){const raw=location.hash.replace("#","");return raw.split("?")[0]||"dashboard";}
-document.addEventListener("click",e=>{const a=e.target.closest("[data-route]");if(a){e.preventDefault();location.hash="#"+a.dataset.route;} const p=e.target.closest("[data-print-inline]");if(p){const id=$("#statementUnit")?.value;if(id)printStatement(id,$("#statementMonth").value);} const pdf=e.target.closest("[data-pdf-inline]");if(pdf){const id=$("#statementUnit")?.value;if(id)downloadStatementPdf(id,$("#statementMonth").value);} const html=e.target.closest("[data-html-inline]");if(html){const id=$("#statementUnit")?.value;if(id)downloadStatementHtml(id,$("#statementMonth").value);}});
+document.addEventListener("click",e=>{
+  const a=e.target.closest("[data-route]");
+  if(a){
+    e.preventDefault();
+    e.stopPropagation();
+    navigateTo(a.dataset.route);
+    return;
+  }
+
+  const p=e.target.closest("[data-print-inline]");
+  if(p){
+    const id=$("#statementUnit")?.value;
+    if(id)printStatement(id,$("#statementMonth").value);
+  }
+
+  const pdf=e.target.closest("[data-pdf-inline]");
+  if(pdf){
+    const id=$("#statementUnit")?.value;
+    if(id)downloadStatementPdf(id,$("#statementMonth").value);
+  }
+
+  const html=e.target.closest("[data-html-inline]");
+  if(html){
+    const id=$("#statementUnit")?.value;
+    if(id)downloadStatementHtml(id,$("#statementMonth").value);
+  }
+});
+
+document.addEventListener("keydown",e=>{
+  if(e.key!=="Enter" && e.key!==" ") return;
+  const target=e.target.closest("[data-route]");
+  if(!target) return;
+  if(target.tagName==="A" || target.tagName==="BUTTON") return;
+  e.preventDefault();
+  navigateTo(target.dataset.route);
+});
+
 window.addEventListener("hashchange",()=>{route=parseRoute();render();});
 $("#menuBtn").onclick=()=>{$("#sidebar").classList.add("open");$("#overlay").classList.add("show")};$("#overlay").onclick=closeMenu;
 $("#logoutBtn").onclick=async()=>{await signOut(auth);location.href="index.html"};
