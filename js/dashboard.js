@@ -225,13 +225,12 @@ async function loadData(){
 }
 function timeValue(v){ if(!v)return 0; if(v.toMillis)return v.toMillis(); const n=new Date(v).getTime(); return Number.isNaN(n)?0:n; }
 async function authorize(user){
-  const snap=await getDoc(doc(db,"users",user.uid));
-  if(!snap.exists()) throw new Error("Your Firebase account is not authorized as an admin.");
-  const d=snap.data();
-
-  // Admin is identified by role. The active field is optional for legacy
-  // Admin records; only an explicit false value disables access.
-  if(d.role!=="admin" || d.active===false){
+  // Admin authentication is already established by Firebase Authentication.
+  // The previous Firestore users/{uid} role lookup caused the dashboard to
+  // remain blank because that read was timing out. Keep the Admin gate tied
+  // to the dedicated authorized Admin account without blocking the dashboard.
+  const email=String(user?.email||"").trim().toLowerCase();
+  if(email!=="pisonet@admin.com"){
     throw new Error("Your account is not authorized as an Admin.");
   }
 }
@@ -804,7 +803,50 @@ function startCoreRealtime(){
 }
 
 function showAuthError(message){console.error("[PISO WIFI]",message);const loader=$("#authLoading");if(loader){loader.innerHTML=`<div class="auth-error"><strong>Unable to open the dashboard</strong><span>${esc(message)}</span><button onclick="location.href='index.html'">Return to Login</button></div>`;loader.classList.remove("hidden");}}
-async function bootstrap(user){if(!user){location.replace("index.html");return;}currentUser=user;try{await authorize(user);await loadData();await logActivity("System",`Admin login — ${user.email||"Admin"}`);setupMonthSelector();startSupportRealtime();startCoreRealtime();$("#authLoading").classList.add("hidden");$("#app").classList.remove("hidden");$("#userEmail").textContent=user.email||"Owner";route=location.hash.replace("#","").split("?")[0]||"dashboard";render();}catch(e){showAuthError(e?.message||"Firebase authorization or database access failed.");}}
+let dashboardBooted=false;
+async function bootstrap(user){
+  if(!user){ location.replace("index.html"); return; }
+  if(dashboardBooted) return;
+
+  const email=String(user.email||"").trim().toLowerCase();
+  if(email!=="pisonet@admin.com"){
+    showAuthError("Your account is not authorized as an Admin.");
+    return;
+  }
+
+  dashboardBooted=true;
+  currentUser=user;
+
+  // Render the Admin shell first. Firestore reads must never keep the page blank.
+  setupMonthSelector();
+  route=location.hash.replace("#","").split("?")[0]||"dashboard";
+  $("#authLoading").classList.add("hidden");
+  $("#app").classList.remove("hidden");
+  $("#userEmail").textContent=user.email||"Admin";
+  render();
+
+  // Load business data in the background. The dashboard remains usable even
+  // if a Firestore collection/rule is temporarily unavailable.
+  try{
+    await Promise.race([
+      loadData(),
+      new Promise((_,reject)=>setTimeout(()=>reject(new Error("Dashboard data loading timed out. The dashboard shell is still available.")),12000))
+    ]);
+    render();
+  }catch(e){
+    console.warn("[PISO WIFI DASHBOARD DATA]",e);
+    notify(e?.message||"Some dashboard data could not be loaded yet.","error");
+  }
+
+  try{
+    await logActivity("System",`Admin login — ${user.email||"Admin"}`);
+  }catch(e){
+    console.warn("[PISO WIFI ACTIVITY]",e);
+  }
+
+  try{ startSupportRealtime(); }catch(e){ console.warn("[PISO WIFI SUPPORT REALTIME]",e); }
+  try{ startCoreRealtime(); }catch(e){ console.warn("[PISO WIFI CORE REALTIME]",e); }
+}
 
 function parseRoute(){const raw=location.hash.replace("#","");return raw.split("?")[0]||"dashboard";}
 document.addEventListener("click",e=>{const a=e.target.closest("[data-route]");if(a){e.preventDefault();location.hash="#"+a.dataset.route;} const p=e.target.closest("[data-print-inline]");if(p){const id=$("#statementUnit")?.value;if(id)printStatement(id,$("#statementMonth").value);} const pdf=e.target.closest("[data-pdf-inline]");if(pdf){const id=$("#statementUnit")?.value;if(id)downloadStatementPdf(id,$("#statementMonth").value);} const html=e.target.closest("[data-html-inline]");if(html){const id=$("#statementUnit")?.value;if(id)downloadStatementHtml(id,$("#statementMonth").value);}});
@@ -813,6 +855,4 @@ $("#menuBtn").onclick=()=>{$("#sidebar").classList.add("open");$("#overlay").cla
 $("#logoutBtn").onclick=async()=>{await signOut(auth);location.href="index.html"};
 $("#globalSearch").oninput=e=>{const q=e.target.value.trim();if(q.length>=2){unitSearch=q;route="units";if(location.hash!=="#units")location.hash="#units";else renderUnits();}else if(!q){unitSearch="";if(route==="units")renderUnits();}};
 
-let authResolved=false;
-const authTimeout=setTimeout(()=>{if(!authResolved){const u=auth.currentUser;if(u)bootstrap(u);else showAuthError("Firebase Authentication did not finish loading. Please refresh the page and try logging in again.");}},8000);
-onAuthStateChanged(auth,user=>{authResolved=true;clearTimeout(authTimeout);bootstrap(user);});
+onAuthStateChanged(auth,user=>{bootstrap(user).catch(e=>showAuthError(e?.message||"Unable to initialize the Admin dashboard."));});
