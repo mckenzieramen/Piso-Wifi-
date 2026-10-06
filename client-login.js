@@ -140,7 +140,7 @@ document.querySelector("#clientForgotPassword").onclick = () => {
   openForgotPasswordModal();
 };
 
-const APPS_SCRIPT_OTP_URL = "https://script.google.com/macros/s/AKfycbzJcIf9rpdunJ8-1kDvgePWTT1L-cQOFzZLQHFQMaqBYTlviovyxjz4JOX-FpvUrjFu/exec";
+const APPS_SCRIPT_OTP_URL = "https://script.google.com/macros/s/AKfycbziRdnywiBqCJoBqJwXElHEGWdgyljApiYAhOvDJEyKJ_rzLWPP_GgYSmsfR1IE3_Fe/exec";
 let recoveryToken = "";
 let recoveryEmail = "";
 let recoveryClientId = "";

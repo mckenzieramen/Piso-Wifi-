@@ -10,7 +10,7 @@ import {
 } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-firestore.js";
 
 const $ = (s) => document.querySelector(s);
-const APPS_SCRIPT_SHEET_SYNC_URL = "https://script.google.com/macros/s/AKfycbzJcIf9rpdunJ8-1kDvgePWTT1L-cQOFzZLQHFQMaqBYTlviovyxjz4JOX-FpvUrjFu/exec";
+const APPS_SCRIPT_SHEET_SYNC_URL = "https://script.google.com/macros/s/AKfycbziRdnywiBqCJoBqJwXElHEGWdgyljApiYAhOvDJEyKJ_rzLWPP_GgYSmsfR1IE3_Fe/exec";
 async function syncClientToSheet(client){
   if(!currentUser) throw new Error("Admin session is not ready for Google Sheets sync.");
   const idToken=await currentUser.getIdToken(true);
