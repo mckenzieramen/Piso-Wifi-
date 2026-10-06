@@ -6,23 +6,6 @@
   <meta name="theme-color" content="#0b1730">
   <title>PISO WIFI — Management System</title>
   <link rel="stylesheet" href="../css/style.css">
-
-<!-- PISO WIFI ADMIN LOGIN CLICK SAFETY -->
-<style>
-  #loginBtn, #signInBtn, button[type="submit"] {
-    pointer-events:auto !important;
-    cursor:pointer !important;
-  }
-</style>
-<script>
-document.addEventListener("DOMContentLoaded", function () {
-  document.querySelectorAll('#loginBtn, #signInBtn, button[type="submit"]').forEach(function(btn) {
-    btn.disabled = false;
-    btn.removeAttribute("disabled");
-    btn.style.pointerEvents = "auto";
-  });
-});
-</script>
 </head>
 <body class="login-page">
   <main class="login-card" aria-labelledby="loginTitle">
@@ -69,6 +52,6 @@ document.addEventListener("DOMContentLoaded", function () {
     </div>
   </main>
 
-  <script type="module" src="../js/auth.js?v=20261006-ADMIN-LOGIN-FIX2"></script>
+  <script type="module" src="../js/auth.js?v=20261006-ADMIN-FINAL-FIX2"></script>
 </body>
 </html>
