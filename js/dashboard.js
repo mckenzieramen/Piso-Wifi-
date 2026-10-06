@@ -172,57 +172,59 @@ function calc(r){
 }
 function totals(rows){ return rows.reduce((a,x)=>{a.gross+=x.c.gross;a.internet+=x.c.internet;a.net+=x.c.net;a.owner+=x.c.owner;a.client+=x.c.client;a.elec+=x.c.elec;a.misc+=x.c.miscellaneous||0;a.due+=x.c.clientTotal;a.paid+=x.c.paid;a.balance+=x.c.balance;return a},{gross:0,internet:0,net:0,owner:0,client:0,elec:0,due:0,paid:0,balance:0}); }
 
-async function loadData(){
-  // Core financial collections are required for the dashboard.
-  // Notifications and Activity Log are optional during rollout so a missing
-  // Firestore rule for those newer collections cannot blank the whole app.
-  const [u,r,p,s] = await Promise.all([
-    getDocs(collection(db,"units")),
-    getDocs(collection(db,"monthlyRecords")),
-    getDocs(collection(db,"payments")),
-    getDoc(doc(db,"settings","business"))
+function timedPromise(promise, ms, label){
+  return Promise.race([
+    promise,
+    new Promise((_,reject)=>setTimeout(()=>{
+      const e=new Error(label+" timed out.");
+      e.code="piso/timeout";
+      reject(e);
+    },ms))
   ]);
+}
 
-  units=u.docs.map(d=>({id:d.id,...d.data()}));
-  try { await syncCustomerDirectory(); } catch(e) { console.warn("Customer directory sync skipped",e); }
-  try {
-    await syncAllClientsToSheet();
-    localStorage.setItem("pisoSheetSyncV2","1");
-  } catch(e) {
-    console.error("Google Sheets client backfill failed",e);
-  }
-  records=r.docs.map(d=>({id:d.id,...d.data()}));
-  payments=p.docs.map(d=>({id:d.id,...d.data()}));
-  if(s.exists()) settings={...settings,...s.data()};
-
-  try {
-    const n=await getDocs(collection(db,"notifications"));
-    notifications=n.docs.map(d=>({id:d.id,...d.data()}))
-      .sort((a,b)=>timeValue(b.createdAt)-timeValue(a.createdAt));
-  } catch(e) {
-    console.warn("Notifications collection is not readable yet. Publish the latest Firestore rules.",e);
-    notifications=[];
-  }
+async function loadData(){
+  // Read core data independently. One slow collection must not prevent the
+  // others from appearing in the dashboard.
+  const readDocs = async (path, label, fallback=[]) => {
+    try {
+      const snap=await timedPromise(getDocs(collection(db,path)),9000,label);
+      return snap.docs.map(d=>({id:d.id,...d.data()}));
+    } catch(e) {
+      console.warn("[PISO WIFI DATA]",label,e);
+      return fallback;
+    }
+  };
 
   try {
-    const a=await getDocs(collection(db,"activities"));
-    activities=a.docs.map(d=>({id:d.id,...d.data()}))
-      .sort((a,b)=>timeValue(b.createdAt)-timeValue(a.createdAt));
+    const snap=await timedPromise(getDoc(doc(db,"settings","business")),9000,"Business settings");
+    if(snap.exists()) settings={...settings,...snap.data()};
   } catch(e) {
-    console.warn("Activities collection is not readable yet. Publish the latest Firestore rules.",e);
-    activities=[];
+    console.warn("[PISO WIFI DATA] Business settings",e);
   }
 
-  try {
-    const sc=await getDocs(collection(db,"supportChats"));
-    supportChats=sc.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>timeValue(b.updatedAt||b.createdAt)-timeValue(a.updatedAt||a.createdAt));
-  } catch(e) {
-    console.warn("Support chats collection is not readable yet. Publish the latest Firestore rules.",e);
-    supportChats=[];
-  }
+  units=await readDocs("units","Units");
+  records=await readDocs("monthlyRecords","Monthly records");
+  payments=await readDocs("payments","Payments");
+  notifications=await readDocs("notifications","Notifications",notifications);
+  activities=await readDocs("activities","Activities",activities);
+  supportChats=await readDocs("supportChats","Support chats",supportChats);
+
+  // Background synchronization must never block the dashboard.
+  try { await timedPromise(syncCustomerDirectory(),6000,"Customer directory sync"); }
+  catch(e) { console.warn("[PISO WIFI SYNC] Customer directory",e); }
+
+  try { await timedPromise(syncAllClientsToSheet(),6000,"Google Sheets sync"); }
+  catch(e) { console.warn("[PISO WIFI SYNC] Google Sheets",e); }
+
+  notifications.sort((a,b)=>timeValue(b.createdAt)-timeValue(a.createdAt));
+  activities.sort((a,b)=>timeValue(b.createdAt)-timeValue(a.createdAt));
+  supportChats.sort((a,b)=>timeValue(b.updatedAt||b.createdAt)-timeValue(a.updatedAt||a.createdAt));
+
   updateNotificationBadge();
   updateSupportBadge();
 }
+
 function timeValue(v){ if(!v)return 0; if(v.toMillis)return v.toMillis(); const n=new Date(v).getTime(); return Number.isNaN(n)?0:n; }
 async function authorize(user){
   // Admin authentication is already established by Firebase Authentication.
@@ -825,18 +827,12 @@ async function bootstrap(user){
   $("#userEmail").textContent=user.email||"Admin";
   render();
 
-  // Load business data in the background. The dashboard remains usable even
-  // if a Firestore collection/rule is temporarily unavailable.
-  try{
-    await Promise.race([
-      loadData(),
-      new Promise((_,reject)=>setTimeout(()=>reject(new Error("Dashboard data loading timed out. The dashboard shell is still available.")),12000))
-    ]);
-    render();
-  }catch(e){
-    console.warn("[PISO WIFI DASHBOARD DATA]",e);
-    notify(e?.message||"Some dashboard data could not be loaded yet.","error");
-  }
+  // Load business data in the background. Never show a blocking/error toast
+  // just because one Firestore collection is slow or temporarily unavailable.
+  // Realtime listeners below remain responsible for updating the dashboard.
+  loadData()
+    .then(()=>{ try{ render(); }catch(e){ console.warn("[PISO WIFI RENDER]",e); } })
+    .catch(e=>console.warn("[PISO WIFI DASHBOARD DATA]",e));
 
   try{
     await logActivity("System",`Admin login — ${user.email||"Admin"}`);
