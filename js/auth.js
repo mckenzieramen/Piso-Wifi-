@@ -58,8 +58,12 @@ try {
   }
 } catch (_) {}
 
+let authRestoreTimer=null;
 onAuthStateChanged(auth, user => {
-  if (user && !busy) route(user);
+  if (user && !busy) {
+    if(authRestoreTimer) clearTimeout(authRestoreTimer);
+    route(user);
+  }
 });
 
 form?.addEventListener("submit", async e => {
