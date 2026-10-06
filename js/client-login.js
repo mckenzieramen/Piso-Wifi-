@@ -151,7 +151,7 @@ document.querySelector("#clientForgotPassword").onclick = () => {
   openForgotPasswordModal();
 };
 
-const APPS_SCRIPT_OTP_URL = "https://script.google.com/macros/s/AKfycbziRdnywiBqCJoBqJwXElHEGWdgyljApiYAhOvDJEyKJ_rzLWPP_GgYSmsfR1IE3_Fe/exec";
+const APPS_SCRIPT_OTP_URL = "/api/password-recovery";
 let recoveryToken = "";
 let recoveryEmail = "";
 let recoveryClientId = "";
