@@ -11,8 +11,15 @@ service cloud.firestore {
     // used by the Admin portal. Do not hard-code a Firebase UID here.
     function isAdmin() {
       return isSignedIn()
-        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == "admin"
-        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.active != false;
+        && (
+          // The dedicated Admin Authentication account is an authorized Admin
+          // even when its users/{uid} profile has not yet been created.
+          request.auth.token.email == "pisonet@admin.com"
+          || (
+            get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == "admin"
+            && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.active != false
+          )
+        );
     }
 
     function isClientUnit(data) {
