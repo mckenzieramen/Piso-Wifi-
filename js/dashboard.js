@@ -111,15 +111,14 @@ async function nextClientId(){
   });
 }
 async function previewNextClientId(){
-  const ref=doc(db,"settings","clientSequence");
+  // Preview must never block the Add Client form on a Firestore read.
+  // The actual save still uses nextClientId(), which reserves the CID
+  // transactionally and preserves the no-reuse rule.
   const maxExisting=units.reduce((max,u)=>{
     const m=String(u.clientCode||"").match(/^CID-(\d+)$/i);
     return m?Math.max(max,Number(m[1])):max;
   },0);
-  const snap=await getDoc(ref);
-  const storedNext=Number(snap.exists()?snap.data().next:0);
-  const next=Math.max(Number.isInteger(storedNext)&&storedNext>0?storedNext:1,maxExisting+1);
-  return `CID-${String(next).padStart(4,"0")}`;
+  return `CID-${String(Math.max(1,maxExisting+1)).padStart(4,"0")}`;
 }
 
 function availableUnitCodes(currentCode=""){
@@ -423,7 +422,7 @@ function yearMonths(k){const y=Number(k.slice(0,4));return Array.from({length:12
 function renderUnits(){
   const rows=normalizeRows().filter(x=>(!unitSearch||`${x.u.name} ${x.u.unitCode} ${x.u.location} ${x.u.contact}`.toLowerCase().includes(unitSearch.toLowerCase()))&&(!unitStatus||String(x.u.active!==false?"Active":"Inactive")===unitStatus)&&(!unitPaymentStatus||x.c.status===unitPaymentStatus));
   view.innerHTML=baseHead("Units / Clients","Manage your Piso WiFi units and clients.",`<button class="primary-btn" id="addUnitBtn">+ Add New Client</button>`)+`<div class="panel"><div class="panel-head"><div><h3>Registered Units</h3><p>Showing ${rows.length} of ${units.length} units · ${monthLabel(selectedMonth)}</p></div><div class="tools"><input id="unitSearch" class="search" placeholder="Search client or unit…" value="${esc(unitSearch)}"><select id="unitStatus" class="search"><option value="">All Status</option><option ${unitStatus==="Active"?"selected":""}>Active</option><option ${unitStatus==="Inactive"?"selected":""}>Inactive</option></select><select id="unitPaymentStatus" class="search"><option value="">All Payment Status</option><option ${unitPaymentStatus==="Paid"?"selected":""}>Paid</option><option ${unitPaymentStatus==="Partial"?"selected":""}>Partial</option><option ${unitPaymentStatus==="Unpaid"?"selected":""}>Unpaid</option></select><button class="secondary-btn" id="exportUnits">Export Excel/CSV</button></div></div><div class="table-wrap accumulating-table"><table><thead><tr><th>Unit Code</th><th>Client Name</th><th>Location</th><th>Contact</th><th>Status</th><th>This Month</th><th>Payment</th><th>Actions</th></tr></thead><tbody>${rows.length?rows.map(x=>`<tr><td><b>${esc(x.u.unitCode||"—")}</b></td><td>${esc(x.u.name||"—")}</td><td>${esc(x.u.location||"—")}</td><td>${esc(x.u.contact||"—")}</td><td>${statusBadge(x.u.active!==false?"Active":"Inactive")}</td><td class="amount">${money(x.c.gross)}</td><td>${statusBadge(x.c.status)}</td><td><button class="action-btn" data-sale="${x.u.id}">Gross Sale</button><button class="action-btn" data-profile="${x.u.id}">View</button><button class="action-btn" data-edit-unit="${x.u.id}">Edit</button><button class="action-btn danger" data-toggle-unit="${x.u.id}">${x.u.active!==false?"Deactivate":"Activate"}</button>${ENABLE_CLIENT_DELETE?`<button class="action-btn danger solid-danger" data-delete-unit="${x.u.id}">Delete</button>`:""}</td></tr>`).join(""):emptyRow(8,"No clients or units found.")}</tbody></table></div></div>`;
-  $("#addUnitBtn").onclick=()=>openUnitModal();
+  $("#addUnitBtn").onclick=()=>openUnitModal().catch(e=>notify(e?.message||"Unable to open Add Client form.","error"));
   $("#unitSearch").oninput=e=>{unitSearch=e.target.value;renderUnits()};
   $("#unitStatus").onchange=e=>{unitStatus=e.target.value;renderUnits()};
   $("#unitPaymentStatus").onchange=e=>{unitPaymentStatus=e.target.value;renderUnits()};
@@ -656,7 +655,7 @@ function openModal(title,body,saveText,onSave,{danger=false}={}){
   $("#closeModal").onclick=closeModal; $("#cancelModal").onclick=closeModal;
   // Keep the form open when the user clicks outside the modal. Only the explicit X/Cancel controls close it.
   $("#modalBackdrop").onclick=e=>{ e.stopPropagation(); };
-  $("#saveModal").onclick=async()=>{try{await onSave();closeModal();await loadData();render();notify("Saved successfully.");}catch(e){notify(e?.message||"Unable to save.","error");}};
+  $("#saveModal").onclick=async()=>{try{await onSave();closeModal();notify("Saved successfully.");try{await loadData();render();}catch(refreshError){console.warn("[PISO WIFI REFRESH AFTER SAVE]",refreshError);render();}}catch(e){notify(e?.message||"Unable to save.","error");}};
   setTimeout(()=>document.querySelector("#modalRoot input, #modalRoot select")?.focus(),50);
 }
 function closeModal(){ $("#modalRoot").innerHTML=""; }
