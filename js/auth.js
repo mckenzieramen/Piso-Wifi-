@@ -16,6 +16,7 @@ const form = document.querySelector("#loginForm");
 const msg = document.querySelector("#loginMessage");
 const REMEMBER_ADMIN_KEY = "pisoWifi.rememberedAdminEmail";
 const rememberAdmin = document.querySelector("#rememberAdmin");
+let routing = false;
 try {
   const savedAdminEmail = localStorage.getItem(REMEMBER_ADMIN_KEY);
   if (savedAdminEmail && document.querySelector("#email")) {
@@ -35,7 +36,8 @@ async function getRole(user) {
 }
 
 async function routeSignedInUser(user) {
-  if (!user) return;
+  if (!user || routing) return;
+  routing = true;
 
   try {
     const profile = await getRole(user);
@@ -43,8 +45,8 @@ async function routeSignedInUser(user) {
     // ADMIN PORTAL IS STRICTLY ADMIN-ONLY.
     if (profile?.role === "admin" && profile?.active !== false) {
       try {
-      if (rememberAdmin?.checked) localStorage.setItem(REMEMBER_ADMIN_KEY, email);
-      else localStorage.removeItem(REMEMBER_ADMIN_KEY);
+      if (rememberAdmin?.checked && user.email) localStorage.setItem(REMEMBER_ADMIN_KEY, user.email.toLowerCase());
+      else if (!rememberAdmin?.checked) localStorage.removeItem(REMEMBER_ADMIN_KEY);
     } catch {}
     window.location.replace("/admin/dashboard.html");
       return;
@@ -52,6 +54,7 @@ async function routeSignedInUser(user) {
 
     // A customer must never be routed into the Admin portal.
     await signOut(auth);
+    routing = false;
     showMessage(
       "This account is a Customer Account. Please use the Customer Account login.",
       "error"
@@ -59,6 +62,7 @@ async function routeSignedInUser(user) {
   } catch (e) {
     console.error("[PISO WIFI ADMIN AUTH]", e);
     try { await signOut(auth); } catch {}
+    routing = false;
     showMessage(
       "This account is not authorized for the Admin Portal.",
       "error"
@@ -74,6 +78,8 @@ onAuthStateChanged(auth, user => {
 
 form.addEventListener("submit", async e => {
   e.preventDefault();
+  if (routing) return;
+
   const email = document.querySelector("#email").value.trim().toLowerCase();
   const password = document.querySelector("#password").value;
 
@@ -83,15 +89,16 @@ form.addEventListener("submit", async e => {
   }
 
   showMessage("Signing in…");
+  routing = true;
 
   try {
     await setPersistence(auth, browserSessionPersistence);
-
     const cred = await signInWithEmailAndPassword(auth, email, password);
     const profile = await getRole(cred.user);
 
     if (profile?.role !== "admin" || profile?.active === false) {
       await signOut(auth);
+      routing = false;
       showMessage(
         "Access denied. This account is not an active Admin account.",
         "error"
@@ -99,9 +106,15 @@ form.addEventListener("submit", async e => {
       return;
     }
 
+    try {
+      if (rememberAdmin?.checked) localStorage.setItem(REMEMBER_ADMIN_KEY, email);
+      else localStorage.removeItem(REMEMBER_ADMIN_KEY);
+    } catch {}
+
     window.location.replace("/admin/dashboard.html");
   } catch (err) {
     console.error("[PISO WIFI ADMIN LOGIN]", err);
+    routing = false;
     showMessage("Login failed. Please check your Admin email and password.", "error");
   }
 });
