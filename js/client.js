@@ -615,7 +615,7 @@ function render(){
 function parseRoute(){return location.hash.replace("#","").split("?")[0]||"dashboard";}
 
 function openAuthError(message){
-  const loader=$("#clientAuthLoading");loader.innerHTML=`<div class="client-auth-error"><strong>Unable to open Customer Account</strong><span>${esc(message)}</span><a href="client-login.html">Return to Customer Account Login</a></div>`;
+  const loader=$("#clientAuthLoading");loader.innerHTML=`<div class="client-auth-error"><strong>Unable to open Customer Account</strong><span>${esc(message)}</span><a href="/">Return to Customer Account Login</a></div>`;
   loader.classList.remove("hidden");
 }
 function setupPasswordVisibilityToggles(){
@@ -679,7 +679,7 @@ async function withTimeout(promise,ms,label){
 async function bootstrap(user){
   if(!user){
     bootstrapFinished=true; clearTimeout(bootTimer);
-    location.replace("/");
+    location.replace(new URL("/", window.location.origin).href);
     return;
   }
   currentUser=user;
@@ -687,7 +687,7 @@ async function bootstrap(user){
     const userSnap=await withTimeout(getDoc(doc(db,"users",user.uid)),8000,"Firebase user profile request timed out.");
     if(userSnap.exists() && userSnap.data().role==="admin"){
       bootstrapFinished=true; clearTimeout(bootTimer);
-      location.replace("/admin/dashboard.html");
+      location.replace(new URL("/admin/dashboard.html", window.location.origin).href);
       return;
     }
     await withTimeout(loadClientData(),8000,"Client records request timed out. Please check Firebase rules and your connection.");
@@ -706,7 +706,7 @@ async function bootstrap(user){
 }
 $("#clientMenuBtn").onclick=()=>{$("#clientSidebar").classList.add("open");$("#clientOverlay").classList.add("show");};
 $("#clientOverlay").onclick=()=>{$("#clientSidebar").classList.remove("open");$("#clientOverlay").classList.remove("show");};
-async function logoutClient(){await signOut(auth);location.replace("/");}
+async function logoutClient(){await signOut(auth);location.replace(new URL("/", window.location.origin).href);}
 $("#clientLogout").onclick=logoutClient;
 $("#menuLogout").onclick=logoutClient;
 $("#notificationBtn").onclick=toggleNotificationPopover;
