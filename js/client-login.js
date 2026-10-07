@@ -1,3 +1,4 @@
+console.info("[PISO WIFI] BUILD v63 — unified Admin/Customer auth flow");
 import { auth, db } from "./firebase.js";
 import {
   signInWithEmailAndPassword,

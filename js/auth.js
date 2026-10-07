@@ -1,3 +1,4 @@
+console.info("[PISO WIFI] BUILD v63 — unified Admin/Customer auth flow");
 import { auth, db } from "./firebase.js";
 import {
   signInWithEmailAndPassword,
@@ -102,7 +103,14 @@ form.addEventListener("submit", async e => {
     window.location.replace("/admin/dashboard");
   } catch (err) {
     console.error("[PISO WIFI ADMIN LOGIN]", err);
-    showMessage("Login failed. Please check your Admin email and password.", "error");
+    window.pisoDebug?.capture(err?.message || String(err), {type:"ADMIN LOGIN", operation:"signInWithEmailAndPassword", errorCode:err?.code || "unknown", email});
+    const code = err?.code || "unknown";
+    const detail = code === "auth/invalid-credential" || code === "auth/wrong-password"
+      ? "The Admin email exists, but the Firebase password is not the one entered. Use Forgot password to set a new Admin password."
+      : code === "auth/user-not-found"
+        ? "That Admin email is not registered in Firebase Authentication."
+        : `Admin login failed (${code}). ${err?.message || "Please try again."}`;
+    showMessage(detail, "error");
   }
 });
 
