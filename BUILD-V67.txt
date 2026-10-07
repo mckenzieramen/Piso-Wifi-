@@ -1,0 +1,8 @@
+PISO WIFI BUILD v67
+
+Customer first-login password setup fix.
+- Re-authenticates with the temporary password before updatePassword when Firebase requires recent login.
+- Stores the temporary credential only in sessionStorage during the first-login handoff and clears it after password change.
+- Shows: "Congratulations! You can now use your PISO WIFI portal." after successful password setup.
+- Updated deployed client route cache-buster to v67.
+- Admin, Apps Script, Firestore rules, data, and unrelated features unchanged.

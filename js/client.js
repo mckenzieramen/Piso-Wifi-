@@ -1,6 +1,6 @@
 import { auth, db } from "./firebase.js";
 import {
-  onAuthStateChanged, signOut, updatePassword
+  onAuthStateChanged, signOut, updatePassword, reauthenticateWithCredential, EmailAuthProvider
 } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-auth.js";
 import {
   collection, doc, getDoc, getDocs, query, where, updateDoc, setDoc, onSnapshot, arrayUnion,
@@ -658,13 +658,36 @@ async function maybeShowFirstLoginPasswordSetup(){
     if(a!==b){msg.textContent="Passwords do not match.";msg.className="client-login-message error";return;}
     const btn=form.querySelector("button"); btn.disabled=true; btn.textContent="Saving…";
     try{
+      // Firebase may require a recent sign-in before changing a password.
+      // Re-authenticate with the temporary password used on the current login.
+      let pendingCurrentPassword="";
+      try { pendingCurrentPassword=sessionStorage.getItem("pisoWifi.pendingCurrentPassword") || ""; } catch {}
+      if (pendingCurrentPassword && currentUser?.email) {
+        const credential=EmailAuthProvider.credential(currentUser.email,pendingCurrentPassword);
+        await reauthenticateWithCredential(currentUser,credential);
+      }
       await updatePassword(currentUser,a);
       await updateDoc(doc(db,"units",unit.id),{forcePasswordChange:false,passwordChangedAt:serverTimestamp(),updatedAt:serverTimestamp()});
+      try { sessionStorage.removeItem("pisoWifi.pendingCurrentPassword"); } catch {}
       unit.forcePasswordChange=false;
-      modal.classList.add("hidden"); modal.setAttribute("aria-hidden","true");
-      toast("Your new password has been saved.");
+      form.reset();
+      msg.className="client-login-message success";
+      msg.textContent="Congratulations! You can now use your PISO WIFI portal.";
+      const btn=form.querySelector("button");
+      btn.disabled=true;
+      btn.textContent="Password Saved";
+      setTimeout(()=>{
+        modal.classList.add("hidden"); modal.setAttribute("aria-hidden","true");
+        toast("Congratulations! You can now use your PISO WIFI portal.");
+      },1800);
     }catch(err){
-      console.error(err); msg.textContent="Unable to update your password. Please sign in again and try once more.";msg.className="client-login-message error";
+      console.error(err);
+      if(err?.code==="auth/requires-recent-login") {
+        msg.textContent="Your login session needs to be refreshed. Please return to Customer Login and sign in again with your temporary password.";
+      } else {
+        msg.textContent=err?.message || "Unable to update your password. Please try again.";
+      }
+      msg.className="client-login-message error";
       btn.disabled=false;btn.textContent="Save My Password";
     }
   };

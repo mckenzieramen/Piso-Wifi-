@@ -185,6 +185,16 @@ form.addEventListener("submit", async e => {
 
     const profile = await getRole(cred.user);
 
+    // Keep the just-used credential only for the first-login password change.
+    // This lets the Customer portal re-authenticate before Firebase requires a recent login.
+    try {
+      if (profile?.role === "client" && profile?.forcePasswordChange === true) {
+        sessionStorage.setItem("pisoWifi.pendingCurrentPassword", password);
+      } else {
+        sessionStorage.removeItem("pisoWifi.pendingCurrentPassword");
+      }
+    } catch {}
+
     if (profile?.role !== "client" || profile?.active === false) {
       await signOut(auth);
       message(
