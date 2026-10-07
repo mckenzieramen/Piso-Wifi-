@@ -1,7 +1,7 @@
 import { auth, db } from "./firebase.js";
 import { firebaseConfig } from "./firebase-config.js";
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-app.js";
-import { getAuth, createUserWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-auth.js";
+import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, updateEmail, signOut as provisionerSignOut } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-auth.js";
 import { calculateFinancialRecord } from "./finance.js";
 import { onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-auth.js";
 import {
@@ -96,10 +96,8 @@ let unitSearch = "", unitStatus = "", unitPaymentStatus = "";
 // TEMPORARY ADMIN FEATURE: keep true while client deletion is needed.
 // Set to false later to remove the Delete Client button without changing the rest of the system.
 const ENABLE_CLIENT_DELETE = true;
-const CLIENT_AUTH_DOMAIN="@client-login.pisowifi.local";
 const clientProvisionerApp=initializeApp(firebaseConfig,"clientProvisioner");
 const clientProvisionerAuth=getAuth(clientProvisionerApp);
-const clientAuthEmailFromUsername=(username)=>`${String(username||"").trim().toLowerCase().replace(/[^a-z0-9]+/g,"-")}${CLIENT_AUTH_DOMAIN}`;
 const firstNameFromFullName=(name)=>String(name||"").trim().split(/\s+/)[0]||"Client";
 const sanitizeUsernamePart=(name)=>firstNameFromFullName(name).replace(/[^A-Za-z0-9]/g,"")||"Client";
 async function nextClientId(){
@@ -138,7 +136,71 @@ function availableUnitCodes(currentCode=""){
   return Array.from({length:50},(_,i)=>String(i+1)).map(code=>({code,used:activeCodes.has(code)}));
 }
 
+async function provisionMissingOrLegacyClientAuth(){
+  const candidates=units.filter(u=>u?.clientCode&&u?.email);
+  for(const u of candidates){
+    const clientCode=String(u.clientCode).trim().toUpperCase();
+    const realEmail=String(u.email).trim().toLowerCase();
+    const temporaryPassword=clientCode;
+    if(!realEmail || !/^CID-\d{3,}$/i.test(clientCode)) continue;
+
+    const legacyEmail=String(u.authEmail||"").trim().toLowerCase();
+    const isLegacySynthetic=legacyEmail && /@client-login\.pisowifi\.local$/i.test(legacyEmail);
+
+    // Existing v53 accounts used a synthetic login email. If the client is
+    // still on the temporary password, migrate that same Firebase UID to the
+    // real registered Gmail so the customer can log in with the credentials
+    // shown by Admin.
+    if(u.authUserId && isLegacySynthetic){
+      try{
+        const cred=await signInWithEmailAndPassword(clientProvisionerAuth,legacyEmail,temporaryPassword);
+        if(String(cred.user.email||"").toLowerCase()!==realEmail){
+          await updateEmail(cred.user,realEmail);
+        }
+        await setDoc(doc(db,"users",cred.user.uid),{
+          role:"client",clientUnitId:u.id,unitId:u.id,clientCode,username:u.username||"",
+          email:realEmail,authEmail:realEmail,updatedAt:serverTimestamp()
+        },{merge:true});
+        await updateDoc(doc(db,"units",u.id),{authEmail:realEmail,authUserId:cred.user.uid,updatedAt:serverTimestamp()});
+        u.authEmail=realEmail; u.authUserId=cred.user.uid;
+        console.info("[PISO WIFI] Migrated legacy client auth:",clientCode,realEmail);
+      }catch(e){
+        console.warn("[PISO WIFI] Legacy auth migration skipped for",clientCode,e?.code||e?.message||e);
+      }finally{
+        try{await provisionerSignOut(clientProvisionerAuth);}catch{}
+      }
+      continue;
+    }
+
+    // New/current records without an Auth UID get a real Firebase account
+    // using the registered Gmail and the Client ID as the temporary password.
+    if(!u.authUserId){
+      try{
+        let cred;
+        try{
+          cred=await createUserWithEmailAndPassword(clientProvisionerAuth,realEmail,temporaryPassword);
+        }catch(e){
+          if(e?.code!=="auth/email-already-in-use") throw e;
+          cred=await signInWithEmailAndPassword(clientProvisionerAuth,realEmail,temporaryPassword);
+        }
+        await setDoc(doc(db,"users",cred.user.uid),{
+          role:"client",clientUnitId:u.id,unitId:u.id,clientCode,username:u.username||"",
+          email:realEmail,authEmail:realEmail,createdAt:u.createdAt||serverTimestamp(),updatedAt:serverTimestamp()
+        },{merge:true});
+        await updateDoc(doc(db,"units",u.id),{authUserId:cred.user.uid,authEmail:realEmail,forcePasswordChange:true,updatedAt:serverTimestamp()});
+        u.authUserId=cred.user.uid; u.authEmail=realEmail; u.forcePasswordChange=true;
+        console.info("[PISO WIFI] Provisioned client auth:",clientCode,realEmail);
+      }catch(e){
+        console.warn("[PISO WIFI] Client auth provisioning skipped for",clientCode,e?.code||e?.message||e);
+      }finally{
+        try{await provisionerSignOut(clientProvisionerAuth);}catch{}
+      }
+    }
+  }
+}
+
 async function syncCustomerDirectory(){
+  try{ await provisionMissingOrLegacyClientAuth(); }catch(e){ console.warn("[PISO WIFI] Client auth provisioning pass failed:",e); }
   const jobs=units.filter(u=>u.clientCode&&u.unitCode&&u.email).map(u=>
     setDoc(doc(db,"customerLoginDirectory",String(u.clientCode).toUpperCase()),{
       clientCode:String(u.clientCode).toUpperCase(),
@@ -690,12 +752,12 @@ async function openUnitModal(id=null){
         await logActivity("Clients",`Edited ${unitCode} — ${name}`,id);
         await addNotification("client","Client profile updated.",`${name} (${clientCode}) was updated.`,id);
       }else{
-        const authEmail=clientAuthEmailFromUsername(username);
+        const authEmail=email;
         const temporaryPassword=clientCode;
         let cred;
         try{ cred=await createUserWithEmailAndPassword(clientProvisionerAuth,authEmail,temporaryPassword); }
         catch(e){
-          if(e?.code==="auth/email-already-in-use") throw new Error("This generated username already has a login account. Please try again.");
+          if(e?.code==="auth/email-already-in-use") throw new Error("This registered Gmail already has a Firebase login. Use the existing client record instead of creating a duplicate account.");
           throw e;
         }
         data.authUserId=cred.user.uid;
@@ -712,8 +774,8 @@ async function openUnitModal(id=null){
         });
         await setDoc(doc(db,"users",cred.user.uid),{role:"client",clientUnitId:ref.id,unitId:ref.id,clientCode,username,email,createdAt:serverTimestamp(),updatedAt:serverTimestamp()});
         await logActivity("Clients",`Added client account ${clientCode} — ${username} — ${name}`,ref.id);
-        await addNotification("client","New client account created.",`${name} (${clientCode}) can now log in using username ${username}.`,ref.id);
-        notify(`Created ${clientCode}. Username: ${username} · Temporary password: ${temporaryPassword}`);
+        await addNotification("client","New client account created.",`${name} (${clientCode}) can now log in using the registered Gmail.`,ref.id);
+        notify(`Created ${clientCode}. Gmail: ${email} · Temporary password: ${temporaryPassword}`);
       }
   });
   const search=$("#fCodeSearch"), hidden=$("#fCode"), list=$("#unitCodeOptions");
