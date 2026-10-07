@@ -788,7 +788,7 @@ async function logoutClient(){
   }finally{
     // Use the canonical clean login route. The previous .html target could
     // interact badly with the Pages clean-URL rewrite and cause a redirect loop.
-    window.location.replace("/client-login?loggedOut=1");
+    window.location.replace("/");
   }
 }
 $("#clientLogout").onclick=logoutClient;
