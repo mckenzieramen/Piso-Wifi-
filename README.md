@@ -1,44 +1,40 @@
-PISO WIFI — OFFICIAL ROUTE BUILD
+# PISO WIFI — FINAL CLEAN REDEPLOY 2026-10-07
 
-The official customer/client website is the root URL:
-https://piso-wifi.pages.dev/
+This package is intentionally clean: only the files actually used by the deployed website are included. Old duplicate/legacy HTML and JS files were removed from the deployment package so they cannot accidentally be served instead of the current Admin/Client files.
 
-The Admin portal is:
-https://piso-wifi.pages.dev/admin
+## LOCKED / PRESERVED
+- 6-digit OTP password recovery flow is preserved.
+- Google Apps Script password recovery backend is included under `apps-script/Code.gs`.
+- Firebase web configuration is preserved.
+- Admin login remains `pisonet@admin.com`.
+- Admin client creation uses a separate Firebase Auth instance with in-memory persistence.
+- Admin session is not intentionally signed out during client creation.
+- CID sequence remains no-reuse / highest-existing-ID + 1.
+- Existing UI and dashboard sections are preserved.
 
-The authenticated client dashboard is:
-https://piso-wifi.pages.dev/client
+## IMPORTANT
+The website cannot deploy Firestore Security Rules by itself. The included `firestore.rules` must be published in Firebase Console before Add Client can write to Firestore.
 
-Deploy the contents of this package to the ROOT of the Cloudflare Pages project.
-Do not nest the whole package inside another folder.
+DO NOT delete the Firebase project, Authentication users, Firestore data, Google Sheet, or Apps Script project.
 
-The customer account remains client-only and uses the existing Firebase authentication/data layer.
-Each authenticated client must be authorized server-side to access only their own units, sales, payments, statements and notifications.
+## DEPLOY WEBSITE
+1. Replace the contents of the GitHub Pages repository with the contents of this folder.
+2. Commit/push.
+3. Wait for Cloudflare Pages deployment to finish.
+4. Hard refresh with Ctrl+Shift+R.
 
+## PUBLISH FIRESTORE RULES
+Firebase Console → Firestore Database → Rules → replace the rules with the included `firestore.rules` → Publish.
 
-CUSTOMER ACCOUNT NAMING — V11
-=============================
-Customer-facing branding now uses "Customer Account" instead of "Client Portal".
-Official customer login:
-https://piso-wifi.pages.dev/
+The Admin write check is intentionally restricted to the dedicated Admin email `pisonet@admin.com`.
 
-Admin:
-https://piso-wifi.pages.dev/admin
-
-The internal data/auth architecture may still use client/clientId terminology
-where required by the existing backend; only the customer-facing wording was changed.
-
-
-Support chat added in this SafeEdit version: customer ↔ admin real-time chat via supportChats, typing indicators, unread flags, Open/Solved/Closed statuses, and preserved conversation history.
-
-
-## V16 Support Chat Root-Cause Fix
-- Customer support conversations now use the authenticated customer's UID as the stable default document ID.
-- Existing conversations created by earlier versions are recovered by `authUserId` lookup.
-- Customer support access no longer depends on unit-linkage fields at the time a chat is created; access remains restricted to the signed-in owner or Admin.
-- Admin opening a conversation clears the Admin unread flag.
-- Publish the included `firestore.rules` to the same Firebase project used by the site before testing support chat.
-
-
-## v62 AUTH/NAVIGATION FIX
-Admin and Customer login now use Firebase authStateReady before routing, clean canonical routes (/admin/dashboard and /client), and cache-busted v62 modules.
+## AFTER DEPLOYMENT TEST
+1. Sign in to `/admin/`.
+2. Open Units / Clients.
+3. Add New Client.
+4. Select a free Unit Code.
+5. Fill First Name, Last Name, Registered Gmail.
+6. Save Client.
+7. Confirm the new CID appears and the Admin remains logged in.
+8. Test the customer login separately.
+9. Test the 6-digit password recovery separately.

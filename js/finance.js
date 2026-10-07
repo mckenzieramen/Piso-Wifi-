@@ -15,14 +15,17 @@ export function calculateFinancialRecord(record = {}, settings = {}, payments = 
 
   const electricity = Math.max(0, Number(settings.electricity || 0));
   const electricityRule = String(settings.electricityRule || "ADD_TO_CLIENT");
-  // Owner provides the configured electricity amount to the customer.
-  // Under the normal ADD_TO_CLIENT rule, electricity is an additional customer earning,
-  // not a deduction from the customer's percentage share.
+  // Electricity is a customer earning when the business rule is ADD_TO_CLIENT.
+  // It is never deducted from the customer's share under this rule.
+  const electricityAdjustment = electricityRule === "SUBTRACT_FROM_CLIENT"
+    ? -electricity
+    : electricityRule === "SEPARATE_CHARGE"
+      ? 0
+      : electricity;
+  // Miscellaneous fees are custom per monthly record and are deducted from
+  // the customer's total earnings after the electricity adjustment.
   const miscellaneous = Math.max(0, Number(record.miscellaneousFee || 0));
-  const electricityToClient = electricityRule === "SUBTRACT_FROM_CLIENT" ? -electricity : electricity;
-  const clientTotal = Math.max(0, client + electricityToClient - miscellaneous);
-  const adminElectricityShare = electricity;
-  const adminTotal = owner + adminElectricityShare;
+  const clientTotal = Math.max(0, client + electricityAdjustment - miscellaneous);
 
   const paid = payments
     .filter(p => p.unitId === record.unitId && p.month === record.month)
@@ -46,8 +49,6 @@ export function calculateFinancialRecord(record = {}, settings = {}, payments = 
     owner,
     client,
     elec: electricity,
-    adminElectricityShare,
-    adminTotal,
     miscellaneous,
     clientTotal: due,
     paid,

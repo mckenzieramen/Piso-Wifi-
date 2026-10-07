@@ -1,0 +1,7 @@
+PUBLISH THIS IN FIREBASE CONSOLE
+
+Firestore Database -> Rules -> paste/replace with the included firestore.rules -> Publish.
+
+Without this publish step, the website code cannot override Firestore permissions and Add Client will continue to show Permission denied.
+
+Do NOT make the database public. Do NOT use allow read, write: if true.
