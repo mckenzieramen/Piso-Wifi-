@@ -1,7 +1,5 @@
 import { auth, db } from "./firebase.js";
 import {
-
-console.info("[PISO WIFI] BUILD v58 — registered-Gmail client auth baseline");
   signInWithEmailAndPassword,
   onAuthStateChanged,
   signOut,
@@ -9,6 +7,8 @@ console.info("[PISO WIFI] BUILD v58 — registered-Gmail client auth baseline");
   browserSessionPersistence,
 } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-auth.js";
 import { doc, getDoc, setDoc, addDoc, collection, serverTimestamp } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-firestore.js";
+
+console.info("[PISO WIFI] BUILD v61 — navigation/auth syntax fixed");
 
 const form = document.querySelector("#clientLoginForm");
 const msg = document.querySelector("#clientLoginMessage");
