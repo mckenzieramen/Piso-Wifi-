@@ -17,7 +17,7 @@ export function calculateFinancialRecord(record = {}, settings = {}, payments = 
   const electricityRule = String(settings.electricityRule || "ADD_TO_CLIENT");
   // Electricity is a customer earning when the business rule is ADD_TO_CLIENT.
   // It is never deducted from the customer's share under this rule.
-  // Electricity is an ADMIN share/charge and must not inflate the customer's earnings.
+  // Electricity is an OWNER share/charge and must not inflate the customer's earnings.
   // The customer earns only the configured client share, less any miscellaneous fee.
   const miscellaneous = Math.max(0, Number(record.miscellaneousFee || 0));
   const clientTotal = Math.max(0, client - miscellaneous);
