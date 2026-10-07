@@ -129,11 +129,26 @@ async function routeUser(user) {
   }
 }
 
+let logoutGateActive = false;
+const logoutUrl = new URLSearchParams(window.location.search).get("loggedOut")==="1";
+
+// After logout, never route a stale Firebase auth callback back into the
+// customer dashboard. Keep the gate until Firebase confirms signed-out state.
 onAuthStateChanged(auth, async user => {
   const justLoggedOut=sessionStorage.getItem("pisoWifi.justLoggedOut")==="1";
-  if(justLoggedOut){
+  if(justLoggedOut || logoutUrl || logoutGateActive){
+    logoutGateActive = true;
+    if(user){
+      try{ await signOut(auth); }
+      catch(e){ console.warn("[PISO WIFI CUSTOMER LOGOUT] cleanup failed",e); }
+      return;
+    }
     sessionStorage.removeItem("pisoWifi.justLoggedOut");
-    if(user){try{await signOut(auth);}catch(e){console.warn("[PISO WIFI CUSTOMER LOGOUT] cleanup failed",e);}}
+    logoutGateActive = false;
+    if(logoutUrl){
+      const cleanUrl = window.location.pathname;
+      window.history.replaceState({}, document.title, cleanUrl);
+    }
     return;
   }
   if (user) routeUser(user);

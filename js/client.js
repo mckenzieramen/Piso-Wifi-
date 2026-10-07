@@ -774,16 +774,20 @@ async function bootstrap(user){
 $("#clientMenuBtn").onclick=()=>{$("#clientSidebar").classList.add("open");$("#clientOverlay").classList.add("show");};
 $("#clientOverlay").onclick=()=>{$("#clientSidebar").classList.remove("open");$("#clientOverlay").classList.remove("show");};
 async function logoutClient(){
+  // Mark the logout before touching Firebase so the login page can suppress
+  // any stale auth-state callback during the browser navigation.
   try{
     sessionStorage.setItem("pisoWifi.justLoggedOut","1");
     sessionStorage.removeItem("pisoWifi.pendingCurrentPassword");
     if(supportChatUnsub){supportChatUnsub();supportChatUnsub=null;}
     supportChatOpen=false;
-    if(auth.currentUser) await signOut(auth);
+    await signOut(auth);
   }catch(e){
     console.error("[PISO WIFI CUSTOMER LOGOUT]",e);
   }finally{
-    window.location.replace("/client-login.html?loggedOut=1");
+    // Use the canonical clean login route. The previous .html target could
+    // interact badly with the Pages clean-URL rewrite and cause a redirect loop.
+    window.location.assign("/client-login?loggedOut=1");
   }
 }
 $("#clientLogout").onclick=logoutClient;
