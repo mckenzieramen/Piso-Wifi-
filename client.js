@@ -680,7 +680,7 @@ async function withTimeout(promise,ms,label){
 async function bootstrap(user){
   if(!user){
     bootstrapFinished=true; clearTimeout(bootTimer);
-    location.replace("/");
+    location.replace("/client-login");
     return;
   }
   currentUser=user;

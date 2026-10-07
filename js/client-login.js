@@ -27,9 +27,16 @@ function normalizeUsername(value) {
 }
 
 try {
+  const justLoggedOut = new URLSearchParams(window.location.search).get("loggedOut") === "1";
+  const emailInput = document.querySelector("#clientEmail");
+  const passwordInput = document.querySelector("#clientPassword");
+  if (justLoggedOut) {
+    // Never carry the previous customer session/password into a fresh login.
+    if (passwordInput) passwordInput.value = "";
+  }
   const savedUnit = localStorage.getItem(CLIENT_REMEMBER_KEY);
-  if (savedUnit && document.querySelector("#clientEmail")) {
-    document.querySelector("#clientEmail").value = savedUnit;
+  if (savedUnit && emailInput) {
+    emailInput.value = savedUnit;
     if (remember) remember.checked = true;
   }
 } catch {}
