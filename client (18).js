@@ -432,7 +432,7 @@ function renderDashboard(){
     <div class="financial-grid">
       ${financialCard("▥","Gross Sales",total.gross,"Gross Sales","gross")}
       ${financialCard("◉","Your Share",total.client,`${settings.clientPercent}% share`,"share")}
-      ${financialCard("−","Total Deductions",Math.max(0,total.internet+total.miscellaneous),`Internet + misc. fee`,"deductions")}
+      ${financialCard("−","Total Deductions",Math.max(0,total.internet+total.elec+total.miscellaneous),`Internet + electricity + misc. fee`,"deductions")}
       ${financialCard("₱","Total Earnings",Math.max(0,total.due),"Customer earnings for this period","earnings")}
     </div>
     <div class="client-two-col">
@@ -458,7 +458,8 @@ function unitCard(u){
   return `<article class="unit-card"><div class="unit-card-top"><div class="unit-symbol">⌁</div>${statusBadge(status)}</div><h3>${esc(u.unitCode||"—")}</h3><p class="unit-location">${esc(u.location||"Location not provided")}</p><div class="unit-divider"></div><div class="unit-meta"><span><b>Installed</b>${esc(dateLong(u.dateJoined||u.createdAt))}</span><span><b>Client ID</b>${esc(u.clientCode||"—")}</span></div></article>`;
 }
 function breakdown(t){
-  return `<div class="breakdown-list"><div><span>Gross Sales</span><b>${money(t.gross)}</b></div><div><span>Internet Fee</span><b>${money(t.internet)}</b></div><div><span>Miscellaneous Fee</span><b>${money(t.miscellaneous)}</b></div><div><span>Your Share (${settings.clientPercent}%)</span><b>${money(t.client)}</b></div><div class="highlight"><span>Amount Due</span><b>${money(t.due)}</b></div><div><span>Amount Paid</span><b>${money(t.paid)}</b></div><div class="balance-row"><span>Balance</span><b>${money(t.balance)}</b></div></div>`;
+  const net=Math.max(0,t.client - t.elec);
+  return `<div class="breakdown-list"><div><span>Gross Sales</span><b>${money(t.gross)}</b></div><div><span>Internet Fee</span><b>${money(t.internet)}</b></div><div><span>Electricity Share</span><b>${money(t.elec)}</b></div><div><span>Miscellaneous Fee</span><b>${money(t.miscellaneous)}</b></div><div><span>Your Share (${settings.clientPercent}%)</span><b>${money(t.client)}</b></div><div class="highlight"><span>Amount Due</span><b>${money(t.due)}</b></div><div><span>Amount Paid</span><b>${money(t.paid)}</b></div><div class="balance-row"><span>Balance</span><b>${money(t.balance)}</b></div></div>`;
 }
 function recentPaymentsHtml(){
   const list=ownPayments().sort((a,b)=>timeValue(b.paymentDate||b.date||b.createdAt)-timeValue(a.paymentDate||a.date||a.createdAt)).slice(0,5);
@@ -478,9 +479,9 @@ function renderSales(){
   const year=selectedYear;
   const list=ownRecords().filter(r=>String(r.month||"").startsWith(year+"-")).sort((a,b)=>String(b.month).localeCompare(String(a.month)));
   $("#view").innerHTML=pageTitle("Sales History","View your monthly sales and computations.",`<div class="filter-row"><select id="salesYear" class="client-filter"></select><select id="salesUnit" class="client-filter"><option value="all">All Units</option>${clientUnits.map(u=>`<option value="${u.id}" ${u.id===selectedUnitId?"selected":""}>${esc(u.unitCode)}</option>`).join("")}</select></div>`)+
-    `<section class="client-panel table-panel"><div class="table-scroll"><table class="client-table"><thead><tr><th>Month</th><th>Unit</th><th>Gross Sales</th><th>Internet Fee</th><th>Misc. Fee</th><th>Your Share</th><th>Amount Due</th><th>Status</th></tr></thead><tbody>${
+    `<section class="client-panel table-panel"><div class="table-scroll"><table class="client-table"><thead><tr><th>Month</th><th>Unit</th><th>Gross Sales</th><th>Internet Fee</th><th>Electricity Share</th><th>Misc. Fee</th><th>Your Share</th><th>Amount Due</th><th>Status</th></tr></thead><tbody>${
       list.filter(r=>selectedUnitId==="all"||r.unitId===selectedUnitId).length
-      ? list.filter(r=>selectedUnitId==="all"||r.unitId===selectedUnitId).map(r=>{const u=clientUnits.find(x=>x.id===r.unitId),c=calc(r);return `<tr><td>${monthLabel(r.month)}</td><td><b>${esc(u?.unitCode||"—")}</b></td><td>${money(c.gross)}</td><td>${money(c.internet)}</td><td>${money(c.miscellaneous)}</td><td>${money(c.client)}</td><td class="strong-amount">${money(c.clientTotal)}</td><td>${statusBadge(c.status)}</td></tr>`}).join("")
+      ? list.filter(r=>selectedUnitId==="all"||r.unitId===selectedUnitId).map(r=>{const u=clientUnits.find(x=>x.id===r.unitId),c=calc(r);return `<tr><td>${monthLabel(r.month)}</td><td><b>${esc(u?.unitCode||"—")}</b></td><td>${money(c.gross)}</td><td>${money(c.internet)}</td><td>${money(c.elec)}</td><td>${money(c.miscellaneous)}</td><td>${money(c.client)}</td><td class="strong-amount">${money(c.clientTotal)}</td><td>${statusBadge(c.status)}</td></tr>`}).join("")
       : `<tr><td colspan="9">${empty("No sales records available.")}</td></tr>`
     }</tbody></table></div></section>`;
   $("#salesYear").innerHTML=[...new Set(ownRecords().map(r=>String(r.month||"").slice(0,4)).filter(Boolean))].sort((a,b)=>Number(b)-Number(a)).map(y=>`<option ${y===year?"selected":""}>${y}</option>`).join("")||`<option>${year}</option>`;
@@ -501,9 +502,9 @@ function renderStatement(){
   const month=selectedMonth;
   const total=aggregate(month);
   $("#view").innerHTML=pageTitle("Statement","Generate and download your statement.",`<div class="filter-row"><select id="statementMonth" class="client-filter"></select>${clientUnits.length>1?`<select id="statementUnit" class="client-filter"><option value="all">All Units</option>${clientUnits.map(x=>`<option value="${x.id}" ${x.id===selectedUnitId?"selected":""}>${esc(x.unitCode)}</option>`).join("")}</select>`:""}<button class="client-primary" id="downloadPdf">${icons.download}Download PDF</button><button class="client-secondary" id="printStatement">${icons.printer}Print</button></div>`)+
-    `<section class="statement-sheet" id="statementSheet"><div class="statement-header"><div class="statement-brand"><img class="statement-official-logo" src="/assets/piso-wifi-logo.png" alt="PISO WIFI"></div><div class="statement-period"><b>${monthLabel(month)}</b><span>Generated ${dateLong(new Date())}</span></div></div>
+    `<section class="statement-sheet" id="statementSheet"><div class="statement-header"><div class="statement-brand"><div class="brand-logo">${wifiLogo()}</div><div><h2>PISO WIFI</h2><span>Client Statement</span></div></div><div class="statement-period"><b>${monthLabel(month)}</b><span>Generated ${dateLong(new Date())}</span></div></div>
       <div class="statement-client-grid"><div><b>Client Name</b><span>${esc(clientName())}</span></div><div><b>Client ID</b><span>${esc(clientCode())}</span></div><div><b>Unit${units.length>1?"s":""}</b><span>${esc(units.map(x=>x.unitCode).join(", ")||"—")}</span></div><div><b>Location</b><span>${esc(units.length===1?units[0].location:"Multiple assigned units")}</span></div></div>
-      <div class="statement-table-wrap"><table class="client-table statement-table"><tbody><tr><td>Gross Sales</td><td>${money(total.gross)}</td></tr><tr><td>Internet Fee</td><td>${money(total.internet)}</td></tr><tr><td>Miscellaneous Fee</td><td>${money(total.miscellaneous)}</td></tr><tr><td>Your Share (${settings.clientPercent}%)</td><td>${money(total.client)}</td></tr><tr class="total-row"><td>Amount Due</td><td>${money(total.due)}</td></tr><tr><td>Amount Paid</td><td>${money(total.paid)}</td></tr><tr class="balance-row"><td>Balance</td><td>${money(total.balance)}</td></tr></tbody></table></div>
+      <div class="statement-table-wrap"><table class="client-table statement-table"><tbody><tr><td>Gross Sales</td><td>${money(total.gross)}</td></tr><tr><td>Internet Fee</td><td>${money(total.internet)}</td></tr><tr><td>Electricity Share</td><td>${money(total.elec)}</td></tr><tr><td>Miscellaneous Fee</td><td>${money(total.miscellaneous)}</td></tr><tr><td>Your Share (${settings.clientPercent}%)</td><td>${money(total.client)}</td></tr><tr class="total-row"><td>Amount Due</td><td>${money(total.due)}</td></tr><tr><td>Amount Paid</td><td>${money(total.paid)}</td></tr><tr class="balance-row"><td>Balance</td><td>${money(total.balance)}</td></tr></tbody></table></div>
       <div class="statement-footer"><span>Status ${statusBadge(paymentStatus(total))}</span><small>This statement reflects records maintained in the PISO WIFI Management System.</small></div>
     </section>`;
   renderMonthSelectors();
@@ -514,7 +515,7 @@ function renderStatement(){
   $("#printStatement").onclick=()=>printStatement(total,units,month);
 }
 function wifiLogo(){return `<svg viewBox="0 0 48 48" aria-hidden="true"><path d="M7 20c10-9 24-9 34 0M12 26c7-6 17-6 24 0M18 32c3.5-3 8.5-3 12 0" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"/><circle cx="24" cy="38" r="2.5" fill="currentColor"/></svg>`;}
-function statementHtmlForPdf(total,units,month){return {title:`PISO WIFI Client Statement — ${monthLabel(month)}`,lines:[["Client Name",clientName()],["Client ID",clientCode()],["Unit",units.map(u=>u.unitCode).join(", ")||"—"],["Location",units.length===1?units[0].location:"Multiple assigned units"],["Period",monthLabel(month)],["Status",paymentStatus(total)],["Gross Sales",money(total.gross)],["Internet Fee",money(total.internet)],[`Your Share (${settings.clientPercent}%)`,money(total.client)],["Amount Due",money(total.due)],["Amount Paid",money(total.paid)],["Balance",money(total.balance)]]};}
+function statementHtmlForPdf(total,units,month){return {title:`PISO WIFI Client Statement — ${monthLabel(month)}`,lines:[["Client Name",clientName()],["Client ID",clientCode()],["Unit",units.map(u=>u.unitCode).join(", ")||"—"],["Location",units.length===1?units[0].location:"Multiple assigned units"],["Period",monthLabel(month)],["Status",paymentStatus(total)],["Gross Sales",money(total.gross)],["Internet Fee",money(total.internet)],["Electricity Share",money(total.elec)],[`Your Share (${settings.clientPercent}%)`,money(total.client)],["Amount Due",money(total.due)],["Amount Paid",money(total.paid)],["Balance",money(total.balance)]]};}
 function downloadStatementPdf(total,units,month){
   const api=window.jspdf;
   if(!api?.jsPDF){toast("PDF exporter is still loading. Please try again.","error");return;}
@@ -540,7 +541,7 @@ function printStatement(total,units,month){
   @media print{body{padding:10px}}
   </style></head><body><div class="brand"><div><h1>PISO WIFI</h1><div class="muted">Client Statement</div></div><div>${monthLabel(month)}<br><span class="muted">Generated ${dateLong(new Date())}</span></div></div>
   <div class="meta"><div><b>Client Name</b><br>${esc(clientName())}</div><div><b>Client ID</b><br>${esc(clientCode())}</div><div><b>Unit${units.length>1?"s":""}</b><br>${esc(units.map(u=>u.unitCode).join(", "))}</div><div><b>Location</b><br>${esc(units.length===1?units[0].location:"Multiple assigned units")}</div></div>
-  <table><tbody><tr><td>Gross Sales</td><td>${money(total.gross)}</td></tr><tr><td>Internet Fee</td><td>${money(total.internet)}</td></tr><tr><td>Miscellaneous Fee</td><td>${money(total.miscellaneous)}</td></tr><tr><td>Your Share (${settings.clientPercent}%)</td><td>${money(total.client)}</td></tr><tr class="total"><td>Amount Due</td><td>${money(total.due)}</td></tr><tr><td>Amount Paid</td><td>${money(total.paid)}</td></tr><tr class="balance"><td>Balance</td><td>${money(total.balance)}</td></tr></tbody></table>
+  <table><tbody><tr><td>Gross Sales</td><td>${money(total.gross)}</td></tr><tr><td>Internet Fee</td><td>${money(total.internet)}</td></tr><tr><td>Electricity Share</td><td>${money(total.elec)}</td></tr><tr><td>Miscellaneous Fee</td><td>${money(total.miscellaneous)}</td></tr><tr><td>Your Share (${settings.clientPercent}%)</td><td>${money(total.client)}</td></tr><tr class="total"><td>Amount Due</td><td>${money(total.due)}</td></tr><tr><td>Amount Paid</td><td>${money(total.paid)}</td></tr><tr class="balance"><td>Balance</td><td>${money(total.balance)}</td></tr></tbody></table>
   <div class="foot">Status: ${paymentStatus(total)} · PISO WIFI Management System</div></body></html>`);
   w.document.close();w.focus();setTimeout(()=>w.print(),350);
 }
@@ -598,20 +599,11 @@ function toggleNotificationPopover(){
   $("#notificationPopover")?.classList.toggle("show");
 }
 
-function navigateTo(next){
-  const target=String(next||"dashboard").replace(/^#/,"").split("?")[0]||"dashboard";
-  route=target;
-  if(location.hash!=="#"+target) location.hash="#"+target;
-  render();
-  syncProfileMenu?.();
-}
 function bindRouteButtons(){
-  document.querySelectorAll("[data-route]").forEach(el=>{
-    el.onclick=e=>{e.preventDefault();e.stopPropagation();navigateTo(el.dataset.route);};
-  });
+  document.querySelectorAll("[data-route]").forEach(el=>el.onclick=e=>{e.preventDefault();location.hash="#"+el.dataset.route;});
 }
 function renderNav(){
-  document.querySelectorAll("#clientNav [data-route]").forEach(a=>a.classList.toggle("active",a.dataset.route===route));
+  document.querySelectorAll("#clientNav a[data-route]").forEach(a=>a.classList.toggle("active",a.dataset.route===route));
 }
 function render(){
   renderNav();
@@ -624,7 +616,7 @@ function render(){
 function parseRoute(){return location.hash.replace("#","").split("?")[0]||"dashboard";}
 
 function openAuthError(message){
-  const loader=$("#clientAuthLoading");loader.innerHTML=`<div class="client-auth-error"><strong>Unable to open Customer Account</strong><span>${esc(message)}</span><a href="/">Return to Customer Account Login</a></div>`;
+  const loader=$("#clientAuthLoading");loader.innerHTML=`<div class="client-auth-error"><strong>Unable to open Customer Account</strong><span>${esc(message)}</span><a href="client-login.html">Return to Customer Account Login</a></div>`;
   loader.classList.remove("hidden");
 }
 function setupPasswordVisibilityToggles(){
@@ -696,7 +688,7 @@ async function bootstrap(user){
     const userSnap=await withTimeout(getDoc(doc(db,"users",user.uid)),8000,"Firebase user profile request timed out.");
     if(userSnap.exists() && userSnap.data().role==="admin"){
       bootstrapFinished=true; clearTimeout(bootTimer);
-      location.replace("/admin/dashboard");
+      location.replace("/admin/dashboard.html");
       return;
     }
     await withTimeout(loadClientData(),8000,"Client records request timed out. Please check Firebase rules and your connection.");
@@ -729,23 +721,14 @@ function updateSupportBadge(){const b=$("#supportUnreadBadge");if(!b)return;cons
 $("#menuChangePassword").onclick=()=>{$("#clientProfileMenu")?.classList.remove("show");$("#clientProfileBtn")?.setAttribute("aria-expanded","false");const modal=$("#clientPasswordSetup");if(modal){modal.classList.remove("hidden");modal.setAttribute("aria-hidden","false");}};
 function syncProfileMenu(){const name=clientName(), av=initials(name);if($("#menuClientName"))$("#menuClientName").textContent=name;if($("#menuAvatar"))$("#menuAvatar").textContent=av;}
 function routeFromSearch(q){const v=String(q||"").trim().toLowerCase();if(!v)return null;if(v.includes("dashboard")||v.includes("home"))return"dashboard";if(v.includes("unit"))return"units";if(v.includes("sale")||v.includes("revenue"))return"sales";if(v.includes("pay"))return"payments";if(v.includes("statement")||v.includes("bill"))return"statement";if(v.includes("profile")||v.includes("account"))return"profile";if(v.includes("notification")||v.includes("alert"))return"notifications";return null;}
-function bindQuickSearch(){const input=$("#clientQuickSearch"),box=$("#clientSearchSuggestions");if(!input||!box)return;const items=[['dashboard','Dashboard','Overview of your account'],['units','My Units','Assigned Piso WiFi units'],['sales','Sales History','Monthly sales records'],['payments','Payments','Payment history and balance'],['statement','Statement','Monthly client statement'],['profile','My Profile','Account information'],['notifications','Notifications','Updates from Admin']];const draw=(q='')=>{const f=items.filter(x=>!q||x[1].toLowerCase().includes(q.toLowerCase())||x[2].toLowerCase().includes(q.toLowerCase()));box.innerHTML=f.slice(0,5).map(x=>`<button type="button" data-search-route="${x[0]}"><b>${esc(x[1])}</b><small>${esc(x[2])}</small></button>`).join('');box.querySelectorAll('[data-search-route]').forEach(b=>b.onclick=()=>{navigateTo(b.dataset.searchRoute);box.classList.add('hidden');input.value='';});box.classList.toggle('hidden',f.length===0);};input.addEventListener('focus',()=>draw(input.value));input.addEventListener('input',()=>{const target=routeFromSearch(input.value);if(target&&input.value.trim().length>=3){draw(input.value)}else draw(input.value)});}
+function bindQuickSearch(){const input=$("#clientQuickSearch"),box=$("#clientSearchSuggestions");if(!input||!box)return;const items=[['dashboard','Dashboard','Overview of your account'],['units','My Units','Assigned Piso WiFi units'],['sales','Sales History','Monthly sales records'],['payments','Payments','Payment history and balance'],['statement','Statement','Monthly client statement'],['profile','My Profile','Account information'],['notifications','Notifications','Updates from Admin']];const draw=(q='')=>{const f=items.filter(x=>!q||x[1].toLowerCase().includes(q.toLowerCase())||x[2].toLowerCase().includes(q.toLowerCase()));box.innerHTML=f.slice(0,5).map(x=>`<button type="button" data-search-route="${x[0]}"><b>${esc(x[1])}</b><small>${esc(x[2])}</small></button>`).join('');box.querySelectorAll('[data-search-route]').forEach(b=>b.onclick=()=>{location.hash='#'+b.dataset.searchRoute;box.classList.add('hidden');input.value='';});box.classList.toggle('hidden',f.length===0);};input.addEventListener('focus',()=>draw(input.value));input.addEventListener('input',()=>{const target=routeFromSearch(input.value);if(target&&input.value.trim().length>=3){draw(input.value)}else draw(input.value)});}
 bindQuickSearch();
 syncProfileMenu();
 document.addEventListener("click",e=>{
   if(!e.target.closest("#notificationWrap"))$("#notificationPopover")?.classList.remove("show");
   if(!e.target.closest("#clientProfileWrap")){ $("#clientProfileMenu")?.classList.remove("show"); $("#clientProfileBtn")?.setAttribute("aria-expanded","false"); }
   if(!e.target.closest("#clientSearchWrap"))$("#clientSearchSuggestions")?.classList.add("hidden");
-  const routeEl=e.target.closest("[data-route]");if(routeEl){e.preventDefault();e.stopPropagation();navigateTo(routeEl.dataset.route);if(routeEl.closest("#clientProfileMenu")){$("#clientProfileMenu")?.classList.remove("show");$("#clientProfileBtn")?.setAttribute("aria-expanded","false");}}
+  const routeEl=e.target.closest("[data-route]");if(routeEl&&routeEl.closest("#clientProfileMenu")){e.preventDefault();location.hash="#"+routeEl.dataset.route;$("#clientProfileMenu")?.classList.remove("show");$("#clientProfileBtn")?.setAttribute("aria-expanded","false");}
 });
 window.addEventListener("hashchange",()=>{route=parseRoute();render();syncProfileMenu();});
-(async()=>{
-  try{
-    if(typeof auth.authStateReady === "function") await auth.authStateReady();
-    await bootstrap(auth.currentUser);
-  }catch(e){
-    console.error("Customer auth initialization failed:",e);
-    openAuthError(e?.message||"Firebase Authentication could not be initialized.");
-  }
-})();
-onAuthStateChanged(auth,user=>{if(bootstrapFinished && user?.uid===currentUser?.uid) return; bootstrap(user);});
+onAuthStateChanged(auth,bootstrap);

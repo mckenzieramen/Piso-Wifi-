@@ -1,13 +1,3 @@
-<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-  <meta name="theme-color" content="#0a2344">
-  <title>PISO WIFI — Customer Account</title>
-  <meta name="robots" content="noindex,nofollow">
-
-<style id="client-portal-inline-css">
 /* PISO WIFI Customer Account — shared visual system */
 :root{
   --navy:#09213f;--navy-2:#0d3157;--navy-3:#123e69;--blue:#0877e8;--blue-2:#1697f4;
@@ -53,7 +43,7 @@ input,select,textarea{font-size:16px}
 .mobile-brand{display:none}
 .login-heading h2{font-size:29px;margin:10px 0 7px;letter-spacing:-.02em}.login-heading p{color:var(--muted);line-height:1.55;margin:0 0 30px;font-size:14px}
 .client-field{display:block;margin:18px 0}.client-field>span{display:block;font-size:13px;font-weight:700;margin-bottom:8px;color:#33445d}
-.input-with-icon{height:52px;border:1px solid #dbe4ee;border-radius:10px;display:flex;align-items:center;padding:0 12px;gap:9px;transition:.2s;background:#fff}.input-with-icon:focus-within{border-color:#3b9af1;box-shadow:0 0 0 4px rgba(8,119,232,.09)}.input-with-icon svg{width:18px;height:18px;fill:none;stroke:#7c8da3;stroke-width:1.7;flex:none}.input-with-icon input{border:0;outline:0;min-width:0;flex:1;color:var(--ink);background:transparent}.input-with-icon button{border:0;background:transparent;color:var(--blue);font-size:12px;font-weight:700;padding:7px}
+.input-with-icon{height:52px;border:1px solid #dbe4ee;border-radius:10px;display:flex;align-items:center;padding:0 12px;gap:9px;transition:.2s;background:#fff}.input-with-icon:focus-within{border-color:#3b9af1;box-shadow:0 0 0 4px rgba(8,119,232,.09)}.input-with-icon svg{width:18px;height:18px;fill:none;stroke:#7c8da3;stroke-width:1.7;flex:none}.input-with-icon input{border:0;outline:0;min-width:0;flex:1;color:var(--ink);background:transparent}.input-with-icon button{border:0;background:transparent;color:var(--blue);font-size:12px;font-weight:700;padding:7px}.input-with-icon .password-toggle{cursor:pointer;min-width:42px;text-align:center}.input-with-icon .password-toggle:hover{text-decoration:underline}
 .login-options{display:flex;justify-content:flex-end;margin:3px 0 20px}.text-link,.back-admin{border:0;background:transparent;color:var(--blue);font-weight:700;font-size:12px;text-decoration:none}
 .client-primary,.client-secondary{min-height:44px;border-radius:9px;padding:0 16px;border:1px solid transparent;font-weight:750;display:inline-flex;align-items:center;justify-content:center;gap:8px;text-decoration:none}
 .client-primary{background:linear-gradient(135deg,#0b78e8,#0864c6);color:#fff;box-shadow:0 9px 18px rgba(8,119,232,.18)}.client-primary:hover{filter:brightness(1.04)}.client-primary:disabled{opacity:.65;cursor:wait}
@@ -68,7 +58,7 @@ input,select,textarea{font-size:16px}
 .client-sidebar-brand{display:flex;align-items:center;gap:10px;padding:2px 9px 24px}.client-sidebar-brand .client-logo-mark{width:37px;height:37px;border-radius:10px}.client-sidebar-brand .client-logo-mark svg{width:28px}.client-sidebar-brand b{display:block;color:#fff;font-size:17px;letter-spacing:.05em}.client-sidebar-brand small{display:block;color:#88a9c9;font-size:10px;margin-top:1px}
 .client-nav{display:flex;flex-direction:column;gap:4px}.client-nav a,.client-logout{display:flex;align-items:center;gap:12px;width:100%;min-height:45px;padding:0 13px;border:0;border-radius:9px;color:#c6d9ec;text-decoration:none;background:transparent;font-size:13px;font-weight:600;text-align:left}.client-nav a:hover,.client-logout:hover{background:rgba(25,124,220,.14);color:#fff}.client-nav a.active{background:linear-gradient(90deg,#0b73d9,#0a64be);color:#fff;box-shadow:0 7px 18px rgba(0,91,180,.2)}.nav-icon{width:21px;text-align:center;flex:none;font-weight:800}.client-logout{margin-top:auto;color:#bcd1e5}.client-main{margin-left:252px;min-height:100vh}.client-topbar{height:68px;background:#fff;border-bottom:1px solid #e6edf4;display:flex;align-items:center;justify-content:flex-end;padding:0 31px;position:sticky;top:0;z-index:20}.client-menu-btn{display:none;border:0;background:transparent;font-size:24px;color:#1d3856}.client-mobile-context{display:none}.client-top-actions{display:flex;align-items:center;gap:19px}.notification-wrap{position:relative}.notification-btn{position:relative;width:39px;height:39px;border:0;border-radius:10px;background:#f7f9fc;color:#27445f;display:grid;place-items:center}.notification-btn svg{width:19px;height:19px;fill:none;stroke:currentColor;stroke-width:1.7}.notification-count{position:absolute;right:-2px;top:-4px;min-width:17px;height:17px;padding:0 4px;border-radius:10px;background:#e84959;color:#fff;font-size:9px;font-weight:800;display:grid;place-items:center;border:2px solid #fff}.client-identity{display:flex;align-items:center;gap:9px}.client-identity b{display:block;font-size:12px}.client-identity small{display:block;color:#8291a4;font-size:10px;margin-top:2px}.client-avatar,.welcome-avatar{width:38px;height:38px;border-radius:50%;display:grid;place-items:center;background:#0b73d8;color:#fff;font-size:11px;font-weight:800}.notification-popover{position:absolute;right:0;top:49px;width:330px;background:#fff;border:1px solid #e3eaf2;border-radius:12px;box-shadow:0 20px 45px rgba(13,41,71,.16);padding:7px;display:none}.notification-popover.show{display:block}.notification-popover button{width:100%;border:0;background:#fff;border-radius:9px;padding:11px;text-align:left}.notification-popover button:hover{background:#f5f9fe}.notification-popover b{display:block;font-size:12px}.notification-popover small{display:block;color:#718096;line-height:1.4;margin-top:4px}.popover-empty{padding:18px;text-align:center;color:#718096;font-size:12px}
 .client-content{padding:29px 32px 45px;max-width:1500px;margin:0 auto}.client-welcome{display:flex;justify-content:space-between;align-items:flex-end;gap:20px;margin-bottom:23px}.client-welcome h1{font-size:25px;letter-spacing:-.025em;margin:0 0 6px}.client-welcome p{margin:0;color:#718096;font-size:13px}.dashboard-filters,.filter-row,.client-head-actions{display:flex;align-items:center;gap:9px;flex-wrap:wrap}.client-select-wrap{height:42px;min-width:165px;display:flex;align-items:center;gap:7px;border:1px solid #dce5ef;background:#fff;border-radius:9px;padding:0 11px;color:#6b7d93}.client-select-wrap svg{width:17px;height:17px;fill:none;stroke:currentColor;stroke-width:1.7}.client-select-wrap select,.client-filter{border:0;outline:0;background:transparent;color:#344a63;font-size:12px;font-weight:650;min-width:120px}
-.financial-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;margin-bottom:18px}.financial-card{position:relative;min-height:142px;padding:18px 18px 15px;background:#fff;border:1px solid #e2e9f1;border-radius:12px;box-shadow:0 5px 16px rgba(22,48,80,.035);overflow:hidden}.financial-card:after{content:"";position:absolute;right:-28px;bottom:-34px;width:100px;height:100px;border-radius:50%;background:rgba(8,119,232,.035)}.financial-icon{width:35px;height:35px;border-radius:10px;display:grid;place-items:center;font-weight:900;margin-bottom:12px}.financial-card>span{display:block;font-size:11px;color:#72839a;font-weight:700}.financial-card>strong{display:block;font-size:24px;letter-spacing:-.025em;margin-top:5px}.financial-card>small{display:block;margin-top:5px;color:#8795a7;font-size:10px}.financial-card.gross .financial-icon{color:#11a36b;background:#e7f8f0}.financial-card.share .financial-icon{color:#0877e8;background:#e8f3ff}.financial-card.deductions .financial-icon{color:#df4b59;background:#fff0f2}.financial-card.due .financial-icon{color:#7a52d5;background:#f0edff}.financial-card.deductions>strong{color:#df4b59}.financial-card.due>strong{color:#7051c5}
+.financial-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;margin-bottom:18px}.financial-card{position:relative;min-height:142px;padding:18px 18px 15px;background:#fff;border:1px solid #e2e9f1;border-radius:12px;box-shadow:0 5px 16px rgba(22,48,80,.035);overflow:hidden}.financial-card:after{content:"";position:absolute;right:-28px;bottom:-34px;width:100px;height:100px;border-radius:50%;background:rgba(8,119,232,.035)}.financial-icon{width:35px;height:35px;border-radius:10px;display:grid;place-items:center;font-weight:900;margin-bottom:12px}.financial-card>span{display:block;font-size:11px;color:#72839a;font-weight:700}.financial-card>strong{display:block;font-size:24px;letter-spacing:-.025em;margin-top:5px}.financial-card>small{display:block;margin-top:5px;color:#8795a7;font-size:10px}.financial-card.gross .financial-icon{color:#11a36b;background:#e7f8f0}.financial-card.share .financial-icon{color:#0877e8;background:#e8f3ff}.financial-card.earnings .financial-icon{color:#0877e8;background:#e8f3ff}.financial-card.earnings>strong{color:#0877e8}.financial-card.deductions .financial-icon{color:#df4b59;background:#fff0f2}.financial-card.due .financial-icon{color:#7a52d5;background:#f0edff}.financial-card.deductions>strong{color:#df4b59}.financial-card.due>strong{color:#7051c5}
 .client-two-col{display:grid;grid-template-columns:1.05fr .95fr;gap:18px}.client-panel{background:#fff;border:1px solid #e2e9f1;border-radius:12px;box-shadow:0 5px 16px rgba(22,48,80,.035);padding:19px}.client-panel-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:17px}.client-panel-head h3{margin:0;font-size:15px}.client-panel-head p{margin:4px 0 0;color:#8190a2;font-size:11px}.text-btn{border:0;background:transparent;color:#0b72d8;font-size:11px;font-weight:750;padding:5px}
 .unit-card-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.unit-card{border:1px solid #e1e9f2;border-radius:11px;padding:15px;background:#fbfdff}.unit-card-top{display:flex;justify-content:space-between;align-items:center}.unit-symbol,.unit-detail-icon{width:37px;height:37px;border-radius:10px;display:grid;place-items:center;color:#0877e8;background:#e8f3ff;font-size:22px;font-weight:800}.unit-card h3{margin:13px 0 3px;font-size:14px}.unit-location{font-size:11px;color:#718096;margin:0;min-height:17px}.unit-divider{height:1px;background:#e8edf3;margin:13px 0}.unit-meta{display:grid;grid-template-columns:1fr 1fr;gap:8px}.unit-meta span{font-size:10px;color:#77889d}.unit-meta b{display:block;font-size:9px;text-transform:uppercase;letter-spacing:.05em;color:#9aa8b8;margin-bottom:3px}
 .client-badge{display:inline-flex;align-items:center;justify-content:center;min-height:22px;padding:0 8px;border-radius:6px;font-size:9px;font-weight:800;white-space:nowrap;background:#eef2f6;color:#65768a}.client-badge.paid,.client-badge.completed,.client-badge.active,.client-badge.online{background:var(--green-bg);color:#13835a}.client-badge.partial,.client-badge.pending{background:#fff5df;color:#b47712}.client-badge.unpaid,.client-badge.failed,.client-badge.inactive,.client-badge.offline{background:var(--red-bg);color:#c63d4c}
@@ -103,58 +93,80 @@ input,select,textarea{font-size:16px}
 
 .client-password-modal{position:fixed;inset:0;z-index:3000;display:flex;align-items:center;justify-content:center;padding:20px}.client-password-modal.hidden{display:none}.client-password-backdrop{position:absolute;inset:0;background:rgba(5,20,40,.68);backdrop-filter:blur(5px)}.client-password-card{position:relative;width:min(480px,100%);background:#fff;border-radius:24px;padding:32px;box-shadow:0 30px 80px rgba(0,0,0,.25)}.client-password-card h2{margin:8px 0 8px;color:#102a4c;font-size:28px}.client-password-card p{margin:0 0 22px;color:#64748b;line-height:1.6}.client-password-icon{width:52px;height:52px;border-radius:16px;background:#eaf4ff;display:grid;place-items:center;font-size:24px;margin-bottom:14px}.client-password-card .client-primary{width:100%;margin-top:8px}@media(max-width:600px){.client-password-card{padding:24px;border-radius:20px}.client-password-card h2{font-size:24px}}
 
-</style>
-</head>
-<body class="client-app-page">
-  <div id="clientAuthLoading" class="client-auth-loading"><div class="client-spinner"></div><span>Checking your client account…</span></div>
-  <div id="clientApp" class="client-app hidden">
-    <aside id="clientSidebar" class="client-sidebar">
-      <div class="client-sidebar-brand"><span class="client-logo-mark"><svg viewBox="0 0 48 48"><path d="M7 20c10-9 24-9 34 0M12 26c7-6 17-6 24 0M18 32c3.5-3 8.5-3 12 0" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round"/><circle cx="24" cy="38" r="2.6" fill="currentColor"/></svg></span><span><b>PISO WIFI</b><small>Customer Account</small></span></div>
-      <nav id="clientNav" class="client-nav" aria-label="Client navigation">
-        <button type="button" data-route="dashboard"><span class="nav-icon">⌂</span>Dashboard</button>
-        <button type="button" data-route="units"><span class="nav-icon">⌁</span>My Units</button>
-        <button type="button" data-route="sales"><span class="nav-icon">▤</span>Sales History</button>
-        <button type="button" data-route="payments"><span class="nav-icon">₱</span>Payments</button>
-        <button type="button" data-route="statement"><span class="nav-icon">▥</span>Statement</button>
-        <button type="button" data-route="profile"><span class="nav-icon">●</span>Profile</button>
-      </nav>
-      <button id="clientLogout" class="client-logout"><span class="nav-icon">↪</span>Logout</button>
-    </aside>
-    <div id="clientOverlay" class="client-overlay"></div>
-    <main class="client-main">
-      <header class="client-topbar">
-        <button id="clientMenuBtn" class="client-menu-btn" aria-label="Open menu">☰</button>
-        <div class="client-mobile-context"><b>PISO WIFI</b><span>Customer Account</span></div>
-        <div class="client-top-actions">
-          <div class="notification-wrap" id="notificationWrap">
-            <button id="notificationBtn" class="notification-btn" aria-label="Notifications">${`<svg viewBox="0 0 24 24"><path d="M18 9a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4"/></svg>`}<span id="notificationCount" class="notification-count hidden">0</span></button>
-            <div id="notificationPopover" class="notification-popover"></div>
-          </div>
-          <div class="client-identity"><span id="clientAvatar" class="client-avatar">CL</span><span><b id="clientName">Client</b><small id="clientRole">Client</small></span></div>
-        </div>
-      </header>
-      <section id="view" class="client-content"></section>
-    </main>
-  </div>
+/* V12 PREMIUM CUSTOMER ACCOUNT HEADER + ICON SYSTEM */
+.client-nav a,.client-logout{gap:13px;min-height:47px;padding:0 14px;border-radius:10px}
+.nav-icon{width:20px;height:20px;display:grid;place-items:center;color:currentColor}
+.nav-icon svg{width:17px;height:17px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+.client-nav a.active .nav-icon{filter:drop-shadow(0 2px 4px rgba(255,255,255,.12))}
+.client-logout .nav-icon svg{width:18px;height:18px}
+.client-topbar{height:76px;padding:0 34px;background:rgba(255,255,255,.94);backdrop-filter:blur(16px);box-shadow:0 1px 0 rgba(20,52,84,.04),0 8px 24px rgba(17,48,81,.035)}
+.client-top-actions{gap:10px}
+.client-search{position:relative;width:235px;height:42px;display:flex;align-items:center;background:#f7faff;border:1px solid #e3ebf4;border-radius:12px;padding:0 13px;transition:.18s}
+.client-search:focus-within{background:#fff;border-color:#a8d2f6;box-shadow:0 0 0 4px rgba(13,124,230,.07)}
+.client-search>svg{width:17px;height:17px;fill:none;stroke:#71859a;stroke-width:1.7;stroke-linecap:round}
+.client-search input{border:0;outline:0;background:transparent;width:100%;height:100%;padding:0 0 0 9px;font:600 11px/1 Inter,system-ui,sans-serif;color:#1c3652}
+.client-search input::placeholder{color:#9aa9b9;font-weight:500}
+.client-search-suggestions{position:absolute;left:0;right:0;top:48px;background:#fff;border:1px solid #e0e8f1;border-radius:13px;box-shadow:0 18px 45px rgba(12,43,76,.14);padding:6px;z-index:40}
+.client-search-suggestions button{width:100%;border:0;background:#fff;border-radius:9px;padding:10px 11px;display:flex;align-items:center;gap:10px;text-align:left;color:#26425f;font-size:11px;font-weight:700}
+.client-search-suggestions button:hover{background:#f3f8fe;color:#0877e8}
+.header-icon-btn{width:42px;height:42px;border:1px solid #e2eaf2;border-radius:12px;background:#fff;color:#37546e;display:grid;place-items:center;box-shadow:0 5px 15px rgba(17,48,81,.045);transition:.18s;cursor:pointer}
+.header-icon-btn svg{width:19px;height:19px;fill:none;stroke:currentColor;stroke-width:1.65;stroke-linecap:round;stroke-linejoin:round}
+.header-icon-btn:hover{color:#0877e8;border-color:#c6e1f8;background:#f7fbff;transform:translateY(-1px);box-shadow:0 8px 20px rgba(8,119,232,.09)}
+.notification-btn{width:42px;height:42px;border-radius:12px;background:#fff;border:1px solid #e2eaf2;box-shadow:0 5px 15px rgba(17,48,81,.045)}
+.notification-count{right:-3px;top:-4px;min-width:18px;height:18px;font-size:9px;background:linear-gradient(135deg,#ff5c70,#e63852);box-shadow:0 3px 7px rgba(230,56,82,.25)}
+.client-profile-wrap{position:relative}
+.client-profile-btn{height:48px;min-width:178px;border:1px solid #e0e8f1;border-radius:14px;background:#fff;display:flex;align-items:center;gap:10px;padding:4px 9px 4px 5px;cursor:pointer;box-shadow:0 6px 18px rgba(17,48,81,.045);transition:.18s}
+.client-profile-btn:hover,.client-profile-btn[aria-expanded="true"]{border-color:#c4def5;background:#fafdff;box-shadow:0 9px 22px rgba(8,119,232,.08)}
+.client-avatar{width:38px;height:38px;border-radius:12px;background:linear-gradient(145deg,#0d86f6,#075fbd);box-shadow:0 5px 12px rgba(7,95,189,.2);font-size:11px;letter-spacing:.02em;flex:none}
+.client-profile-copy{min-width:0;flex:1;text-align:left}
+.client-profile-copy b{display:block;font-size:11px;color:#1c3652;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.client-profile-copy small{display:flex;align-items:center;gap:5px;color:#7b8da0;font-size:9px;margin-top:3px}
+.status-dot{width:6px;height:6px;border-radius:50%;background:#16b875;box-shadow:0 0 0 3px rgba(22,184,117,.10);display:inline-block}
+.profile-chevron{width:15px;height:15px;fill:none;stroke:#7a8da0;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round;transition:.18s}
+.client-profile-btn[aria-expanded="true"] .profile-chevron{transform:rotate(180deg);color:#0877e8}
+.client-profile-menu{position:absolute;right:0;top:58px;width:245px;background:#fff;border:1px solid #dfe8f1;border-radius:16px;box-shadow:0 22px 50px rgba(13,43,74,.16);padding:7px;z-index:45;display:none;animation:profileDrop .16s ease-out}
+.client-profile-menu.show{display:block}
+@keyframes profileDrop{from{opacity:0;transform:translateY(-5px) scale(.985)}to{opacity:1;transform:none}}
+.profile-menu-head{display:flex;align-items:center;gap:10px;padding:10px 9px 11px}
+.profile-menu-head .client-avatar{width:40px;height:40px}
+.profile-menu-head b{display:block;color:#1d3854;font-size:11px}
+.profile-menu-head small{display:flex;align-items:center;gap:5px;color:#7b8da0;font-size:9px;margin-top:4px}
+.profile-menu-divider{height:1px;background:#edf2f6;margin:3px 5px}
+.client-profile-menu>button{width:100%;height:39px;border:0;border-radius:9px;background:#fff;color:#38536c;display:flex;align-items:center;gap:10px;padding:0 9px;font-size:10.5px;font-weight:700;cursor:pointer;text-align:left}
+.client-profile-menu>button:hover{background:#f3f8fe;color:#0877e8}
+.client-profile-menu .menu-danger{color:#c94a58}
+.client-profile-menu .menu-danger:hover{background:#fff3f4;color:#c93d4d}
+.menu-icon{width:25px;height:25px;border-radius:7px;background:#f2f7fc;color:#52708b;display:grid;place-items:center}
+.menu-icon svg{width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:1.65;stroke-linecap:round;stroke-linejoin:round}
+.client-profile-menu button:hover .menu-icon{background:#e9f4ff;color:#0877e8}
+.client-support-modal{position:fixed;inset:0;z-index:90;display:grid;place-items:center}
+.client-support-modal.hidden{display:none}
+.client-support-backdrop{position:absolute;inset:0;background:rgba(7,26,46,.55);backdrop-filter:blur(8px)}
+.client-support-card{position:relative;width:min(440px,calc(100vw - 30px));background:#fff;border:1px solid rgba(255,255,255,.7);border-radius:22px;padding:30px;box-shadow:0 30px 80px rgba(3,24,45,.3);z-index:1}
+.support-close{position:absolute;right:14px;top:13px;width:32px;height:32px;border:0;border-radius:9px;background:#f3f7fb;color:#718398;font-size:21px;line-height:1;cursor:pointer}
+.support-close:hover{background:#eaf3fb;color:#173a5d}
+.support-icon{width:50px;height:50px;border-radius:15px;background:linear-gradient(145deg,#e9f5ff,#f5f9ff);color:#0877e8;display:grid;place-items:center;margin-bottom:17px;box-shadow:inset 0 0 0 1px #dcecf9}
+.support-icon svg{width:24px;height:24px;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+.client-support-card h2{margin:5px 0 7px;color:#143555;font-size:23px;letter-spacing:-.02em}
+.client-support-card p{margin:0;color:#6e8195;font-size:12px;line-height:1.7}
+.support-actions{display:flex;gap:9px;margin-top:21px}
+.support-actions button{flex:1;min-height:42px}
+@media(max-width:800px){.client-search{width:190px}.client-profile-btn{min-width:150px}}
+@media(max-width:650px){.client-search{display:none}.client-profile-btn{min-width:0;width:48px;padding:4px}.client-profile-copy,.profile-chevron{display:none}.client-profile-menu{right:-2px}.client-topbar{padding:0 14px}.client-top-actions{gap:7px}.header-icon-btn,.notification-btn{width:39px;height:39px}.client-avatar{width:37px;height:37px}}
 
-  <div id="clientPasswordSetup" class="client-password-modal hidden" aria-hidden="true">
-    <div class="client-password-backdrop"></div>
-    <section class="client-password-card" role="dialog" aria-modal="true" aria-labelledby="clientPasswordTitle">
-      <div class="client-password-icon">🔐</div>
-      <span class="eyebrow">FIRST LOGIN SETUP</span>
-      <h2 id="clientPasswordTitle">Create your password</h2>
-      <p>Your Admin provided your username and temporary password. Create a private password now; Admin will not see it.</p>
-      <form id="clientPasswordForm">
-        <label class="client-field"><span>New Password</span><div class="input-with-icon"><input id="newClientPassword" type="password" minlength="8" autocomplete="new-password" placeholder="At least 8 characters" required></div></label>
-        <label class="client-field"><span>Confirm Password</span><div class="input-with-icon"><input id="confirmClientPassword" type="password" minlength="8" autocomplete="new-password" placeholder="Re-enter your password" required></div></label>
-        <div id="clientPasswordMessage" class="client-login-message" role="status" aria-live="polite"></div>
-        <button class="client-primary" type="submit">Save My Password</button>
-      </form>
-    </section>
-  </div>
+/* PISO WIFI — customer/admin support chat */
+.support-header-btn{position:relative}
+.support-header-btn .notification-count{right:-3px;top:-4px}
+.piso-support-shell{position:relative;z-index:1;width:min(520px,calc(100vw - 28px));height:min(700px,calc(100vh - 42px));background:#fff;border:1px solid #e0eaf4;border-radius:24px;box-shadow:0 32px 90px rgba(5,30,56,.28);overflow:hidden;display:flex;flex-direction:column}
+.piso-support-lobby{padding:34px;overflow:auto}
+.piso-support-hero{text-align:center;padding:10px 10px 22px}.piso-support-hero .support-icon{margin:0 auto 16px}.piso-support-hero h2{font-size:25px;margin:7px 0;color:#102f50}.piso-support-hero p{max-width:390px;margin:0 auto;color:#71849a;font-size:12px;line-height:1.7}
+.piso-ticket-card{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:16px;border:1px solid #e1eaf3;border-radius:15px;background:linear-gradient(180deg,#fff,#f8fbfe);box-shadow:0 8px 20px rgba(18,54,88,.05)}
+.piso-ticket-card b{display:block;color:#173a5b;font-size:12px}.piso-ticket-card small{display:block;color:#7a8da1;font-size:10px;margin-top:5px}.piso-ticket-status{padding:5px 9px;border-radius:999px;font-size:9px;font-weight:800;text-transform:uppercase;background:#e9f8f0;color:#159a61}.piso-ticket-status.solved{background:#edf4ff;color:#2174ce}.piso-ticket-status.closed{background:#f1f3f5;color:#788391}
+.piso-support-start{width:100%;margin-top:14px;min-height:45px}
+.piso-support-conversation{display:flex;flex-direction:column;height:100%;min-height:0}.piso-support-conversation.hidden{display:none}.piso-support-head{height:70px;display:flex;align-items:center;gap:10px;padding:0 16px;border-bottom:1px solid #e6edf4;background:linear-gradient(180deg,#fff,#f8fbfe)}.support-back{width:34px;height:34px;border:0;border-radius:9px;background:#f1f6fb;color:#31516e;font-size:20px;cursor:pointer}.support-head-icon{width:38px;height:38px;border-radius:11px;background:#eaf4ff;color:#0877e8;display:grid;place-items:center}.support-head-icon svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}.piso-support-head b{display:block;font-size:12px;color:#183955}.piso-support-head small{display:block;font-size:9px;color:#7c8da0;margin-top:3px}.support-live-dot{margin-left:auto;color:#149a61;background:#eaf8f1;border-radius:999px;padding:5px 8px;font-size:8px;font-weight:800}.piso-chat-messages{flex:1;min-height:0;overflow:auto;padding:18px;background:#f6f9fc;display:flex;flex-direction:column;gap:11px;overscroll-behavior:contain;-webkit-overflow-scrolling:touch}.piso-chat-message{display:flex;flex-direction:column;max-width:82%}.piso-chat-message.customer{align-self:flex-end;align-items:flex-end}.piso-chat-message.admin{align-self:flex-start;align-items:flex-start}.piso-chat-message.system{align-self:center;align-items:center;max-width:90%}.piso-chat-bubble{padding:10px 13px;border-radius:15px;background:#fff;border:1px solid #dfe8f1;color:#29465f;font-size:11px;line-height:1.55;box-shadow:0 4px 12px rgba(15,47,78,.04);white-space:pre-wrap}.piso-chat-message.customer .piso-chat-bubble{background:linear-gradient(135deg,#0d82ed,#0868ca);border-color:#0868ca;color:#fff;border-bottom-right-radius:5px}.piso-chat-message.admin .piso-chat-bubble{border-bottom-left-radius:5px}.piso-chat-message.system .piso-chat-bubble{background:#eef5fb;color:#60758a;font-size:10px;border-radius:999px}.piso-chat-meta{font-size:8px;color:#93a1af;margin:4px 4px 0}.piso-chat-typing{display:none;padding:6px 18px;background:#f6f9fc;color:#75889b;font-size:9px;font-style:italic}.piso-chat-typing.show{display:block}.piso-chat-empty{margin:auto;display:flex;flex-direction:column;align-items:center;text-align:center;color:#71849a;gap:6px;font-size:11px}.piso-chat-empty .support-icon{margin:0 0 4px}.piso-chat-empty b{color:#23435f;font-size:12px}.piso-chat-composer{display:flex;gap:9px;padding:12px;border-top:1px solid #e4ebf2;background:#fff}.piso-chat-input{flex:1;min-width:0;min-height:44px;max-height:110px;resize:none;border:1px solid #dce6ef;border-radius:12px;padding:12px;font:inherit;font-size:12px!important;color:#193750;outline:0}.piso-chat-input:focus{border-color:#75b9ef;box-shadow:0 0 0 3px rgba(8,119,232,.08)}.piso-chat-send{width:78px;border:0;border-radius:12px;background:linear-gradient(135deg,#0b83ef,#0868ca);color:#fff;font-size:11px;font-weight:800;cursor:pointer;box-shadow:0 7px 16px rgba(8,104,202,.2)}.piso-chat-send:hover{transform:translateY(-1px)}
+@media(max-width:600px){.piso-support-shell{width:100vw;height:100vh;max-height:none;border-radius:0}.piso-support-lobby{padding:28px 18px}.piso-chat-message{max-width:88%}.piso-chat-composer{padding-bottom:max(12px,env(safe-area-inset-bottom))}.piso-chat-input{font-size:16px!important}}
 
-  <div id="clientToast" class="client-toast"></div>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-  <script type="module" src="../js/client.js?v=62"></script>
-</body>
-</html>
+/* v60 navigation buttons: same appearance as the original nav links, with reliable click handling. */
+.client-nav button[data-route]{display:flex;align-items:center;gap:12px;width:100%;min-height:45px;padding:0 13px;border:0;border-radius:9px;color:#c6d9ec;text-decoration:none;background:transparent;font-size:13px;font-weight:600;text-align:left;cursor:pointer;font-family:inherit;appearance:none;-webkit-appearance:none;touch-action:manipulation;}
+.client-nav button[data-route]:hover{background:rgba(25,124,220,.14);color:#fff}
+.client-nav button[data-route].active{background:linear-gradient(90deg,#0b73d9,#0a64be);color:#fff;box-shadow:0 7px 18px rgba(0,91,180,.2)}
