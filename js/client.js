@@ -228,6 +228,7 @@ let supportChatOpen=false;
 let supportChatSending=false;
 let supportTypingTimer=null;
 let supportChatDocId="";
+let supportChatHistory=[];
 const supportChatId=()=>String(supportChatDocId||currentUser?.uid||"");
 const supportStatusValue=chat=>{const s=String(chat?.status||"Open").trim().toLowerCase(); if(s==="closed") return "Closed"; if(s==="solved") return "Solved"; return "Open";};
 const supportChatRef=()=>supportChatId()?doc(db,"supportChats",supportChatId()):null;
@@ -257,14 +258,36 @@ function hasRealSupportConversation(chat){
   const messages=Array.isArray(chat?.messages)?chat.messages:[];
   return messages.some(m=>String(m?.senderType||"").toLowerCase()==="customer") || messages.length>1;
 }
+function formatSupportTicketDate(value){
+  if(!value)return "";
+  const d=value?.toDate?value.toDate():new Date(value);
+  if(Number.isNaN(d.getTime()))return "";
+  return d.toLocaleString([], {month:"short", day:"numeric", year:"numeric", hour:"numeric", minute:"2-digit"});
+}
 function renderSupportLobby(){
   const lobby=$("#supportLobby"), convo=$("#supportConversationView"); if(!lobby||!convo)return;
   const status=supportStatusValue(supportChat);
   const active=hasRealSupportConversation(supportChat);
   const closed=status==="Closed"||status==="Solved";
   const actionLabel = closed ? "Start New Chat" : (active ? "Open Conversation" : "Start Chat");
-  lobby.innerHTML=`<div class="piso-support-hero"><div class="support-icon">${icons.bell}</div><span class="eyebrow">PISO WIFI CUSTOMER SUPPORT</span><h2>How can we help?</h2><p>Chat directly with the PISO WIFI Admin. Your conversation stays connected to your Customer Account.</p></div><div class="piso-ticket-card"><div><b>Customer Support</b><small>${status==="Closed"?"Ticket was closed. You can open a new chat anytime.":status==="Solved"?"This concern was solved. You can open chat support again anytime.":active?"Your active support conversation.":"No conversation started yet."}</small></div><span class="piso-ticket-status ${status.toLowerCase()}">${esc(status)}</span></div><button id="startSupportChat" class="client-primary piso-support-start">${actionLabel}</button>`;
-  convo.classList.add("hidden");
+  const history=Array.isArray(supportChatHistory)?supportChatHistory:[];
+  const historyHtml=history.length?`<div class="piso-ticket-history"><div class="piso-ticket-history-head"><div><b>Ticket History</b><small>Your previous support concerns are saved here.</small></div><span>${history.length} ticket${history.length===1?"":"s"}</span></div><div class="piso-ticket-history-list">${history.map(chat=>{
+    const st=supportStatusValue(chat);
+    const msgs=Array.isArray(chat?.messages)?chat.messages:[];
+    const last=msgs.length?msgs[msgs.length-1]?.text:"No messages yet";
+    const created=formatSupportTicketDate(chat?.createdAt||chat?.updatedAt);
+    const selected=chat?.id===supportChat?.id;
+    return `<button type="button" class="piso-ticket-history-item ${selected?"selected":""}" data-support-ticket-id="${esc(chat?.id||"")}"><span class="piso-ticket-history-main"><b>${esc(chat?.subject||"Support Concern")}</b><small>${esc(last||"No messages yet")}</small><em>${esc(created)}</em></span><span class="piso-ticket-status ${st.toLowerCase()}">${esc(st)}</span></button>`;
+  }).join("")}</div></div>`:`<div class="piso-ticket-history empty"><div><b>Ticket History</b><small>Your support history will appear here after you open a concern.</small></div></div>`;
+  lobby.innerHTML=`<div class="piso-support-hero"><div class="support-icon">${icons.bell}</div><span class="eyebrow">PISO WIFI CUSTOMER SUPPORT</span><h2>How can we help?</h2><p>Chat directly with the PISO WIFI Admin. Your conversations stay connected to your Customer Account.</p></div><div class="piso-ticket-card"><div><b>Customer Support</b><small>${closed?"This concern was solved. You can open a new chat anytime.":active?"Your active support conversation.":"No active conversation. Start a new concern anytime."}</small></div><span class="piso-ticket-status ${status.toLowerCase()}">${esc(status)}</span></div>${historyHtml}<button id="startSupportChat" class="client-primary piso-support-start">${actionLabel}</button>`;
+  lobby.querySelectorAll("[data-support-ticket-id]").forEach(btn=>btn.onclick=async()=>{
+    const id=btn.getAttribute("data-support-ticket-id");
+    const found=supportChatHistory.find(chat=>chat.id===id);
+    if(!found)return;
+    supportChatDocId=id; supportChat=found;
+    subscribeSupportChat(); supportChatOpen=true; renderSupportChat();
+    try{await updateDoc(supportChatRef(),{unreadForCustomer:false,updatedAt:supportNow()});}catch(e){}
+  });
   const start=$("#startSupportChat");
   if(start) start.onclick=()=>openSupportConversation();
 }
@@ -282,24 +305,19 @@ function renderSupportChat(){
 }
 async function loadExistingSupportChat(){
   if(!currentUser?.uid) return null;
-  // Load the most recent support conversation for this customer.
-  // A solved/closed conversation is history; a new concern gets a new ticket.
   const q=query(collection(db,"supportChats"),where("authUserId","==",currentUser.uid));
   const snap=await getDocs(q);
-  const chats=snap.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>{
+  supportChatHistory=snap.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>{
     const av=a?.updatedAt?.toMillis?a.updatedAt.toMillis():new Date(a?.updatedAt||a?.createdAt||0).getTime();
     const bv=b?.updatedAt?.toMillis?b.updatedAt.toMillis():new Date(b?.updatedAt||b?.createdAt||0).getTime();
     return bv-av;
   });
-  const latest=chats[0]||null;
-  if(latest){
-    supportChatDocId=latest.id;
-    supportChat=latest;
-    return supportChat;
-  }
-  supportChatDocId="";
-  supportChat=null;
-  return null;
+  const latest=supportChatHistory[0]||null;
+  if(latest){supportChatDocId=latest.id;supportChat=latest;return supportChat;}
+  supportChatDocId=""; supportChat=null; return null;
+}
+async function refreshSupportHistory(){
+  try{await loadExistingSupportChat();renderSupportLobby();}catch(e){console.warn("Unable to refresh support ticket history",e);}
 }
 async function createSupportChat(forceNew=false){
   if(!currentUser?.uid)throw new Error("Customer account is not ready.");
@@ -315,6 +333,7 @@ async function createSupportChat(forceNew=false){
   const payload={authUserId:currentUser.uid,unitId:unit.id||"",clientCode:unit.clientCode||"",customerName:clientName(),customerEmail:clientEmail(),status:"Open",messages:[greeting],typingBy:{customer:false,admin:false},unreadForAdmin:true,unreadForCustomer:false,createdAt:serverTimestamp(),updatedAt:supportNow()};
   await setDoc(ref,payload);
   supportChat={id:ref.id,...payload,createdAt:new Date(),updatedAt:supportNow()};
+  supportChatHistory=[supportChat,...(supportChatHistory||[])];
   return supportChat;
 }
 function subscribeSupportChat(){
@@ -322,7 +341,11 @@ function subscribeSupportChat(){
   const ref=supportChatRef(); if(!ref)return;
   supportChatUnsub=onSnapshot(ref,snap=>{
     supportChat=snap.exists()?{id:snap.id,...snap.data()}:null;
-    if(snap.exists())supportChatDocId=snap.id;
+    if(snap.exists()){
+      supportChatDocId=snap.id;
+      const idx=supportChatHistory.findIndex(c=>c.id===snap.id);
+      if(idx>=0)supportChatHistory[idx]=supportChat; else supportChatHistory=[supportChat,...supportChatHistory];
+    }
     updateSupportBadge();
     if(supportChatOpen){
       if($("#supportConversationView")?.classList.contains("hidden")){
@@ -371,6 +394,9 @@ async function sendSupportMessage(){
     const acknowledgement={senderType:"system",text:"Thank you for letting us know about this. Kindly please wait for the Admin's reply. We’ll assist you as soon as possible.",createdAt:supportNow(),kind:"auto-acknowledgement"};
     await updateDoc(supportChatRef(),{
       messages:firstCustomerMessage?arrayUnion(customerMessage,acknowledgement):arrayUnion(customerMessage),
+      lastMessage:text,
+      lastMessageSender:"customer",
+      lastMessageAt:supportNow(),
       updatedAt:supportNow(),
       unreadForAdmin:true,
       unreadForCustomer:false,
@@ -484,7 +510,7 @@ function unitCard(u){
   return `<article class="unit-card"><div class="unit-card-top"><div class="unit-symbol">⌁</div>${statusBadge(status)}</div><h3>${esc(u.unitCode||"—")}</h3><p class="unit-location">${esc(u.location||"Location not provided")}</p><div class="unit-divider"></div><div class="unit-meta"><span><b>Installed</b>${esc(dateLong(u.dateJoined||u.createdAt))}</span><span><b>Client ID</b>${esc(u.clientCode||"—")}</span></div></article>`;
 }
 function breakdown(t){
-  return `<div class="breakdown-list"><div><span>Gross Sales</span><b>${money(t.gross)}</b></div><div><span>Internet Fee</span><b>${money(t.internet)}</b></div><div><span>Miscellaneous Fee</span><b>${money(t.miscellaneous)}</b></div><div><span>Your Share (${settings.clientPercent}%)</span><b>${money(t.client)}</b></div><div class="highlight"><span>Amount Due</span><b>${money(t.due)}</b></div><div><span>Amount Paid</span><b>${money(t.paid)}</b></div><div class="balance-row"><span>Balance</span><b>${money(t.balance)}</b></div></div>`;
+  return `<div class="breakdown-list"><div><span>Gross Sales</span><b>${money(t.gross)}</b></div><div><span>Internet Fee</span><b>${money(t.internet)}</b></div><div><span>Admin Electricity Share</span><b>${money(t.elec)}</b></div><div><span>Miscellaneous Fee</span><b>${money(t.miscellaneous)}</b></div><div><span>Your Share (${settings.clientPercent}%)</span><b>${money(t.client)}</b></div><div class="highlight"><span>Total Earnings</span><b>${money(t.due)}</b></div><div><span>Amount Paid</span><b>${money(t.paid)}</b></div><div class="balance-row"><span>Remaining Earnings</span><b>${money(t.balance)}</b></div></div>`;
 }
 function recentPaymentsHtml(){
   const list=ownPayments().sort((a,b)=>timeValue(b.paymentDate||b.date||b.createdAt)-timeValue(a.paymentDate||a.date||a.createdAt)).slice(0,5);
@@ -504,9 +530,9 @@ function renderSales(){
   const year=selectedYear;
   const list=ownRecords().filter(r=>String(r.month||"").startsWith(year+"-")).sort((a,b)=>String(b.month).localeCompare(String(a.month)));
   $("#view").innerHTML=pageTitle("Sales History","View your monthly sales and computations.",`<div class="filter-row"><select id="salesYear" class="client-filter"></select><select id="salesUnit" class="client-filter"><option value="all">All Units</option>${clientUnits.map(u=>`<option value="${u.id}" ${u.id===selectedUnitId?"selected":""}>${esc(u.unitCode)}</option>`).join("")}</select></div>`)+
-    `<section class="client-panel table-panel"><div class="table-scroll"><table class="client-table"><thead><tr><th>Month</th><th>Unit</th><th>Gross Sales</th><th>Internet Fee</th><th>Misc. Fee</th><th>Your Share</th><th>Amount Due</th><th>Status</th></tr></thead><tbody>${
+    `<section class="client-panel table-panel"><div class="table-scroll"><table class="client-table"><thead><tr><th>Month</th><th>Unit</th><th>Gross Sales</th><th>Internet Fee</th><th>Admin Electricity Share</th><th>Misc. Fee</th><th>Your Share</th><th>Total Earnings</th><th>Status</th></tr></thead><tbody>${
       list.filter(r=>selectedUnitId==="all"||r.unitId===selectedUnitId).length
-      ? list.filter(r=>selectedUnitId==="all"||r.unitId===selectedUnitId).map(r=>{const u=clientUnits.find(x=>x.id===r.unitId),c=calc(r);return `<tr><td>${monthLabel(r.month)}</td><td><b>${esc(u?.unitCode||"—")}</b></td><td>${money(c.gross)}</td><td>${money(c.internet)}</td><td>${money(c.miscellaneous)}</td><td>${money(c.client)}</td><td class="strong-amount">${money(c.clientTotal)}</td><td>${statusBadge(c.status)}</td></tr>`}).join("")
+      ? list.filter(r=>selectedUnitId==="all"||r.unitId===selectedUnitId).map(r=>{const u=clientUnits.find(x=>x.id===r.unitId),c=calc(r);return `<tr><td>${monthLabel(r.month)}</td><td><b>${esc(u?.unitCode||"—")}</b></td><td>${money(c.gross)}</td><td>${money(c.internet)}</td><td>${money(c.adminElectricityShare)}</td><td>${money(c.miscellaneous)}</td><td>${money(c.client)}</td><td class="strong-amount">${money(c.clientTotal)}</td><td>${statusBadge(c.status)}</td></tr>`}).join("")
       : `<tr><td colspan="9">${empty("No sales records available.")}</td></tr>`
     }</tbody></table></div></section>`;
   $("#salesYear").innerHTML=[...new Set(ownRecords().map(r=>String(r.month||"").slice(0,4)).filter(Boolean))].sort((a,b)=>Number(b)-Number(a)).map(y=>`<option ${y===year?"selected":""}>${y}</option>`).join("")||`<option>${year}</option>`;
@@ -529,7 +555,7 @@ function renderStatement(){
   $("#view").innerHTML=pageTitle("Statement","Generate and download your statement.",`<div class="filter-row"><select id="statementMonth" class="client-filter"></select>${clientUnits.length>1?`<select id="statementUnit" class="client-filter"><option value="all">All Units</option>${clientUnits.map(x=>`<option value="${x.id}" ${x.id===selectedUnitId?"selected":""}>${esc(x.unitCode)}</option>`).join("")}</select>`:""}<button class="client-primary" id="downloadPdf">${icons.download}Download PDF</button><button class="client-secondary" id="printStatement">${icons.printer}Print</button></div>`)+
     `<section class="statement-sheet" id="statementSheet"><div class="statement-header"><div class="statement-brand"><img class="statement-official-logo" src="/assets/piso-wifi-logo.png" alt="PISO WIFI"></div><div class="statement-period"><b>${monthLabel(month)}</b><span>Generated ${dateLong(new Date())}</span></div></div>
       <div class="statement-client-grid"><div><b>Client Name</b><span>${esc(clientName())}</span></div><div><b>Client ID</b><span>${esc(clientCode())}</span></div><div><b>Unit${units.length>1?"s":""}</b><span>${esc(units.map(x=>x.unitCode).join(", ")||"—")}</span></div><div><b>Location</b><span>${esc(units.length===1?units[0].location:"Multiple assigned units")}</span></div></div>
-      <div class="statement-table-wrap"><table class="client-table statement-table"><tbody><tr><td>Gross Sales</td><td>${money(total.gross)}</td></tr><tr><td>Internet Fee</td><td>${money(total.internet)}</td></tr><tr><td>Miscellaneous Fee</td><td>${money(total.miscellaneous)}</td></tr><tr><td>Your Share (${settings.clientPercent}%)</td><td>${money(total.client)}</td></tr><tr class="total-row"><td>Amount Due</td><td>${money(total.due)}</td></tr><tr><td>Amount Paid</td><td>${money(total.paid)}</td></tr><tr class="balance-row"><td>Balance</td><td>${money(total.balance)}</td></tr></tbody></table></div>
+      <div class="statement-table-wrap"><table class="client-table statement-table"><tbody><tr><td>Gross Sales</td><td>${money(total.gross)}</td></tr><tr><td>Internet Fee</td><td>${money(total.internet)}</td></tr><tr><td>Admin Electricity Share</td><td>${money(total.elec)}</td></tr><tr><td>Miscellaneous Fee</td><td>${money(total.miscellaneous)}</td></tr><tr><td>Your Share (${settings.clientPercent}%)</td><td>${money(total.client)}</td></tr><tr class="total-row"><td>Total Earnings</td><td>${money(total.due)}</td></tr><tr><td>Amount Paid</td><td>${money(total.paid)}</td></tr><tr class="balance-row"><td>Remaining Earnings</td><td>${money(total.balance)}</td></tr></tbody></table></div>
       <div class="statement-footer"><span>Status ${statusBadge(paymentStatus(total))}</span><small>This statement reflects records maintained in the PISO WIFI Management System.</small></div>
     </section>`;
   renderMonthSelectors();
@@ -566,7 +592,7 @@ function printStatement(total,units,month){
   @media print{body{padding:10px}}
   </style></head><body><div class="brand"><div><h1>PISO WIFI</h1><div class="muted">Client Statement</div></div><div>${monthLabel(month)}<br><span class="muted">Generated ${dateLong(new Date())}</span></div></div>
   <div class="meta"><div><b>Client Name</b><br>${esc(clientName())}</div><div><b>Client ID</b><br>${esc(clientCode())}</div><div><b>Unit${units.length>1?"s":""}</b><br>${esc(units.map(u=>u.unitCode).join(", "))}</div><div><b>Location</b><br>${esc(units.length===1?units[0].location:"Multiple assigned units")}</div></div>
-  <table><tbody><tr><td>Gross Sales</td><td>${money(total.gross)}</td></tr><tr><td>Internet Fee</td><td>${money(total.internet)}</td></tr><tr><td>Miscellaneous Fee</td><td>${money(total.miscellaneous)}</td></tr><tr><td>Your Share (${settings.clientPercent}%)</td><td>${money(total.client)}</td></tr><tr class="total"><td>Amount Due</td><td>${money(total.due)}</td></tr><tr><td>Amount Paid</td><td>${money(total.paid)}</td></tr><tr class="balance"><td>Balance</td><td>${money(total.balance)}</td></tr></tbody></table>
+  <table><tbody><tr><td>Gross Sales</td><td>${money(total.gross)}</td></tr><tr><td>Internet Fee</td><td>${money(total.internet)}</td></tr><tr><td>Admin Electricity Share</td><td>${money(total.elec)}</td></tr><tr><td>Miscellaneous Fee</td><td>${money(total.miscellaneous)}</td></tr><tr><td>Your Share (${settings.clientPercent}%)</td><td>${money(total.client)}</td></tr><tr class="total"><td>Total Earnings</td><td>${money(total.due)}</td></tr><tr><td>Amount Paid</td><td>${money(total.paid)}</td></tr><tr class="balance"><td>Remaining Earnings</td><td>${money(total.balance)}</td></tr></tbody></table>
   <div class="foot">Status: ${paymentStatus(total)} · PISO WIFI Management System</div></body></html>`);
   w.document.close();w.focus();setTimeout(()=>w.print(),350);
 }

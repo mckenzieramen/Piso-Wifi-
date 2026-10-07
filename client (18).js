@@ -1,12 +1,13 @@
 import { auth, db } from "./firebase.js";
 import {
-  onAuthStateChanged, signOut, updatePassword
+  onAuthStateChanged, signOut, signInWithEmailAndPassword
 } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-auth.js";
 import {
   collection, doc, getDoc, getDocs, query, where, updateDoc, setDoc, onSnapshot, arrayUnion,
   serverTimestamp, writeBatch
 } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-firestore.js";
 import { calculateFinancialRecord } from "./finance.js";
+import { firebaseConfig } from "./firebase-config.js";
 
 const $ = s => document.querySelector(s);
 const money = n => `₱${Number(n || 0).toLocaleString("en-PH",{minimumFractionDigits:2,maximumFractionDigits:2})}`;
@@ -227,7 +228,9 @@ let supportChatOpen=false;
 let supportChatSending=false;
 let supportTypingTimer=null;
 let supportChatDocId="";
+let supportChatHistory=[];
 const supportChatId=()=>String(supportChatDocId||currentUser?.uid||"");
+const supportStatusValue=chat=>{const s=String(chat?.status||"Open").trim().toLowerCase(); if(s==="closed") return "Closed"; if(s==="solved") return "Solved"; return "Open";};
 const supportChatRef=()=>supportChatId()?doc(db,"supportChats",supportChatId()):null;
 function supportNow(){return new Date().toISOString();}
 function supportMessageHtml(m){
@@ -255,20 +258,43 @@ function hasRealSupportConversation(chat){
   const messages=Array.isArray(chat?.messages)?chat.messages:[];
   return messages.some(m=>String(m?.senderType||"").toLowerCase()==="customer") || messages.length>1;
 }
+function formatSupportTicketDate(value){
+  if(!value)return "";
+  const d=value?.toDate?value.toDate():new Date(value);
+  if(Number.isNaN(d.getTime()))return "";
+  return d.toLocaleString([], {month:"short", day:"numeric", year:"numeric", hour:"numeric", minute:"2-digit"});
+}
 function renderSupportLobby(){
   const lobby=$("#supportLobby"), convo=$("#supportConversationView"); if(!lobby||!convo)return;
-  const status=String(supportChat?.status||"Open");
+  const status=supportStatusValue(supportChat);
   const active=hasRealSupportConversation(supportChat);
   const closed=status==="Closed"||status==="Solved";
-  lobby.innerHTML=`<div class="piso-support-hero"><div class="support-icon">${icons.bell}</div><span class="eyebrow">PISO WIFI CUSTOMER SUPPORT</span><h2>How can we help?</h2><p>Chat directly with the PISO WIFI Admin. Your conversation stays connected to your Customer Account.</p></div><div class="piso-ticket-card"><div><b>Customer Support</b><small>${status==="Closed"?"Ticket was closed.":status==="Solved"?"Ticket was closed by PISO WIFI Support.":active?"Your active support conversation.":"No conversation started yet."}</small></div><span class="piso-ticket-status ${status.toLowerCase()}">${esc(status)}</span></div><button id="startSupportChat" class="client-primary piso-support-start" ${closed?"disabled":""}>${active?"Open Conversation":"Start Chat"}</button>`;
-  convo.classList.add("hidden");
+  const actionLabel = closed ? "Start New Chat" : (active ? "Open Conversation" : "Start Chat");
+  const history=Array.isArray(supportChatHistory)?supportChatHistory:[];
+  const historyHtml=history.length?`<div class="piso-ticket-history"><div class="piso-ticket-history-head"><div><b>Ticket History</b><small>Your previous support concerns are saved here.</small></div><span>${history.length} ticket${history.length===1?"":"s"}</span></div><div class="piso-ticket-history-list">${history.map(chat=>{
+    const st=supportStatusValue(chat);
+    const msgs=Array.isArray(chat?.messages)?chat.messages:[];
+    const last=msgs.length?msgs[msgs.length-1]?.text:"No messages yet";
+    const created=formatSupportTicketDate(chat?.createdAt||chat?.updatedAt);
+    const selected=chat?.id===supportChat?.id;
+    return `<button type="button" class="piso-ticket-history-item ${selected?"selected":""}" data-support-ticket-id="${esc(chat?.id||"")}"><span class="piso-ticket-history-main"><b>${esc(chat?.subject||"Support Concern")}</b><small>${esc(last||"No messages yet")}</small><em>${esc(created)}</em></span><span class="piso-ticket-status ${st.toLowerCase()}">${esc(st)}</span></button>`;
+  }).join("")}</div></div>`:`<div class="piso-ticket-history empty"><div><b>Ticket History</b><small>Your support history will appear here after you open a concern.</small></div></div>`;
+  lobby.innerHTML=`<div class="piso-support-hero"><div class="support-icon">${icons.bell}</div><span class="eyebrow">PISO WIFI CUSTOMER SUPPORT</span><h2>How can we help?</h2><p>Chat directly with the PISO WIFI Admin. Your conversations stay connected to your Customer Account.</p></div><div class="piso-ticket-card"><div><b>Customer Support</b><small>${closed?"This concern was solved. You can open a new chat anytime.":active?"Your active support conversation.":"No active conversation. Start a new concern anytime."}</small></div><span class="piso-ticket-status ${status.toLowerCase()}">${esc(status)}</span></div>${historyHtml}<button id="startSupportChat" class="client-primary piso-support-start">${actionLabel}</button>`;
+  lobby.querySelectorAll("[data-support-ticket-id]").forEach(btn=>btn.onclick=async()=>{
+    const id=btn.getAttribute("data-support-ticket-id");
+    const found=supportChatHistory.find(chat=>chat.id===id);
+    if(!found)return;
+    supportChatDocId=id; supportChat=found;
+    subscribeSupportChat(); supportChatOpen=true; renderSupportChat();
+    try{await updateDoc(supportChatRef(),{unreadForCustomer:false,updatedAt:supportNow()});}catch(e){}
+  });
   const start=$("#startSupportChat");
-  if(start&&!closed) start.onclick=()=>openSupportConversation();
+  if(start) start.onclick=()=>openSupportConversation();
 }
 function renderSupportChat(){
   const lobby=$("#supportLobby"), convo=$("#supportConversationView"); if(!lobby||!convo)return;
   lobby.classList.add("hidden"); convo.classList.remove("hidden");
-  const status=String(supportChat?.status||"Open");
+  const status=supportStatusValue(supportChat);
   $("#supportStatus").textContent=status;
   $("#supportChatCustomer").textContent=clientName();
   renderSupportConversation();
@@ -279,28 +305,35 @@ function renderSupportChat(){
 }
 async function loadExistingSupportChat(){
   if(!currentUser?.uid) return null;
-  const direct=doc(db,"supportChats",currentUser.uid);
-  const directSnap=await getDoc(direct);
-  if(directSnap.exists()){
-    supportChatDocId=directSnap.id;
-    supportChat={id:directSnap.id,...directSnap.data()};
-    return supportChat;
-  }
-  supportChatDocId=currentUser.uid;
-  supportChat=null;
-  return null;
+  const q=query(collection(db,"supportChats"),where("authUserId","==",currentUser.uid));
+  const snap=await getDocs(q);
+  supportChatHistory=snap.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>{
+    const av=a?.updatedAt?.toMillis?a.updatedAt.toMillis():new Date(a?.updatedAt||a?.createdAt||0).getTime();
+    const bv=b?.updatedAt?.toMillis?b.updatedAt.toMillis():new Date(b?.updatedAt||b?.createdAt||0).getTime();
+    return bv-av;
+  });
+  const latest=supportChatHistory[0]||null;
+  if(latest){supportChatDocId=latest.id;supportChat=latest;return supportChat;}
+  supportChatDocId=""; supportChat=null; return null;
 }
-async function createSupportChat(){
+async function refreshSupportHistory(){
+  try{await loadExistingSupportChat();renderSupportLobby();}catch(e){console.warn("Unable to refresh support ticket history",e);}
+}
+async function createSupportChat(forceNew=false){
   if(!currentUser?.uid)throw new Error("Customer account is not ready.");
-  if(!supportChat) await loadExistingSupportChat();
-  if(supportChat) return supportChat;
-  supportChatDocId=currentUser.uid;
+  if(!forceNew){
+    if(!supportChat) await loadExistingSupportChat();
+    if(supportChat && !["Closed","Solved"].includes(supportStatusValue(supportChat))) return supportChat;
+  }
+  // Every new concern gets its own support ticket/document.
+  supportChatDocId=`${currentUser.uid}_${Date.now()}`;
   const ref=supportChatRef();
   const unit=primaryUnit();
   const greeting={senderType:"admin",text:"Hi! I’m PISO WIFI Customer Support. Let us know what you need help with, and our Admin will assist you here.",createdAt:supportNow()};
   const payload={authUserId:currentUser.uid,unitId:unit.id||"",clientCode:unit.clientCode||"",customerName:clientName(),customerEmail:clientEmail(),status:"Open",messages:[greeting],typingBy:{customer:false,admin:false},unreadForAdmin:true,unreadForCustomer:false,createdAt:serverTimestamp(),updatedAt:supportNow()};
   await setDoc(ref,payload);
-  supportChat={id:ref.id,...payload,createdAt:new Date()};
+  supportChat={id:ref.id,...payload,createdAt:new Date(),updatedAt:supportNow()};
+  supportChatHistory=[supportChat,...(supportChatHistory||[])];
   return supportChat;
 }
 function subscribeSupportChat(){
@@ -308,7 +341,11 @@ function subscribeSupportChat(){
   const ref=supportChatRef(); if(!ref)return;
   supportChatUnsub=onSnapshot(ref,snap=>{
     supportChat=snap.exists()?{id:snap.id,...snap.data()}:null;
-    if(snap.exists())supportChatDocId=snap.id;
+    if(snap.exists()){
+      supportChatDocId=snap.id;
+      const idx=supportChatHistory.findIndex(c=>c.id===snap.id);
+      if(idx>=0)supportChatHistory[idx]=supportChat; else supportChatHistory=[supportChat,...supportChatHistory];
+    }
     updateSupportBadge();
     if(supportChatOpen){
       if($("#supportConversationView")?.classList.contains("hidden")){
@@ -318,7 +355,7 @@ function subscribeSupportChat(){
         // entire modal, so the input keeps focus and the scroll position.
         $("#supportStatus").textContent=String(supportChat?.status||"Open");
         renderSupportConversation();
-        const closed=["Solved","Closed"].includes(String(supportChat?.status||"Open"));
+        const closed=["Solved","Closed"].includes(supportStatusValue(supportChat));
         const input=$("#supportChatInput"),send=$("#supportSend");
         if(input){input.disabled=closed;input.placeholder=closed?"Ticket was closed.":"Type your concern…";}
         if(send)send.disabled=closed;
@@ -330,12 +367,24 @@ function subscribeSupportChat(){
   });
 }
 async function openSupportConversation(){
-  try{await createSupportChat();subscribeSupportChat();supportChatOpen=true;renderSupportChat();await updateDoc(supportChatRef(),{unreadForCustomer:false,updatedAt:supportNow()});}catch(e){toast(e?.message||"Unable to open support chat. Please contact Admin if this continues.","error");}
+  try{
+    const currentStatus=supportStatusValue(supportChat);
+    if(["Closed","Solved"].includes(currentStatus)){
+      // Do NOT reopen the old ticket. Start a completely new support conversation/document.
+      await createSupportChat(true);
+    }else{
+      await createSupportChat(false);
+    }
+    subscribeSupportChat();
+    supportChatOpen=true;
+    renderSupportChat();
+    await updateDoc(supportChatRef(),{unreadForCustomer:false,updatedAt:supportNow()});
+  }catch(e){toast(e?.message||"Unable to open a new support chat. Please contact Admin if this continues.","error");}
 }
 function closeSupportChat(){supportChatOpen=false;$("#supportConversationView")?.classList.add("hidden");$("#supportLobby")?.classList.remove("hidden");}
 async function sendSupportMessage(){
   if(supportChatSending)return; const input=$("#supportChatInput");const text=String(input?.value||"").trim();if(!text)return;
-  if(["Closed","Solved"].includes(String(supportChat?.status||"Open"))){toast("This support conversation is not open. Please wait for Admin to reopen it.","error");return;}
+  if(["Closed","Solved"].includes(supportStatusValue(supportChat))){toast("This support conversation is closed. Please start a new chat for a new concern.","error");return;}
   supportChatSending=true;
   try{
     await createSupportChat();
@@ -345,6 +394,9 @@ async function sendSupportMessage(){
     const acknowledgement={senderType:"system",text:"Thank you for letting us know about this. Kindly please wait for the Admin's reply. We’ll assist you as soon as possible.",createdAt:supportNow(),kind:"auto-acknowledgement"};
     await updateDoc(supportChatRef(),{
       messages:firstCustomerMessage?arrayUnion(customerMessage,acknowledgement):arrayUnion(customerMessage),
+      lastMessage:text,
+      lastMessageSender:"customer",
+      lastMessageAt:supportNow(),
       updatedAt:supportNow(),
       unreadForAdmin:true,
       unreadForCustomer:false,
@@ -432,7 +484,7 @@ function renderDashboard(){
     <div class="financial-grid">
       ${financialCard("▥","Gross Sales",total.gross,"Gross Sales","gross")}
       ${financialCard("◉","Your Share",total.client,`${settings.clientPercent}% share`,"share")}
-      ${financialCard("−","Total Deductions",Math.max(0,total.internet+total.elec+total.miscellaneous),`Internet + electricity + misc. fee`,"deductions")}
+      ${financialCard("−","Total Deductions",Math.max(0,total.internet+total.miscellaneous),`Internet + misc. fee`,"deductions")}
       ${financialCard("₱","Total Earnings",Math.max(0,total.due),"Customer earnings for this period","earnings")}
     </div>
     <div class="client-two-col">
@@ -458,8 +510,7 @@ function unitCard(u){
   return `<article class="unit-card"><div class="unit-card-top"><div class="unit-symbol">⌁</div>${statusBadge(status)}</div><h3>${esc(u.unitCode||"—")}</h3><p class="unit-location">${esc(u.location||"Location not provided")}</p><div class="unit-divider"></div><div class="unit-meta"><span><b>Installed</b>${esc(dateLong(u.dateJoined||u.createdAt))}</span><span><b>Client ID</b>${esc(u.clientCode||"—")}</span></div></article>`;
 }
 function breakdown(t){
-  const net=Math.max(0,t.client - t.elec);
-  return `<div class="breakdown-list"><div><span>Gross Sales</span><b>${money(t.gross)}</b></div><div><span>Internet Fee</span><b>${money(t.internet)}</b></div><div><span>Electricity Share</span><b>${money(t.elec)}</b></div><div><span>Miscellaneous Fee</span><b>${money(t.miscellaneous)}</b></div><div><span>Your Share (${settings.clientPercent}%)</span><b>${money(t.client)}</b></div><div class="highlight"><span>Amount Due</span><b>${money(t.due)}</b></div><div><span>Amount Paid</span><b>${money(t.paid)}</b></div><div class="balance-row"><span>Balance</span><b>${money(t.balance)}</b></div></div>`;
+  return `<div class="breakdown-list"><div><span>Gross Sales</span><b>${money(t.gross)}</b></div><div><span>Internet Fee</span><b>${money(t.internet)}</b></div><div><span>Admin Electricity Share</span><b>${money(t.elec)}</b></div><div><span>Miscellaneous Fee</span><b>${money(t.miscellaneous)}</b></div><div><span>Your Share (${settings.clientPercent}%)</span><b>${money(t.client)}</b></div><div class="highlight"><span>Total Earnings</span><b>${money(t.due)}</b></div><div><span>Amount Paid</span><b>${money(t.paid)}</b></div><div class="balance-row"><span>Remaining Earnings</span><b>${money(t.balance)}</b></div></div>`;
 }
 function recentPaymentsHtml(){
   const list=ownPayments().sort((a,b)=>timeValue(b.paymentDate||b.date||b.createdAt)-timeValue(a.paymentDate||a.date||a.createdAt)).slice(0,5);
@@ -479,9 +530,9 @@ function renderSales(){
   const year=selectedYear;
   const list=ownRecords().filter(r=>String(r.month||"").startsWith(year+"-")).sort((a,b)=>String(b.month).localeCompare(String(a.month)));
   $("#view").innerHTML=pageTitle("Sales History","View your monthly sales and computations.",`<div class="filter-row"><select id="salesYear" class="client-filter"></select><select id="salesUnit" class="client-filter"><option value="all">All Units</option>${clientUnits.map(u=>`<option value="${u.id}" ${u.id===selectedUnitId?"selected":""}>${esc(u.unitCode)}</option>`).join("")}</select></div>`)+
-    `<section class="client-panel table-panel"><div class="table-scroll"><table class="client-table"><thead><tr><th>Month</th><th>Unit</th><th>Gross Sales</th><th>Internet Fee</th><th>Electricity Share</th><th>Misc. Fee</th><th>Your Share</th><th>Amount Due</th><th>Status</th></tr></thead><tbody>${
+    `<section class="client-panel table-panel"><div class="table-scroll"><table class="client-table"><thead><tr><th>Month</th><th>Unit</th><th>Gross Sales</th><th>Internet Fee</th><th>Misc. Fee</th><th>Your Share</th><th>Amount Due</th><th>Status</th></tr></thead><tbody>${
       list.filter(r=>selectedUnitId==="all"||r.unitId===selectedUnitId).length
-      ? list.filter(r=>selectedUnitId==="all"||r.unitId===selectedUnitId).map(r=>{const u=clientUnits.find(x=>x.id===r.unitId),c=calc(r);return `<tr><td>${monthLabel(r.month)}</td><td><b>${esc(u?.unitCode||"—")}</b></td><td>${money(c.gross)}</td><td>${money(c.internet)}</td><td>${money(c.elec)}</td><td>${money(c.miscellaneous)}</td><td>${money(c.client)}</td><td class="strong-amount">${money(c.clientTotal)}</td><td>${statusBadge(c.status)}</td></tr>`}).join("")
+      ? list.filter(r=>selectedUnitId==="all"||r.unitId===selectedUnitId).map(r=>{const u=clientUnits.find(x=>x.id===r.unitId),c=calc(r);return `<tr><td>${monthLabel(r.month)}</td><td><b>${esc(u?.unitCode||"—")}</b></td><td>${money(c.gross)}</td><td>${money(c.internet)}</td><td>${money(c.miscellaneous)}</td><td>${money(c.client)}</td><td class="strong-amount">${money(c.clientTotal)}</td><td>${statusBadge(c.status)}</td></tr>`}).join("")
       : `<tr><td colspan="9">${empty("No sales records available.")}</td></tr>`
     }</tbody></table></div></section>`;
   $("#salesYear").innerHTML=[...new Set(ownRecords().map(r=>String(r.month||"").slice(0,4)).filter(Boolean))].sort((a,b)=>Number(b)-Number(a)).map(y=>`<option ${y===year?"selected":""}>${y}</option>`).join("")||`<option>${year}</option>`;
@@ -502,9 +553,9 @@ function renderStatement(){
   const month=selectedMonth;
   const total=aggregate(month);
   $("#view").innerHTML=pageTitle("Statement","Generate and download your statement.",`<div class="filter-row"><select id="statementMonth" class="client-filter"></select>${clientUnits.length>1?`<select id="statementUnit" class="client-filter"><option value="all">All Units</option>${clientUnits.map(x=>`<option value="${x.id}" ${x.id===selectedUnitId?"selected":""}>${esc(x.unitCode)}</option>`).join("")}</select>`:""}<button class="client-primary" id="downloadPdf">${icons.download}Download PDF</button><button class="client-secondary" id="printStatement">${icons.printer}Print</button></div>`)+
-    `<section class="statement-sheet" id="statementSheet"><div class="statement-header"><div class="statement-brand"><div class="brand-logo">${wifiLogo()}</div><div><h2>PISO WIFI</h2><span>Client Statement</span></div></div><div class="statement-period"><b>${monthLabel(month)}</b><span>Generated ${dateLong(new Date())}</span></div></div>
+    `<section class="statement-sheet" id="statementSheet"><div class="statement-header"><div class="statement-brand"><img class="statement-official-logo" src="/assets/piso-wifi-logo.png" alt="PISO WIFI"></div><div class="statement-period"><b>${monthLabel(month)}</b><span>Generated ${dateLong(new Date())}</span></div></div>
       <div class="statement-client-grid"><div><b>Client Name</b><span>${esc(clientName())}</span></div><div><b>Client ID</b><span>${esc(clientCode())}</span></div><div><b>Unit${units.length>1?"s":""}</b><span>${esc(units.map(x=>x.unitCode).join(", ")||"—")}</span></div><div><b>Location</b><span>${esc(units.length===1?units[0].location:"Multiple assigned units")}</span></div></div>
-      <div class="statement-table-wrap"><table class="client-table statement-table"><tbody><tr><td>Gross Sales</td><td>${money(total.gross)}</td></tr><tr><td>Internet Fee</td><td>${money(total.internet)}</td></tr><tr><td>Electricity Share</td><td>${money(total.elec)}</td></tr><tr><td>Miscellaneous Fee</td><td>${money(total.miscellaneous)}</td></tr><tr><td>Your Share (${settings.clientPercent}%)</td><td>${money(total.client)}</td></tr><tr class="total-row"><td>Amount Due</td><td>${money(total.due)}</td></tr><tr><td>Amount Paid</td><td>${money(total.paid)}</td></tr><tr class="balance-row"><td>Balance</td><td>${money(total.balance)}</td></tr></tbody></table></div>
+      <div class="statement-table-wrap"><table class="client-table statement-table"><tbody><tr><td>Gross Sales</td><td>${money(total.gross)}</td></tr><tr><td>Internet Fee</td><td>${money(total.internet)}</td></tr><tr><td>Admin Electricity Share</td><td>${money(total.elec)}</td></tr><tr><td>Miscellaneous Fee</td><td>${money(total.miscellaneous)}</td></tr><tr><td>Your Share (${settings.clientPercent}%)</td><td>${money(total.client)}</td></tr><tr class="total-row"><td>Total Earnings</td><td>${money(total.due)}</td></tr><tr><td>Amount Paid</td><td>${money(total.paid)}</td></tr><tr class="balance-row"><td>Remaining Earnings</td><td>${money(total.balance)}</td></tr></tbody></table></div>
       <div class="statement-footer"><span>Status ${statusBadge(paymentStatus(total))}</span><small>This statement reflects records maintained in the PISO WIFI Management System.</small></div>
     </section>`;
   renderMonthSelectors();
@@ -515,7 +566,7 @@ function renderStatement(){
   $("#printStatement").onclick=()=>printStatement(total,units,month);
 }
 function wifiLogo(){return `<svg viewBox="0 0 48 48" aria-hidden="true"><path d="M7 20c10-9 24-9 34 0M12 26c7-6 17-6 24 0M18 32c3.5-3 8.5-3 12 0" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"/><circle cx="24" cy="38" r="2.5" fill="currentColor"/></svg>`;}
-function statementHtmlForPdf(total,units,month){return {title:`PISO WIFI Client Statement — ${monthLabel(month)}`,lines:[["Client Name",clientName()],["Client ID",clientCode()],["Unit",units.map(u=>u.unitCode).join(", ")||"—"],["Location",units.length===1?units[0].location:"Multiple assigned units"],["Period",monthLabel(month)],["Status",paymentStatus(total)],["Gross Sales",money(total.gross)],["Internet Fee",money(total.internet)],["Electricity Share",money(total.elec)],[`Your Share (${settings.clientPercent}%)`,money(total.client)],["Amount Due",money(total.due)],["Amount Paid",money(total.paid)],["Balance",money(total.balance)]]};}
+function statementHtmlForPdf(total,units,month){return {title:`PISO WIFI Client Statement — ${monthLabel(month)}`,lines:[["Client Name",clientName()],["Client ID",clientCode()],["Unit",units.map(u=>u.unitCode).join(", ")||"—"],["Location",units.length===1?units[0].location:"Multiple assigned units"],["Period",monthLabel(month)],["Status",paymentStatus(total)],["Gross Sales",money(total.gross)],["Internet Fee",money(total.internet)],[`Your Share (${settings.clientPercent}%)`,money(total.client)],["Amount Due",money(total.due)],["Amount Paid",money(total.paid)],["Balance",money(total.balance)]]};}
 function downloadStatementPdf(total,units,month){
   const api=window.jspdf;
   if(!api?.jsPDF){toast("PDF exporter is still loading. Please try again.","error");return;}
@@ -541,7 +592,7 @@ function printStatement(total,units,month){
   @media print{body{padding:10px}}
   </style></head><body><div class="brand"><div><h1>PISO WIFI</h1><div class="muted">Client Statement</div></div><div>${monthLabel(month)}<br><span class="muted">Generated ${dateLong(new Date())}</span></div></div>
   <div class="meta"><div><b>Client Name</b><br>${esc(clientName())}</div><div><b>Client ID</b><br>${esc(clientCode())}</div><div><b>Unit${units.length>1?"s":""}</b><br>${esc(units.map(u=>u.unitCode).join(", "))}</div><div><b>Location</b><br>${esc(units.length===1?units[0].location:"Multiple assigned units")}</div></div>
-  <table><tbody><tr><td>Gross Sales</td><td>${money(total.gross)}</td></tr><tr><td>Internet Fee</td><td>${money(total.internet)}</td></tr><tr><td>Electricity Share</td><td>${money(total.elec)}</td></tr><tr><td>Miscellaneous Fee</td><td>${money(total.miscellaneous)}</td></tr><tr><td>Your Share (${settings.clientPercent}%)</td><td>${money(total.client)}</td></tr><tr class="total"><td>Amount Due</td><td>${money(total.due)}</td></tr><tr><td>Amount Paid</td><td>${money(total.paid)}</td></tr><tr class="balance"><td>Balance</td><td>${money(total.balance)}</td></tr></tbody></table>
+  <table><tbody><tr><td>Gross Sales</td><td>${money(total.gross)}</td></tr><tr><td>Internet Fee</td><td>${money(total.internet)}</td></tr><tr><td>Admin Electricity Share</td><td>${money(total.elec)}</td></tr><tr><td>Miscellaneous Fee</td><td>${money(total.miscellaneous)}</td></tr><tr><td>Your Share (${settings.clientPercent}%)</td><td>${money(total.client)}</td></tr><tr class="total"><td>Total Earnings</td><td>${money(total.due)}</td></tr><tr><td>Amount Paid</td><td>${money(total.paid)}</td></tr><tr class="balance"><td>Remaining Earnings</td><td>${money(total.balance)}</td></tr></tbody></table>
   <div class="foot">Status: ${paymentStatus(total)} · PISO WIFI Management System</div></body></html>`);
   w.document.close();w.focus();setTimeout(()=>w.print(),350);
 }
@@ -599,11 +650,20 @@ function toggleNotificationPopover(){
   $("#notificationPopover")?.classList.toggle("show");
 }
 
+function navigateTo(next){
+  const target=String(next||"dashboard").replace(/^#/,"").split("?")[0]||"dashboard";
+  route=target;
+  if(location.hash!=="#"+target) location.hash="#"+target;
+  render();
+  syncProfileMenu?.();
+}
 function bindRouteButtons(){
-  document.querySelectorAll("[data-route]").forEach(el=>el.onclick=e=>{e.preventDefault();location.hash="#"+el.dataset.route;});
+  document.querySelectorAll("[data-route]").forEach(el=>{
+    el.onclick=e=>{e.preventDefault();e.stopPropagation();navigateTo(el.dataset.route);};
+  });
 }
 function renderNav(){
-  document.querySelectorAll("#clientNav a[data-route]").forEach(a=>a.classList.toggle("active",a.dataset.route===route));
+  document.querySelectorAll("#clientNav [data-route]").forEach(a=>a.classList.toggle("active",a.dataset.route===route));
 }
 function render(){
   renderNav();
@@ -616,7 +676,7 @@ function render(){
 function parseRoute(){return location.hash.replace("#","").split("?")[0]||"dashboard";}
 
 function openAuthError(message){
-  const loader=$("#clientAuthLoading");loader.innerHTML=`<div class="client-auth-error"><strong>Unable to open Customer Account</strong><span>${esc(message)}</span><a href="client-login.html">Return to Customer Account Login</a></div>`;
+  const loader=$("#clientAuthLoading");loader.innerHTML=`<div class="client-auth-error"><strong>Unable to open Customer Account</strong><span>${esc(message)}</span><a href="/">Return to Customer Account Login</a></div>`;
   loader.classList.remove("hidden");
 }
 function setupPasswordVisibilityToggles(){
@@ -650,13 +710,57 @@ async function maybeShowFirstLoginPasswordSetup(){
     if(a!==b){msg.textContent="Passwords do not match.";msg.className="client-login-message error";return;}
     const btn=form.querySelector("button"); btn.disabled=true; btn.textContent="Saving…";
     try{
-      await updatePassword(currentUser,a);
+      // Firebase Auth can still reject updatePassword with auth/requires-recent-login
+      // even immediately after reauthentication in this first-login flow. Use a
+      // fresh password sign-in token and the official Identity Toolkit REST
+      // account-update endpoint instead. This changes only the authenticated
+      // user's password and avoids weakening Firestore or Auth security rules.
+      let pendingCurrentPassword="";
+      try { pendingCurrentPassword=sessionStorage.getItem("pisoWifi.pendingCurrentPassword") || ""; } catch {}
+      if (!pendingCurrentPassword || !currentUser?.email) {
+        throw Object.assign(new Error("Your temporary login session has expired. Please return to Customer Login and sign in again with your temporary password."), {code:"auth/missing-temporary-password"});
+      }
+
+      const freshCred = await signInWithEmailAndPassword(auth,currentUser.email,pendingCurrentPassword);
+      const freshIdToken = await freshCred.user.getIdToken(true);
+      const apiKey = firebaseConfig.apiKey;
+      const response = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:update?key=${encodeURIComponent(apiKey)}`, {
+        method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({idToken:freshIdToken,password:a,returnSecureToken:true})
+      });
+      const result = await response.json();
+      if (!response.ok || !result.idToken) {
+        const authError = new Error(result?.error?.message || "Unable to update your password.");
+        authError.code = `auth/${String(result?.error?.message || "password-update-failed").toLowerCase()}`;
+        throw authError;
+      }
+
+      // Refresh the browser Firebase session with the new password before
+      // changing the customer's Firestore first-login flag.
+      const updatedCred = await signInWithEmailAndPassword(auth,currentUser.email,a);
+      await updatedCred.user.getIdToken(true);
       await updateDoc(doc(db,"units",unit.id),{forcePasswordChange:false,passwordChangedAt:serverTimestamp(),updatedAt:serverTimestamp()});
+      try { sessionStorage.removeItem("pisoWifi.pendingCurrentPassword"); } catch {}
       unit.forcePasswordChange=false;
-      modal.classList.add("hidden"); modal.setAttribute("aria-hidden","true");
-      toast("Your new password has been saved.");
+      form.reset();
+      msg.className="client-login-message success";
+      msg.textContent="Congratulations! You can now use your PISO WIFI portal.";
+      const btn=form.querySelector("button");
+      btn.disabled=true;
+      btn.textContent="Password Saved";
+      setTimeout(()=>{
+        modal.classList.add("hidden"); modal.setAttribute("aria-hidden","true");
+        toast("Congratulations! You can now use your PISO WIFI portal.");
+      },1800);
     }catch(err){
-      console.error(err); msg.textContent="Unable to update your password. Please sign in again and try once more.";msg.className="client-login-message error";
+      console.error(err);
+      if(err?.code==="auth/requires-recent-login") {
+        msg.textContent="Your temporary login session could not be refreshed. Please return to Customer Login and sign in again with your temporary password.";
+      } else {
+        msg.textContent=err?.message || "Unable to update your password. Please try again.";
+      }
+      msg.className="client-login-message error";
       btn.disabled=false;btn.textContent="Save My Password";
     }
   };
@@ -680,7 +784,7 @@ async function withTimeout(promise,ms,label){
 async function bootstrap(user){
   if(!user){
     bootstrapFinished=true; clearTimeout(bootTimer);
-    location.replace("/");
+    location.replace("/client-login.html");
     return;
   }
   currentUser=user;
@@ -707,7 +811,23 @@ async function bootstrap(user){
 }
 $("#clientMenuBtn").onclick=()=>{$("#clientSidebar").classList.add("open");$("#clientOverlay").classList.add("show");};
 $("#clientOverlay").onclick=()=>{$("#clientSidebar").classList.remove("open");$("#clientOverlay").classList.remove("show");};
-async function logoutClient(){await signOut(auth);location.replace("/");}
+async function logoutClient(){
+  // Mark the logout before touching Firebase so the login page can suppress
+  // any stale auth-state callback during the browser navigation.
+  try{
+    sessionStorage.setItem("pisoWifi.justLoggedOut","1");
+    sessionStorage.removeItem("pisoWifi.pendingCurrentPassword");
+    if(supportChatUnsub){supportChatUnsub();supportChatUnsub=null;}
+    supportChatOpen=false;
+    await signOut(auth);
+  }catch(e){
+    console.error("[PISO WIFI CUSTOMER LOGOUT]",e);
+  }finally{
+    // Use the canonical clean login route. The previous .html target could
+    // interact badly with the Pages clean-URL rewrite and cause a redirect loop.
+    window.location.replace("/");
+  }
+}
 $("#clientLogout").onclick=logoutClient;
 $("#menuLogout").onclick=logoutClient;
 $("#notificationBtn").onclick=toggleNotificationPopover;
@@ -721,14 +841,23 @@ function updateSupportBadge(){const b=$("#supportUnreadBadge");if(!b)return;cons
 $("#menuChangePassword").onclick=()=>{$("#clientProfileMenu")?.classList.remove("show");$("#clientProfileBtn")?.setAttribute("aria-expanded","false");const modal=$("#clientPasswordSetup");if(modal){modal.classList.remove("hidden");modal.setAttribute("aria-hidden","false");}};
 function syncProfileMenu(){const name=clientName(), av=initials(name);if($("#menuClientName"))$("#menuClientName").textContent=name;if($("#menuAvatar"))$("#menuAvatar").textContent=av;}
 function routeFromSearch(q){const v=String(q||"").trim().toLowerCase();if(!v)return null;if(v.includes("dashboard")||v.includes("home"))return"dashboard";if(v.includes("unit"))return"units";if(v.includes("sale")||v.includes("revenue"))return"sales";if(v.includes("pay"))return"payments";if(v.includes("statement")||v.includes("bill"))return"statement";if(v.includes("profile")||v.includes("account"))return"profile";if(v.includes("notification")||v.includes("alert"))return"notifications";return null;}
-function bindQuickSearch(){const input=$("#clientQuickSearch"),box=$("#clientSearchSuggestions");if(!input||!box)return;const items=[['dashboard','Dashboard','Overview of your account'],['units','My Units','Assigned Piso WiFi units'],['sales','Sales History','Monthly sales records'],['payments','Payments','Payment history and balance'],['statement','Statement','Monthly client statement'],['profile','My Profile','Account information'],['notifications','Notifications','Updates from Admin']];const draw=(q='')=>{const f=items.filter(x=>!q||x[1].toLowerCase().includes(q.toLowerCase())||x[2].toLowerCase().includes(q.toLowerCase()));box.innerHTML=f.slice(0,5).map(x=>`<button type="button" data-search-route="${x[0]}"><b>${esc(x[1])}</b><small>${esc(x[2])}</small></button>`).join('');box.querySelectorAll('[data-search-route]').forEach(b=>b.onclick=()=>{location.hash='#'+b.dataset.searchRoute;box.classList.add('hidden');input.value='';});box.classList.toggle('hidden',f.length===0);};input.addEventListener('focus',()=>draw(input.value));input.addEventListener('input',()=>{const target=routeFromSearch(input.value);if(target&&input.value.trim().length>=3){draw(input.value)}else draw(input.value)});}
+function bindQuickSearch(){const input=$("#clientQuickSearch"),box=$("#clientSearchSuggestions");if(!input||!box)return;const items=[['dashboard','Dashboard','Overview of your account'],['units','My Units','Assigned Piso WiFi units'],['sales','Sales History','Monthly sales records'],['payments','Payments','Payment history and balance'],['statement','Statement','Monthly client statement'],['profile','My Profile','Account information'],['notifications','Notifications','Updates from Admin']];const draw=(q='')=>{const f=items.filter(x=>!q||x[1].toLowerCase().includes(q.toLowerCase())||x[2].toLowerCase().includes(q.toLowerCase()));box.innerHTML=f.slice(0,5).map(x=>`<button type="button" data-search-route="${x[0]}"><b>${esc(x[1])}</b><small>${esc(x[2])}</small></button>`).join('');box.querySelectorAll('[data-search-route]').forEach(b=>b.onclick=()=>{navigateTo(b.dataset.searchRoute);box.classList.add('hidden');input.value='';});box.classList.toggle('hidden',f.length===0);};input.addEventListener('focus',()=>draw(input.value));input.addEventListener('input',()=>{const target=routeFromSearch(input.value);if(target&&input.value.trim().length>=3){draw(input.value)}else draw(input.value)});}
 bindQuickSearch();
 syncProfileMenu();
 document.addEventListener("click",e=>{
   if(!e.target.closest("#notificationWrap"))$("#notificationPopover")?.classList.remove("show");
   if(!e.target.closest("#clientProfileWrap")){ $("#clientProfileMenu")?.classList.remove("show"); $("#clientProfileBtn")?.setAttribute("aria-expanded","false"); }
   if(!e.target.closest("#clientSearchWrap"))$("#clientSearchSuggestions")?.classList.add("hidden");
-  const routeEl=e.target.closest("[data-route]");if(routeEl&&routeEl.closest("#clientProfileMenu")){e.preventDefault();location.hash="#"+routeEl.dataset.route;$("#clientProfileMenu")?.classList.remove("show");$("#clientProfileBtn")?.setAttribute("aria-expanded","false");}
+  const routeEl=e.target.closest("[data-route]");if(routeEl){e.preventDefault();e.stopPropagation();navigateTo(routeEl.dataset.route);if(routeEl.closest("#clientProfileMenu")){$("#clientProfileMenu")?.classList.remove("show");$("#clientProfileBtn")?.setAttribute("aria-expanded","false");}}
 });
 window.addEventListener("hashchange",()=>{route=parseRoute();render();syncProfileMenu();});
-onAuthStateChanged(auth,bootstrap);
+(async()=>{
+  try{
+    if(typeof auth.authStateReady === "function") await auth.authStateReady();
+    await bootstrap(auth.currentUser);
+  }catch(e){
+    console.error("Customer auth initialization failed:",e);
+    openAuthError(e?.message||"Firebase Authentication could not be initialized.");
+  }
+})();
+onAuthStateChanged(auth,user=>{if(bootstrapFinished && user?.uid===currentUser?.uid) return; bootstrap(user);});
