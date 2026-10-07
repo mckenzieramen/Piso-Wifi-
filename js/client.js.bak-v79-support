@@ -229,7 +229,6 @@ let supportChatSending=false;
 let supportTypingTimer=null;
 let supportChatDocId="";
 const supportChatId=()=>String(supportChatDocId||currentUser?.uid||"");
-const supportStatusValue=chat=>{const s=String(chat?.status||"Open").trim().toLowerCase(); if(s==="closed") return "Closed"; if(s==="solved") return "Solved"; return "Open";};
 const supportChatRef=()=>supportChatId()?doc(db,"supportChats",supportChatId()):null;
 function supportNow(){return new Date().toISOString();}
 function supportMessageHtml(m){
@@ -259,10 +258,10 @@ function hasRealSupportConversation(chat){
 }
 function renderSupportLobby(){
   const lobby=$("#supportLobby"), convo=$("#supportConversationView"); if(!lobby||!convo)return;
-  const status=supportStatusValue(supportChat);
+  const status=String(supportChat?.status||"Open");
   const active=hasRealSupportConversation(supportChat);
   const closed=status==="Closed"||status==="Solved";
-  const actionLabel = closed ? "Start New Chat" : (active ? "Open Conversation" : "Start Chat");
+  const actionLabel = closed ? "Reopen Chat" : (active ? "Open Conversation" : "Start Chat");
   lobby.innerHTML=`<div class="piso-support-hero"><div class="support-icon">${icons.bell}</div><span class="eyebrow">PISO WIFI CUSTOMER SUPPORT</span><h2>How can we help?</h2><p>Chat directly with the PISO WIFI Admin. Your conversation stays connected to your Customer Account.</p></div><div class="piso-ticket-card"><div><b>Customer Support</b><small>${status==="Closed"?"Ticket was closed. You can open a new chat anytime.":status==="Solved"?"This concern was solved. You can open chat support again anytime.":active?"Your active support conversation.":"No conversation started yet."}</small></div><span class="piso-ticket-status ${status.toLowerCase()}">${esc(status)}</span></div><button id="startSupportChat" class="client-primary piso-support-start">${actionLabel}</button>`;
   convo.classList.add("hidden");
   const start=$("#startSupportChat");
@@ -271,7 +270,7 @@ function renderSupportLobby(){
 function renderSupportChat(){
   const lobby=$("#supportLobby"), convo=$("#supportConversationView"); if(!lobby||!convo)return;
   lobby.classList.add("hidden"); convo.classList.remove("hidden");
-  const status=supportStatusValue(supportChat);
+  const status=String(supportChat?.status||"Open");
   $("#supportStatus").textContent=status;
   $("#supportChatCustomer").textContent=clientName();
   renderSupportConversation();
@@ -282,39 +281,28 @@ function renderSupportChat(){
 }
 async function loadExistingSupportChat(){
   if(!currentUser?.uid) return null;
-  // Load the most recent support conversation for this customer.
-  // A solved/closed conversation is history; a new concern gets a new ticket.
-  const q=query(collection(db,"supportChats"),where("authUserId","==",currentUser.uid));
-  const snap=await getDocs(q);
-  const chats=snap.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>{
-    const av=a?.updatedAt?.toMillis?a.updatedAt.toMillis():new Date(a?.updatedAt||a?.createdAt||0).getTime();
-    const bv=b?.updatedAt?.toMillis?b.updatedAt.toMillis():new Date(b?.updatedAt||b?.createdAt||0).getTime();
-    return bv-av;
-  });
-  const latest=chats[0]||null;
-  if(latest){
-    supportChatDocId=latest.id;
-    supportChat=latest;
+  const direct=doc(db,"supportChats",currentUser.uid);
+  const directSnap=await getDoc(direct);
+  if(directSnap.exists()){
+    supportChatDocId=directSnap.id;
+    supportChat={id:directSnap.id,...directSnap.data()};
     return supportChat;
   }
-  supportChatDocId="";
+  supportChatDocId=currentUser.uid;
   supportChat=null;
   return null;
 }
-async function createSupportChat(forceNew=false){
+async function createSupportChat(){
   if(!currentUser?.uid)throw new Error("Customer account is not ready.");
-  if(!forceNew){
-    if(!supportChat) await loadExistingSupportChat();
-    if(supportChat && !["Closed","Solved"].includes(supportStatusValue(supportChat))) return supportChat;
-  }
-  // Every new concern gets its own support ticket/document.
-  supportChatDocId=`${currentUser.uid}_${Date.now()}`;
+  if(!supportChat) await loadExistingSupportChat();
+  if(supportChat) return supportChat;
+  supportChatDocId=currentUser.uid;
   const ref=supportChatRef();
   const unit=primaryUnit();
   const greeting={senderType:"admin",text:"Hi! I’m PISO WIFI Customer Support. Let us know what you need help with, and our Admin will assist you here.",createdAt:supportNow()};
   const payload={authUserId:currentUser.uid,unitId:unit.id||"",clientCode:unit.clientCode||"",customerName:clientName(),customerEmail:clientEmail(),status:"Open",messages:[greeting],typingBy:{customer:false,admin:false},unreadForAdmin:true,unreadForCustomer:false,createdAt:serverTimestamp(),updatedAt:supportNow()};
   await setDoc(ref,payload);
-  supportChat={id:ref.id,...payload,createdAt:new Date(),updatedAt:supportNow()};
+  supportChat={id:ref.id,...payload,createdAt:new Date()};
   return supportChat;
 }
 function subscribeSupportChat(){
@@ -332,7 +320,7 @@ function subscribeSupportChat(){
         // entire modal, so the input keeps focus and the scroll position.
         $("#supportStatus").textContent=String(supportChat?.status||"Open");
         renderSupportConversation();
-        const closed=["Solved","Closed"].includes(supportStatusValue(supportChat));
+        const closed=["Solved","Closed"].includes(String(supportChat?.status||"Open"));
         const input=$("#supportChatInput"),send=$("#supportSend");
         if(input){input.disabled=closed;input.placeholder=closed?"Ticket was closed.":"Type your concern…";}
         if(send)send.disabled=closed;
@@ -345,23 +333,24 @@ function subscribeSupportChat(){
 }
 async function openSupportConversation(){
   try{
-    const currentStatus=supportStatusValue(supportChat);
+    await createSupportChat();
+    const currentStatus=String(supportChat?.status||"Open");
     if(["Closed","Solved"].includes(currentStatus)){
-      // Do NOT reopen the old ticket. Start a completely new support conversation/document.
-      await createSupportChat(true);
+      const reopenedMessage={senderType:"system",text:"Customer reopened the support chat. PISO WIFI Support can continue assisting here.",createdAt:supportNow()};
+      const existingMessages=Array.isArray(supportChat?.messages)?supportChat.messages:[];
+      await updateDoc(supportChatRef(),{status:"Open",messages:[...existingMessages,reopenedMessage],unreadForAdmin:true,unreadForCustomer:false,reopenedAt:supportNow(),updatedAt:supportNow()});
     }else{
-      await createSupportChat(false);
+      await updateDoc(supportChatRef(),{unreadForCustomer:false,updatedAt:supportNow()});
     }
     subscribeSupportChat();
     supportChatOpen=true;
     renderSupportChat();
-    await updateDoc(supportChatRef(),{unreadForCustomer:false,updatedAt:supportNow()});
-  }catch(e){toast(e?.message||"Unable to open a new support chat. Please contact Admin if this continues.","error");}
+  }catch(e){toast(e?.message||"Unable to open support chat. Please contact Admin if this continues.","error");}
 }
 function closeSupportChat(){supportChatOpen=false;$("#supportConversationView")?.classList.add("hidden");$("#supportLobby")?.classList.remove("hidden");}
 async function sendSupportMessage(){
   if(supportChatSending)return; const input=$("#supportChatInput");const text=String(input?.value||"").trim();if(!text)return;
-  if(["Closed","Solved"].includes(supportStatusValue(supportChat))){toast("This support conversation is closed. Please start a new chat for a new concern.","error");return;}
+  if(["Closed","Solved"].includes(String(supportChat?.status||"Open"))){toast("This support conversation is not open. Please wait for Admin to reopen it.","error");return;}
   supportChatSending=true;
   try{
     await createSupportChat();
