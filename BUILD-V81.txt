@@ -1,0 +1,3 @@
+PISO WIFI v81
+
+Customer Support: when the latest support ticket is Solved/Closed, the customer sees Start New Chat and creates a new supportChats document. Old tickets remain unchanged. Status matching is case-insensitive. Cache-buster updated to v81.
