@@ -261,7 +261,8 @@ function renderSupportLobby(){
   const status=String(supportChat?.status||"Open");
   const active=hasRealSupportConversation(supportChat);
   const closed=status==="Closed"||status==="Solved";
-  lobby.innerHTML=`<div class="piso-support-hero"><div class="support-icon">${icons.bell}</div><span class="eyebrow">PISO WIFI CUSTOMER SUPPORT</span><h2>How can we help?</h2><p>Chat directly with the PISO WIFI Admin. Your conversation stays connected to your Customer Account.</p></div><div class="piso-ticket-card"><div><b>Customer Support</b><small>${status==="Closed"?"Ticket was closed. You can open a new chat anytime.":status==="Solved"?"This concern was solved. You can open chat support again anytime.":active?"Your active support conversation.":"No conversation started yet."}</small></div><span class="piso-ticket-status ${status.toLowerCase()}">${esc(status)}</span></div><button id="startSupportChat" class="client-primary piso-support-start">${closed?"Reopen Chat":"${active?"Open Conversation":"Start Chat"}"}</button>`;
+  const actionLabel = closed ? "Reopen Chat" : (active ? "Open Conversation" : "Start Chat");
+  lobby.innerHTML=`<div class="piso-support-hero"><div class="support-icon">${icons.bell}</div><span class="eyebrow">PISO WIFI CUSTOMER SUPPORT</span><h2>How can we help?</h2><p>Chat directly with the PISO WIFI Admin. Your conversation stays connected to your Customer Account.</p></div><div class="piso-ticket-card"><div><b>Customer Support</b><small>${status==="Closed"?"Ticket was closed. You can open a new chat anytime.":status==="Solved"?"This concern was solved. You can open chat support again anytime.":active?"Your active support conversation.":"No conversation started yet."}</small></div><span class="piso-ticket-status ${status.toLowerCase()}">${esc(status)}</span></div><button id="startSupportChat" class="client-primary piso-support-start">${actionLabel}</button>`;
   convo.classList.add("hidden");
   const start=$("#startSupportChat");
   if(start) start.onclick=()=>openSupportConversation();
@@ -787,7 +788,7 @@ async function logoutClient(){
   }finally{
     // Use the canonical clean login route. The previous .html target could
     // interact badly with the Pages clean-URL rewrite and cause a redirect loop.
-    window.location.assign("/client-login?loggedOut=1");
+    window.location.replace("/client-login?loggedOut=1");
   }
 }
 $("#clientLogout").onclick=logoutClient;
