@@ -1,5 +1,7 @@
 import { auth, db } from "./firebase.js";
 import {
+
+console.info("[PISO WIFI] BUILD v58 — registered-Gmail client auth baseline");
   signInWithEmailAndPassword,
   onAuthStateChanged,
   signOut,
