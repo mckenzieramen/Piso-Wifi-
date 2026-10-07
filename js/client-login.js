@@ -6,7 +6,7 @@ import {
   setPersistence,
   browserSessionPersistence,
 } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-auth.js";
-import { doc, getDoc, addDoc, collection, serverTimestamp } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-firestore.js";
+import { doc, getDoc, setDoc, addDoc, collection, serverTimestamp } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-firestore.js";
 
 const form = document.querySelector("#clientLoginForm");
 const msg = document.querySelector("#clientLoginMessage");
@@ -92,11 +92,37 @@ form.addEventListener("submit", async e => {
   try {
     await setPersistence(auth, browserSessionPersistence);
 
-    const cred = await signInWithEmailAndPassword(
-      auth,
-      email,
-      password
-    );
+    let cred;
+    try {
+      // Current accounts use the customer's real registered Gmail.
+      cred = await signInWithEmailAndPassword(auth, email, password);
+    } catch (primaryErr) {
+      // Backward compatibility: older client accounts were provisioned with
+      // the synthetic @client-login.pisowifi.local email. If that legacy
+      // account still uses the temporary CID password, sign in with it and
+      // migrate the Firebase Auth email to the customer's real Gmail.
+      const legacyEmail = `${email.split("@")[0].replace(/[^a-z0-9]+/gi, "-").toLowerCase()}@client-login.pisowifi.local`;
+      try {
+        cred = await signInWithEmailAndPassword(auth, legacyEmail, password);
+        const profile = await getRole(cred.user);
+        if (profile?.role !== "client" || profile?.active === false) {
+          await signOut(auth);
+          throw primaryErr;
+        }
+        try {
+          const { updateEmail } = await import("https://www.gstatic.com/firebasejs/12.2.1/firebase-auth.js");
+          await updateEmail(cred.user, email);
+          await setDoc(doc(db, "users", cred.user.uid), { email, authEmail: email, updatedAt: serverTimestamp() }, { merge: true });
+          if (profile?.clientUnitId) {
+            await setDoc(doc(db, "units", profile.clientUnitId), { authEmail: email, authUserId: cred.user.uid, updatedAt: serverTimestamp() }, { merge: true });
+          }
+        } catch (migrationErr) {
+          console.warn("[PISO WIFI] Legacy login succeeded but email migration was skipped:", migrationErr);
+        }
+      } catch (legacyErr) {
+        throw primaryErr;
+      }
+    }
 
     const profile = await getRole(cred.user);
 

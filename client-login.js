@@ -4,15 +4,14 @@ import {
   onAuthStateChanged,
   signOut,
   setPersistence,
-  browserSessionPersistence
+  browserSessionPersistence,
 } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-auth.js";
-import { doc, getDoc, addDoc, collection, serverTimestamp } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-firestore.js";
+import { doc, getDoc, setDoc, addDoc, collection, serverTimestamp } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-firestore.js";
 
 const form = document.querySelector("#clientLoginForm");
 const msg = document.querySelector("#clientLoginMessage");
 const submit = document.querySelector("#clientLoginButton");
 const remember = document.querySelector("#clientRememberMe");
-const UNIT_AUTH_DOMAIN = "@client-login.pisowifi.local";
 const CLIENT_REMEMBER_KEY = "pisoWifi.rememberedUsername";
 
 function message(text, type = "") {
@@ -32,9 +31,6 @@ try {
   }
 } catch {}
 
-function authEmailFromUsername(username) {
-  return `${username.toLowerCase().replace(/[^a-z0-9]+/g, "-")}${UNIT_AUTH_DOMAIN}`;
-}
 
 async function getRole(user) {
   const snap = await getDoc(doc(db, "users", user.uid));
@@ -81,11 +77,11 @@ onAuthStateChanged(auth, user => {
 form.addEventListener("submit", async e => {
   e.preventDefault();
 
-  const username = normalizeUsername(document.querySelector("#clientEmail").value);
+  const email = normalizeUsername(document.querySelector("#clientEmail").value).toLowerCase();
   const password = document.querySelector("#clientPassword").value;
 
-  if (!username || !password) {
-    message("Enter your username and password.", "error");
+  if (!email || !password) {
+    message("Enter your registered Gmail and password.", "error");
     return;
   }
 
@@ -96,11 +92,37 @@ form.addEventListener("submit", async e => {
   try {
     await setPersistence(auth, browserSessionPersistence);
 
-    const cred = await signInWithEmailAndPassword(
-      auth,
-      authEmailFromUsername(username),
-      password
-    );
+    let cred;
+    try {
+      // Current accounts use the customer's real registered Gmail.
+      cred = await signInWithEmailAndPassword(auth, email, password);
+    } catch (primaryErr) {
+      // Backward compatibility: older client accounts were provisioned with
+      // the synthetic @client-login.pisowifi.local email. If that legacy
+      // account still uses the temporary CID password, sign in with it and
+      // migrate the Firebase Auth email to the customer's real Gmail.
+      const legacyEmail = `${email.split("@")[0].replace(/[^a-z0-9]+/gi, "-").toLowerCase()}@client-login.pisowifi.local`;
+      try {
+        cred = await signInWithEmailAndPassword(auth, legacyEmail, password);
+        const profile = await getRole(cred.user);
+        if (profile?.role !== "client" || profile?.active === false) {
+          await signOut(auth);
+          throw primaryErr;
+        }
+        try {
+          const { updateEmail } = await import("https://www.gstatic.com/firebasejs/12.2.1/firebase-auth.js");
+          await updateEmail(cred.user, email);
+          await setDoc(doc(db, "users", cred.user.uid), { email, authEmail: email, updatedAt: serverTimestamp() }, { merge: true });
+          if (profile?.clientUnitId) {
+            await setDoc(doc(db, "units", profile.clientUnitId), { authEmail: email, authUserId: cred.user.uid, updatedAt: serverTimestamp() }, { merge: true });
+          }
+        } catch (migrationErr) {
+          console.warn("[PISO WIFI] Legacy login succeeded but email migration was skipped:", migrationErr);
+        }
+      } catch (legacyErr) {
+        throw primaryErr;
+      }
+    }
 
     const profile = await getRole(cred.user);
 
@@ -117,9 +139,24 @@ form.addEventListener("submit", async e => {
 
     window.location.replace("/client/");
   } catch (err) {
+    const debugDetails = [
+      `Registered Gmail entered: ${email}`,
+      `Firebase project: piso-wifi-f2b5c`,
+      `Operation: signInWithEmailAndPassword → ${email}`,
+      `Error code: ${err?.code || "(none)"}`,
+      `Error message: ${err?.message || String(err)}`
+    ].join("\n");
     console.error("[PISO WIFI CUSTOMER LOGIN]", err);
+    if (window.pisoDebug?.capture) {
+      window.pisoDebug.capture(err?.message || String(err), {
+        type: "CUSTOMER LOGIN",
+        operation: "signInWithEmailAndPassword",
+        context: debugDetails,
+        stack: err?.stack || ""
+      });
+    }
     message(
-      "Invalid username or password. If this is your first login, use the temporary password provided by Admin.",
+      "Login failed. Please check the temporary error popup for the exact Firebase error.",
       "error"
     );
     submit.disabled = false;
