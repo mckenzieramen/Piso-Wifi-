@@ -7,7 +7,7 @@ import {
   setPersistence,
   browserSessionPersistence,
 } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-auth.js";
-import { doc, getDoc, setDoc, addDoc, collection, serverTimestamp } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-firestore.js";
+import { doc, getDoc, getDocs, setDoc, addDoc, collection, query, where, serverTimestamp } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-firestore.js";
 
 console.info("[PISO WIFI] BUILD v61 — navigation/auth syntax fixed");
 
@@ -36,8 +36,64 @@ try {
 
 
 async function getRole(user) {
-  const snap = await getDoc(doc(db, "users", user.uid));
-  return snap.exists() ? snap.data() : null;
+  // Primary source: users/{uid}. If that profile is missing or temporarily
+  // unavailable, resolve the customer from the unit explicitly linked to the
+  // authenticated Firebase UID. This keeps a valid Auth login from being
+  // incorrectly reported as a failed login.
+  try {
+    const snap = await getDoc(doc(db, "users", user.uid));
+    if (snap.exists()) return snap.data();
+  } catch (e) {
+    console.warn("[PISO WIFI CUSTOMER AUTH] users profile lookup failed; using unit fallback.", e);
+  }
+
+  try {
+    const byUid = await getDocs(query(
+      collection(db, "units"),
+      where("authUserId", "==", user.uid)
+    ));
+    const unit = byUid.docs.find(d => d.data()?.active !== false);
+    if (unit) {
+      const data = unit.data();
+      return {
+        role: "client",
+        active: data?.active !== false,
+        clientUnitId: unit.id,
+        unitId: unit.id,
+        clientCode: data?.clientCode || "",
+        username: data?.username || "",
+        email: data?.email || user.email || "",
+        authEmail: data?.authEmail || user.email || ""
+      };
+    }
+  } catch (e) {
+    console.warn("[PISO WIFI CUSTOMER AUTH] authUserId unit lookup failed.", e);
+  }
+
+  try {
+    const byEmail = await getDocs(query(
+      collection(db, "units"),
+      where("email", "==", String(user.email || "").trim().toLowerCase())
+    ));
+    const unit = byEmail.docs.find(d => d.data()?.active !== false);
+    if (unit) {
+      const data = unit.data();
+      return {
+        role: "client",
+        active: data?.active !== false,
+        clientUnitId: unit.id,
+        unitId: unit.id,
+        clientCode: data?.clientCode || "",
+        username: data?.username || "",
+        email: data?.email || user.email || "",
+        authEmail: data?.authEmail || user.email || ""
+      };
+    }
+  } catch (e) {
+    console.warn("[PISO WIFI CUSTOMER AUTH] email unit lookup failed.", e);
+  }
+
+  return null;
 }
 
 async function routeUser(user) {
@@ -158,10 +214,12 @@ form.addEventListener("submit", async e => {
         stack: err?.stack || ""
       });
     }
-    message(
-      "Login failed. Please check the temporary error popup for the exact Firebase error.",
-      "error"
-    );
+    const code = err?.code || "";
+    const firebaseMessage = String(err?.message || "").replace(/^Firebase:\s*/i, "");
+    const detail = code
+      ? `Login failed (${code}). ${firebaseMessage || "Please try again."}`
+      : `Login failed. ${firebaseMessage || "Please try again."}`;
+    message(detail, "error");
     submit.disabled = false;
     submit.textContent = "Login";
   }
