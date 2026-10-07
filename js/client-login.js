@@ -53,7 +53,7 @@ async function routeUser(user) {
       else if (!remember?.checked) localStorage.removeItem(CLIENT_REMEMBER_KEY);
     } catch {}
 
-    window.location.replace("/client");
+    window.location.replace("/client/index.html");
       return;
     }
 
@@ -140,7 +140,7 @@ form.addEventListener("submit", async e => {
       return;
     }
 
-    window.location.replace("/client");
+    window.location.replace("/client/index.html");
   } catch (err) {
     const debugDetails = [
       `Registered Gmail entered: ${email}`,

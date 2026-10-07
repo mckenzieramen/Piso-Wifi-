@@ -1,17 +1,9 @@
-# PISO WIFI OFFICIAL ROUTES — Cloudflare Pages
+# PISO WIFI Cloudflare Pages routes
 / /index.html 200
-
-# Admin portal
 /admin /admin/index.html 200
 /admin/ /admin/index.html 200
-/admin/dashboard /admin/dashboard.html 200
-/admin/dashboard/ /admin/dashboard.html 200
-
-# Customer Account login
-/client-login /index.html 200
-/client-login/ /index.html 200
-
-# Customer dashboard
+/client-login /client-login.html 200
+/client-login/ /client-login.html 200
 /client /client/index.html 200
 /client/ /client/index.html 200
 /client/dashboard /client/index.html 200

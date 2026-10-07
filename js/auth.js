@@ -47,7 +47,7 @@ async function routeSignedInUser(user) {
       if (rememberAdmin?.checked) localStorage.setItem(REMEMBER_ADMIN_KEY, user.email || "");
       else localStorage.removeItem(REMEMBER_ADMIN_KEY);
     } catch {}
-    window.location.replace("/admin/dashboard");
+    window.location.replace("/admin/dashboard.html");
       return;
     }
 
@@ -100,7 +100,7 @@ form.addEventListener("submit", async e => {
       return;
     }
 
-    window.location.replace("/admin/dashboard");
+    window.location.replace("/admin/dashboard.html");
   } catch (err) {
     console.error("[PISO WIFI ADMIN LOGIN]", err);
     window.pisoDebug?.capture(err?.message || String(err), {type:"ADMIN LOGIN", operation:"signInWithEmailAndPassword", errorCode:err?.code || "unknown", email});
