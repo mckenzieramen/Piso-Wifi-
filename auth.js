@@ -66,11 +66,15 @@ async function routeSignedInUser(user) {
   }
 }
 
-// Session persistence is per browser tab so Admin and Customer portals
-// do not share an authentication session across tabs.
-onAuthStateChanged(auth, user => {
-  if (user) routeSignedInUser(user);
-});
+// Admin login is intentionally a fresh-login screen.
+(async () => {
+  try {
+    await setPersistence(auth, browserSessionPersistence);
+    if (auth.currentUser) await signOut(auth);
+  } catch (e) {
+    console.warn("[PISO WIFI ADMIN AUTH] Unable to clear previous Admin session:", e);
+  }
+})();
 
 form.addEventListener("submit", async e => {
   e.preventDefault();

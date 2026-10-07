@@ -185,10 +185,15 @@ form.addEventListener("submit", async e => {
 
     const profile = await getRole(cred.user);
 
-    // Keep the just-used credential only for the first-login password change.
-    // This lets the Customer portal re-authenticate before Firebase requires a recent login.
+    // Keep the just-used temporary credential for the Customer portal's
+    // first-login password setup. The password-change flag lives on the
+    // unit record in some account versions, so relying on users/{uid}
+    // forcePasswordChange here can leave the dashboard without the
+    // temporary credential it needs. Store it for every successful client
+    // login, then remove it immediately after the password is changed or
+    // when the customer completes a normal login.
     try {
-      if (profile?.role === "client" && profile?.forcePasswordChange === true) {
+      if (profile?.role === "client" && profile?.active !== false) {
         sessionStorage.setItem("pisoWifi.pendingCurrentPassword", password);
       } else {
         sessionStorage.removeItem("pisoWifi.pendingCurrentPassword");
