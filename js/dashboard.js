@@ -892,6 +892,8 @@ function parseRoute(){const raw=location.hash.replace("#","");return raw.split("
 document.addEventListener("click",e=>{const a=e.target.closest("[data-route]");if(a){e.preventDefault();e.stopPropagation();navigateTo(a.dataset.route);return;} const p=e.target.closest("[data-print-inline]");if(p){const id=$("#statementUnit")?.value;if(id)printStatement(id,$("#statementMonth").value);} const pdf=e.target.closest("[data-pdf-inline]");if(pdf){const id=$("#statementUnit")?.value;if(id)downloadStatementPdf(id,$("#statementMonth").value);} const html=e.target.closest("[data-html-inline]");if(html){const id=$("#statementUnit")?.value;if(id)downloadStatementHtml(id,$("#statementMonth").value);}});
 window.addEventListener("hashchange",()=>{route=parseRoute();render();});
 $("#menuBtn").onclick=()=>{$("#sidebar").classList.add("open");$("#overlay").classList.add("show")};$("#overlay").onclick=closeMenu;
+async function forceAdminRelogin(){try{await signOut(auth);}finally{location.replace("/admin/index.html?relogin=1");}}
+$("#reloginBtn").onclick=forceAdminRelogin;
 $("#logoutBtn").onclick=async()=>{await signOut(auth);location.href="/admin/index.html"};
 $("#globalSearch").oninput=e=>{const q=e.target.value.trim();if(q.length>=2){unitSearch=q;route="units";if(location.hash!=="#units")location.hash="#units";else renderUnits();}else if(!q){unitSearch="";if(route==="units")renderUnits();}};
 

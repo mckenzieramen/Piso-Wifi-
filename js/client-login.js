@@ -129,7 +129,13 @@ async function routeUser(user) {
   }
 }
 
-onAuthStateChanged(auth, user => {
+onAuthStateChanged(auth, async user => {
+  const justLoggedOut=sessionStorage.getItem("pisoWifi.justLoggedOut")==="1";
+  if(justLoggedOut){
+    sessionStorage.removeItem("pisoWifi.justLoggedOut");
+    if(user){try{await signOut(auth);}catch(e){console.warn("[PISO WIFI CUSTOMER LOGOUT] cleanup failed",e);}}
+    return;
+  }
   if (user) routeUser(user);
 });
 

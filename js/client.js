@@ -261,10 +261,10 @@ function renderSupportLobby(){
   const status=String(supportChat?.status||"Open");
   const active=hasRealSupportConversation(supportChat);
   const closed=status==="Closed"||status==="Solved";
-  lobby.innerHTML=`<div class="piso-support-hero"><div class="support-icon">${icons.bell}</div><span class="eyebrow">PISO WIFI CUSTOMER SUPPORT</span><h2>How can we help?</h2><p>Chat directly with the PISO WIFI Admin. Your conversation stays connected to your Customer Account.</p></div><div class="piso-ticket-card"><div><b>Customer Support</b><small>${status==="Closed"?"Ticket was closed.":status==="Solved"?"Ticket was closed by PISO WIFI Support.":active?"Your active support conversation.":"No conversation started yet."}</small></div><span class="piso-ticket-status ${status.toLowerCase()}">${esc(status)}</span></div><button id="startSupportChat" class="client-primary piso-support-start" ${closed?"disabled":""}>${active?"Open Conversation":"Start Chat"}</button>`;
+  lobby.innerHTML=`<div class="piso-support-hero"><div class="support-icon">${icons.bell}</div><span class="eyebrow">PISO WIFI CUSTOMER SUPPORT</span><h2>How can we help?</h2><p>Chat directly with the PISO WIFI Admin. Your conversation stays connected to your Customer Account.</p></div><div class="piso-ticket-card"><div><b>Customer Support</b><small>${status==="Closed"?"Ticket was closed. You can open a new chat anytime.":status==="Solved"?"This concern was solved. You can open chat support again anytime.":active?"Your active support conversation.":"No conversation started yet."}</small></div><span class="piso-ticket-status ${status.toLowerCase()}">${esc(status)}</span></div><button id="startSupportChat" class="client-primary piso-support-start">${closed?"Reopen Chat":"${active?"Open Conversation":"Start Chat"}"}</button>`;
   convo.classList.add("hidden");
   const start=$("#startSupportChat");
-  if(start&&!closed) start.onclick=()=>openSupportConversation();
+  if(start) start.onclick=()=>openSupportConversation();
 }
 function renderSupportChat(){
   const lobby=$("#supportLobby"), convo=$("#supportConversationView"); if(!lobby||!convo)return;
@@ -331,7 +331,20 @@ function subscribeSupportChat(){
   });
 }
 async function openSupportConversation(){
-  try{await createSupportChat();subscribeSupportChat();supportChatOpen=true;renderSupportChat();await updateDoc(supportChatRef(),{unreadForCustomer:false,updatedAt:supportNow()});}catch(e){toast(e?.message||"Unable to open support chat. Please contact Admin if this continues.","error");}
+  try{
+    await createSupportChat();
+    const currentStatus=String(supportChat?.status||"Open");
+    if(["Closed","Solved"].includes(currentStatus)){
+      const reopenedMessage={senderType:"system",text:"Customer reopened the support chat. PISO WIFI Support can continue assisting here.",createdAt:supportNow()};
+      const existingMessages=Array.isArray(supportChat?.messages)?supportChat.messages:[];
+      await updateDoc(supportChatRef(),{status:"Open",messages:[...existingMessages,reopenedMessage],unreadForAdmin:true,unreadForCustomer:false,reopenedAt:supportNow(),updatedAt:supportNow()});
+    }else{
+      await updateDoc(supportChatRef(),{unreadForCustomer:false,updatedAt:supportNow()});
+    }
+    subscribeSupportChat();
+    supportChatOpen=true;
+    renderSupportChat();
+  }catch(e){toast(e?.message||"Unable to open support chat. Please contact Admin if this continues.","error");}
 }
 function closeSupportChat(){supportChatOpen=false;$("#supportConversationView")?.classList.add("hidden");$("#supportLobby")?.classList.remove("hidden");}
 async function sendSupportMessage(){
@@ -760,7 +773,19 @@ async function bootstrap(user){
 }
 $("#clientMenuBtn").onclick=()=>{$("#clientSidebar").classList.add("open");$("#clientOverlay").classList.add("show");};
 $("#clientOverlay").onclick=()=>{$("#clientSidebar").classList.remove("open");$("#clientOverlay").classList.remove("show");};
-async function logoutClient(){await signOut(auth);location.replace("/client-login.html");}
+async function logoutClient(){
+  try{
+    sessionStorage.setItem("pisoWifi.justLoggedOut","1");
+    sessionStorage.removeItem("pisoWifi.pendingCurrentPassword");
+    if(supportChatUnsub){supportChatUnsub();supportChatUnsub=null;}
+    supportChatOpen=false;
+    if(auth.currentUser) await signOut(auth);
+  }catch(e){
+    console.error("[PISO WIFI CUSTOMER LOGOUT]",e);
+  }finally{
+    window.location.replace("/client-login.html?loggedOut=1");
+  }
+}
 $("#clientLogout").onclick=logoutClient;
 $("#menuLogout").onclick=logoutClient;
 $("#notificationBtn").onclick=toggleNotificationPopover;
