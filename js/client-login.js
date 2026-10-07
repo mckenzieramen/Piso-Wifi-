@@ -14,6 +14,19 @@ const submit = document.querySelector("#clientLoginButton");
 const remember = document.querySelector("#clientRememberMe");
 const CLIENT_REMEMBER_KEY = "pisoWifi.rememberedUsername";
 
+// Prevent the browser password manager from silently placing saved Admin credentials
+// into the Customer Login form. Fields become editable only after the customer
+// intentionally focuses/clicks them.
+for (const id of ["clientEmail", "clientPassword"]) {
+  const field = document.querySelector(`#${id}`);
+  if (field) {
+    const unlock = () => { field.readOnly = false; };
+    field.addEventListener("focus", unlock, { once: true });
+    field.addEventListener("pointerdown", unlock, { once: true });
+    field.addEventListener("keydown", unlock, { once: true });
+  }
+}
+
 function message(text, type = "") {
   msg.textContent = text;
   msg.className = `client-login-message ${type}`.trim();
@@ -26,8 +39,13 @@ function normalizeUsername(value) {
 try {
   const savedUnit = localStorage.getItem(CLIENT_REMEMBER_KEY);
   if (savedUnit && document.querySelector("#clientEmail")) {
-    document.querySelector("#clientEmail").value = savedUnit;
-    if (remember) remember.checked = true;
+    const saved = String(savedUnit).trim().toLowerCase();
+    if (saved && saved !== "pisonet@admin.com") {
+      document.querySelector("#clientEmail").value = saved;
+      if (remember) remember.checked = true;
+    } else {
+      localStorage.removeItem(CLIENT_REMEMBER_KEY);
+    }
   }
 } catch {}
 
