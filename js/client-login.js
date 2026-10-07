@@ -1,4 +1,4 @@
-console.info("[PISO WIFI] BUILD v63 — unified Admin/Customer auth flow");
+console.info("[PISO WIFI] BUILD v79 — customer login, logout, and OTP recovery workflow");
 import { auth, db } from "./firebase.js";
 import {
   signInWithEmailAndPassword,
@@ -16,6 +16,7 @@ const msg = document.querySelector("#clientLoginMessage");
 const submit = document.querySelector("#clientLoginButton");
 const remember = document.querySelector("#clientRememberMe");
 const CLIENT_REMEMBER_KEY = "pisoWifi.rememberedUsername";
+const CLIENT_LAST_EMAIL_KEY = "pisoWifi.lastCustomerEmail";
 
 function message(text, type = "") {
   msg.textContent = text;
@@ -34,11 +35,12 @@ try {
     // Never carry the previous customer session/password into a fresh login.
     if (passwordInput) passwordInput.value = "";
   }
-  const savedUnit = localStorage.getItem(CLIENT_REMEMBER_KEY);
-  if (savedUnit && emailInput) {
-    emailInput.value = savedUnit;
-    if (remember) remember.checked = true;
+  const savedEmail = localStorage.getItem(CLIENT_LAST_EMAIL_KEY);
+  if (savedEmail && emailInput) {
+    emailInput.value = savedEmail;
   }
+  const savedUnit = localStorage.getItem(CLIENT_REMEMBER_KEY);
+  if (remember && savedUnit) remember.checked = true;
 } catch {}
 
 
@@ -111,12 +113,14 @@ async function routeUser(user) {
 
     if (profile?.role === "client" && profile?.active !== false) {
       try {
-      const rememberedUsername = String(profile?.username || "").trim();
-      if (remember?.checked && rememberedUsername) localStorage.setItem(CLIENT_REMEMBER_KEY, rememberedUsername);
-      else if (!remember?.checked) localStorage.removeItem(CLIENT_REMEMBER_KEY);
-    } catch {}
+        const customerEmail = String(user?.email || profile?.authEmail || profile?.email || "").trim().toLowerCase();
+        if (customerEmail) localStorage.setItem(CLIENT_LAST_EMAIL_KEY, customerEmail);
+        const rememberedUsername = String(profile?.username || "").trim();
+        if (remember?.checked && rememberedUsername) localStorage.setItem(CLIENT_REMEMBER_KEY, rememberedUsername);
+        else if (!remember?.checked) localStorage.removeItem(CLIENT_REMEMBER_KEY);
+      } catch {}
 
-    window.location.replace("/client/index.html");
+      window.location.replace("/client/index.html");
       return;
     }
 
@@ -324,7 +328,7 @@ function openForgotPasswordModal(){
 }
 
 async function callRecovery(payload){
-  const res=await fetch(APPS_SCRIPT_OTP_URL,{method:"POST",headers:{"Content-Type":"text/plain;charset=utf-8"},body:JSON.stringify(payload)});
+  const res=await fetch("/api/password-recovery",{method:"POST",headers:{"Content-Type":"application/json;charset=utf-8"},body:JSON.stringify(payload),cache:"no-store"});
   const text=await res.text();
   let data={}; try{data=JSON.parse(text);}catch{throw new Error("Invalid recovery response from server.");}
   if(!data.ok) throw new Error(data.error||"Unable to complete account recovery.");

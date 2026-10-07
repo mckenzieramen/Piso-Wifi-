@@ -1,0 +1,10 @@
+PISO WIFI v79
+
+Changes:
+- Customer logout/login preserves last successfully authenticated customer email only (never stores plaintext password).
+- Customer login fields use customer-specific names and safer autocomplete hints to avoid showing the Admin credential on the Customer login page.
+- Password recovery now uses the same-origin Cloudflare Pages Function /api/password-recovery, avoiding browser CORS/fetch failures.
+- Password recovery proxy now points to the canonical Apps Script deployment.
+- Updated customer-login.js cache-buster to v79.
+
+No Admin, Firestore Rules, or customer data changes.
