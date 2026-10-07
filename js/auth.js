@@ -43,10 +43,10 @@ async function routeSignedInUser(user) {
     // ADMIN PORTAL IS STRICTLY ADMIN-ONLY.
     if (profile?.role === "admin" && profile?.active !== false) {
       try {
-      if (rememberAdmin?.checked) localStorage.setItem(REMEMBER_ADMIN_KEY, email);
+      if (rememberAdmin?.checked) localStorage.setItem(REMEMBER_ADMIN_KEY, user.email || "");
       else localStorage.removeItem(REMEMBER_ADMIN_KEY);
     } catch {}
-    window.location.replace("/admin/dashboard.html");
+    window.location.replace("/admin/dashboard");
       return;
     }
 
@@ -99,7 +99,7 @@ form.addEventListener("submit", async e => {
       return;
     }
 
-    window.location.replace("/admin/dashboard.html");
+    window.location.replace("/admin/dashboard");
   } catch (err) {
     console.error("[PISO WIFI ADMIN LOGIN]", err);
     showMessage("Login failed. Please check your Admin email and password.", "error");

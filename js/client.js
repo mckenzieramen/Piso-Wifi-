@@ -688,7 +688,7 @@ async function withTimeout(promise,ms,label){
 async function bootstrap(user){
   if(!user){
     bootstrapFinished=true; clearTimeout(bootTimer);
-    location.replace(new URL("/", window.location.origin).href);
+    location.replace("/");
     return;
   }
   currentUser=user;
@@ -696,7 +696,7 @@ async function bootstrap(user){
     const userSnap=await withTimeout(getDoc(doc(db,"users",user.uid)),8000,"Firebase user profile request timed out.");
     if(userSnap.exists() && userSnap.data().role==="admin"){
       bootstrapFinished=true; clearTimeout(bootTimer);
-      location.replace(new URL("/admin/dashboard.html", window.location.origin).href);
+      location.replace("/admin/dashboard");
       return;
     }
     await withTimeout(loadClientData(),8000,"Client records request timed out. Please check Firebase rules and your connection.");
@@ -715,7 +715,7 @@ async function bootstrap(user){
 }
 $("#clientMenuBtn").onclick=()=>{$("#clientSidebar").classList.add("open");$("#clientOverlay").classList.add("show");};
 $("#clientOverlay").onclick=()=>{$("#clientSidebar").classList.remove("open");$("#clientOverlay").classList.remove("show");};
-async function logoutClient(){await signOut(auth);location.replace(new URL("/", window.location.origin).href);}
+async function logoutClient(){await signOut(auth);location.replace("/");}
 $("#clientLogout").onclick=logoutClient;
 $("#menuLogout").onclick=logoutClient;
 $("#notificationBtn").onclick=toggleNotificationPopover;
@@ -739,4 +739,13 @@ document.addEventListener("click",e=>{
   const routeEl=e.target.closest("[data-route]");if(routeEl){e.preventDefault();e.stopPropagation();navigateTo(routeEl.dataset.route);if(routeEl.closest("#clientProfileMenu")){$("#clientProfileMenu")?.classList.remove("show");$("#clientProfileBtn")?.setAttribute("aria-expanded","false");}}
 });
 window.addEventListener("hashchange",()=>{route=parseRoute();render();syncProfileMenu();});
-onAuthStateChanged(auth,bootstrap);
+(async()=>{
+  try{
+    if(typeof auth.authStateReady === "function") await auth.authStateReady();
+    await bootstrap(auth.currentUser);
+  }catch(e){
+    console.error("Customer auth initialization failed:",e);
+    openAuthError(e?.message||"Firebase Authentication could not be initialized.");
+  }
+})();
+onAuthStateChanged(auth,user=>{if(bootstrapFinished && user?.uid===currentUser?.uid) return; bootstrap(user);});

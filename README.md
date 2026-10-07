@@ -38,3 +38,7 @@ Support chat added in this SafeEdit version: customer ↔ admin real-time chat v
 - Customer support access no longer depends on unit-linkage fields at the time a chat is created; access remains restricted to the signed-in owner or Admin.
 - Admin opening a conversation clears the Admin unread flag.
 - Publish the included `firestore.rules` to the same Firebase project used by the site before testing support chat.
+
+
+## v62 AUTH/NAVIGATION FIX
+Admin and Customer login now use Firebase authStateReady before routing, clean canonical routes (/admin/dashboard and /client), and cache-busted v62 modules.
