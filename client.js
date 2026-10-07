@@ -616,7 +616,7 @@ function render(){
 function parseRoute(){return location.hash.replace("#","").split("?")[0]||"dashboard";}
 
 function openAuthError(message){
-  const loader=$("#clientAuthLoading");loader.innerHTML=`<div class="client-auth-error"><strong>Unable to open Customer Account</strong><span>${esc(message)}</span><a href="client-login.html">Return to Customer Account Login</a></div>`;
+  const loader=$("#clientAuthLoading");loader.innerHTML=`<div class="client-auth-error"><strong>Unable to open Customer Account</strong><span>${esc(message)}</span><a href="/client-login">Return to Customer Account Login</a></div>`;
   loader.classList.remove("hidden");
 }
 function setupPasswordVisibilityToggles(){
@@ -707,7 +707,12 @@ async function bootstrap(user){
 }
 $("#clientMenuBtn").onclick=()=>{$("#clientSidebar").classList.add("open");$("#clientOverlay").classList.add("show");};
 $("#clientOverlay").onclick=()=>{$("#clientSidebar").classList.remove("open");$("#clientOverlay").classList.remove("show");};
-async function logoutClient(){await signOut(auth);location.replace("/");}
+async function logoutClient(){
+  try { await signOut(auth); } catch (err) { console.warn("[PISO WIFI] Customer logout sign-out warning:", err); }
+  sessionStorage.removeItem("pisoWifi.clientLogoutInProgress");
+  localStorage.removeItem("pisoWifi.clientTempPassword");
+  location.replace("/client-login");
+}
 $("#clientLogout").onclick=logoutClient;
 $("#menuLogout").onclick=logoutClient;
 $("#notificationBtn").onclick=toggleNotificationPopover;
