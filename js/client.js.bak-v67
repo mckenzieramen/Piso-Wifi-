@@ -1,13 +1,12 @@
 import { auth, db } from "./firebase.js";
 import {
-  onAuthStateChanged, signOut, signInWithEmailAndPassword
+  onAuthStateChanged, signOut, updatePassword, reauthenticateWithCredential, EmailAuthProvider
 } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-auth.js";
 import {
   collection, doc, getDoc, getDocs, query, where, updateDoc, setDoc, onSnapshot, arrayUnion,
   serverTimestamp, writeBatch
 } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-firestore.js";
 import { calculateFinancialRecord } from "./finance.js";
-import { firebaseConfig } from "./firebase-config.js";
 
 const $ = s => document.querySelector(s);
 const money = n => `₱${Number(n || 0).toLocaleString("en-PH",{minimumFractionDigits:2,maximumFractionDigits:2})}`;
@@ -659,36 +658,15 @@ async function maybeShowFirstLoginPasswordSetup(){
     if(a!==b){msg.textContent="Passwords do not match.";msg.className="client-login-message error";return;}
     const btn=form.querySelector("button"); btn.disabled=true; btn.textContent="Saving…";
     try{
-      // Firebase Auth can still reject updatePassword with auth/requires-recent-login
-      // even immediately after reauthentication in this first-login flow. Use a
-      // fresh password sign-in token and the official Identity Toolkit REST
-      // account-update endpoint instead. This changes only the authenticated
-      // user's password and avoids weakening Firestore or Auth security rules.
+      // Firebase may require a recent sign-in before changing a password.
+      // Re-authenticate with the temporary password used on the current login.
       let pendingCurrentPassword="";
       try { pendingCurrentPassword=sessionStorage.getItem("pisoWifi.pendingCurrentPassword") || ""; } catch {}
-      if (!pendingCurrentPassword || !currentUser?.email) {
-        throw Object.assign(new Error("Your temporary login session has expired. Please return to Customer Login and sign in again with your temporary password."), {code:"auth/missing-temporary-password"});
+      if (pendingCurrentPassword && currentUser?.email) {
+        const credential=EmailAuthProvider.credential(currentUser.email,pendingCurrentPassword);
+        await reauthenticateWithCredential(currentUser,credential);
       }
-
-      const freshCred = await signInWithEmailAndPassword(auth,currentUser.email,pendingCurrentPassword);
-      const freshIdToken = await freshCred.user.getIdToken(true);
-      const apiKey = firebaseConfig.apiKey;
-      const response = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:update?key=${encodeURIComponent(apiKey)}`, {
-        method:"POST",
-        headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({idToken:freshIdToken,password:a,returnSecureToken:true})
-      });
-      const result = await response.json();
-      if (!response.ok || !result.idToken) {
-        const authError = new Error(result?.error?.message || "Unable to update your password.");
-        authError.code = `auth/${String(result?.error?.message || "password-update-failed").toLowerCase()}`;
-        throw authError;
-      }
-
-      // Refresh the browser Firebase session with the new password before
-      // changing the customer's Firestore first-login flag.
-      const updatedCred = await signInWithEmailAndPassword(auth,currentUser.email,a);
-      await updatedCred.user.getIdToken(true);
+      await updatePassword(currentUser,a);
       await updateDoc(doc(db,"units",unit.id),{forcePasswordChange:false,passwordChangedAt:serverTimestamp(),updatedAt:serverTimestamp()});
       try { sessionStorage.removeItem("pisoWifi.pendingCurrentPassword"); } catch {}
       unit.forcePasswordChange=false;
@@ -705,7 +683,7 @@ async function maybeShowFirstLoginPasswordSetup(){
     }catch(err){
       console.error(err);
       if(err?.code==="auth/requires-recent-login") {
-        msg.textContent="Your temporary login session could not be refreshed. Please return to Customer Login and sign in again with your temporary password.";
+        msg.textContent="Your login session needs to be refreshed. Please return to Customer Login and sign in again with your temporary password.";
       } else {
         msg.textContent=err?.message || "Unable to update your password. Please try again.";
       }
