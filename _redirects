@@ -4,12 +4,15 @@
 # Admin portal
 /admin /admin/index.html 200
 /admin/ /admin/index.html 200
+/admin/dashboard /admin/dashboard.html 200
+/admin/dashboard/ /admin/dashboard.html 200
 
 # Customer Account login
 /client-login /index.html 200
 /client-login/ /index.html 200
 
-# Customer dashboard — explicit directory rewrites so /client and /client/
-# always resolve to the dashboard entry point on Cloudflare Pages.
+# Customer dashboard
 /client /client/index.html 200
 /client/ /client/index.html 200
+/client/dashboard /client/index.html 200
+/client/dashboard/ /client/index.html 200
