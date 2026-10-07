@@ -10,54 +10,67 @@ import {
 } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-firestore.js";
 
 const $ = (s) => document.querySelector(s);
-const APPS_SCRIPT_SHEET_SYNC_URL = "https://script.google.com/macros/s/AKfycbziRdnywiBqCJoBqJwXElHEGWdgyljApiYAhOvDJEyKJ_rzLWPP_GgYSmsfR1IE3_Fe/exec";
+const APPS_SCRIPT_SHEET_SYNC_URL = "https://script.google.com/macros/s/AKfycbzJcIf9rpdunJ8-1kDvgePWTT1L-cQOFzZLQHFQMaqBYTlviovyxjz4JOX-FpvUrjFu/exec";
+async function postSheetSyncPayload(payload){
+  const form=document.createElement("form");
+  form.method="POST";
+  form.action=APPS_SCRIPT_SHEET_SYNC_URL;
+  form.target="pisoSheetSyncFrame";
+  form.style.display="none";
+  const input=document.createElement("input");
+  input.type="hidden";
+  input.name="payload";
+  input.value=JSON.stringify(payload);
+  form.appendChild(input);
+  document.body.appendChild(form);
+  form.submit();
+  setTimeout(()=>form.remove(),1500);
+  return {ok:true,action:"submitted"};
+}
+
+function ensureSheetSyncFrame(){
+  if(document.getElementById("pisoSheetSyncFrame")) return;
+  const frame=document.createElement("iframe");
+  frame.id="pisoSheetSyncFrame";
+  frame.name="pisoSheetSyncFrame";
+  frame.style.display="none";
+  frame.setAttribute("aria-hidden","true");
+  document.body.appendChild(frame);
+}
+
 async function syncClientToSheet(client){
   if(!currentUser) throw new Error("Admin session is not ready for Google Sheets sync.");
+  ensureSheetSyncFrame();
   const idToken=await currentUser.getIdToken(true);
   const payload={
-    action:"syncClient",
-    idToken,
+    action:"syncClient", idToken,
     clientId:String(client.clientCode||client.clientId||"").trim().toUpperCase(),
     unitCode:String(client.unitCode||"").trim(),
     firstName:String(client.firstName||"").trim(),
     lastName:String(client.lastName||"").trim(),
     email:String(client.email||"").trim().toLowerCase(),
-    phone:String(client.contact||"").trim(),
+    phone:String(client.contact||client.phone||"").trim(),
     temporaryPassword:String(client.temporaryPassword||client.clientCode||client.clientId||"").trim(),
     passwordChanged:client.passwordChanged===true,
     accountStatus:client.active===false?"Inactive":"Active",
     createdAt:client.createdAt||new Date().toISOString(),
     lastLogin:client.lastLogin||""
   };
-
-  // Google Apps Script web apps can redirect cross-origin POST responses.
-  // Sending the JSON as a simple form field avoids browser CORS/preflight
-  // problems while still delivering the POST to doPost().
-  const body = "payload=" + encodeURIComponent(JSON.stringify(payload));
-  const response = await fetch(APPS_SCRIPT_SHEET_SYNC_URL,{
-    method:"POST",
-    headers:{"Content-Type":"application/x-www-form-urlencoded;charset=UTF-8"},
-    body
-  });
-
-  // The Apps Script response may be opaque/redirected by the browser. The
-  // important operation is the server-side write; doPost() returns a JSON
-  // status when the browser is allowed to read it.
-  let text="";
-  try { text=await response.text(); } catch(_) {}
-  if(text){
-    let data={};
-    try{data=JSON.parse(text||"{}");}catch(_){ data=null; }
-    if(data && data.ok===false) throw new Error(data.error||"Unable to sync client to Google Sheets.");
-    if(data && data.ok===true) return data;
-  }
-  return {ok:true,action:"submitted"};
+  if(!/^CID-\d{3,}$/.test(payload.clientId)) throw new Error("Invalid Client ID for Google Sheets sync: "+payload.clientId);
+  return postSheetSyncPayload(payload);
 }
+
 async function syncAllClientsToSheet(){
+  if(!currentUser) throw new Error("Admin session is not ready for Google Sheets sync.");
+  ensureSheetSyncFrame();
+  let count=0;
   for(const u of units){
     if(!(u?.clientCode||u?.clientId)||!u?.email) continue;
     await syncClientToSheet({...u,clientCode:u.clientCode||u.clientId,temporaryPassword:u.temporaryPassword||u.clientCode||u.clientId,passwordChanged:u.forcePasswordChange===false});
+    count++;
   }
+  console.info("[PISO WIFI] Google Sheets backfill submitted:",count);
+  return count;
 }
 
 const view = $("#view");

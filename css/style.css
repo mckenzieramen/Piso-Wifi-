@@ -227,10 +227,6 @@ body{background:radial-gradient(circle at 80% -10%,#e9f3ff 0,transparent 35%),va
 }
 .password-wrap button:hover{background:#e1efff}
 .login-card .primary-btn{
-  position:relative;
-  z-index:5;
-  pointer-events:auto;
-  cursor:pointer;
   width:100%;
   min-height:48px;
   margin-top:6px;

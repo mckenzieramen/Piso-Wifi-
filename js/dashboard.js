@@ -1,7 +1,7 @@
 import { auth, db } from "./firebase.js";
 import { firebaseConfig } from "./firebase-config.js";
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-app.js";
-import { getAuth, setPersistence, inMemoryPersistence, createUserWithEmailAndPassword, deleteUser } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-auth.js";
+import { getAuth, createUserWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-auth.js";
 import { calculateFinancialRecord } from "./finance.js";
 import { onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-auth.js";
 import {
@@ -10,56 +10,67 @@ import {
 } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-firestore.js";
 
 const $ = (s) => document.querySelector(s);
-const APPS_SCRIPT_SHEET_SYNC_URL = "https://script.google.com/macros/s/AKfycbziRdnywiBqCJoBqJwXElHEGWdgyljApiYAhOvDJEyKJ_rzLWPP_GgYSmsfR1IE3_Fe/exec";
+const APPS_SCRIPT_SHEET_SYNC_URL = "https://script.google.com/macros/s/AKfycbzJcIf9rpdunJ8-1kDvgePWTT1L-cQOFzZLQHFQMaqBYTlviovyxjz4JOX-FpvUrjFu/exec";
+async function postSheetSyncPayload(payload){
+  const form=document.createElement("form");
+  form.method="POST";
+  form.action=APPS_SCRIPT_SHEET_SYNC_URL;
+  form.target="pisoSheetSyncFrame";
+  form.style.display="none";
+  const input=document.createElement("input");
+  input.type="hidden";
+  input.name="payload";
+  input.value=JSON.stringify(payload);
+  form.appendChild(input);
+  document.body.appendChild(form);
+  form.submit();
+  setTimeout(()=>form.remove(),1500);
+  return {ok:true,action:"submitted"};
+}
+
+function ensureSheetSyncFrame(){
+  if(document.getElementById("pisoSheetSyncFrame")) return;
+  const frame=document.createElement("iframe");
+  frame.id="pisoSheetSyncFrame";
+  frame.name="pisoSheetSyncFrame";
+  frame.style.display="none";
+  frame.setAttribute("aria-hidden","true");
+  document.body.appendChild(frame);
+}
+
 async function syncClientToSheet(client){
   if(!currentUser) throw new Error("Admin session is not ready for Google Sheets sync.");
+  ensureSheetSyncFrame();
   const idToken=await currentUser.getIdToken(true);
   const payload={
-    action:"syncClient",
-    idToken,
+    action:"syncClient", idToken,
     clientId:String(client.clientCode||client.clientId||"").trim().toUpperCase(),
     unitCode:String(client.unitCode||"").trim(),
     firstName:String(client.firstName||"").trim(),
     lastName:String(client.lastName||"").trim(),
     email:String(client.email||"").trim().toLowerCase(),
-    phone:String(client.contact||"").trim(),
+    phone:String(client.contact||client.phone||"").trim(),
     temporaryPassword:String(client.temporaryPassword||client.clientCode||client.clientId||"").trim(),
     passwordChanged:client.passwordChanged===true,
     accountStatus:client.active===false?"Inactive":"Active",
     createdAt:client.createdAt||new Date().toISOString(),
     lastLogin:client.lastLogin||""
   };
-
-  // Google Apps Script web apps do not expose normal CORS response headers.
-  // Use sendBeacon with a simple form-encoded POST so the browser can deliver
-  // the request without requiring the response to be readable by JavaScript.
-  const body="payload="+encodeURIComponent(JSON.stringify(payload));
-  let sent=false;
-  try {
-    if(navigator.sendBeacon){
-      sent=navigator.sendBeacon(
-        APPS_SCRIPT_SHEET_SYNC_URL,
-        new Blob([body],{type:"application/x-www-form-urlencoded;charset=UTF-8"})
-      );
-    }
-  } catch(_) {}
-
-  if(!sent){
-    // Fallback for browsers where sendBeacon is unavailable or rejected.
-    await fetch(APPS_SCRIPT_SHEET_SYNC_URL,{
-      method:"POST",
-      mode:"no-cors",
-      headers:{"Content-Type":"application/x-www-form-urlencoded;charset=UTF-8"},
-      body
-    });
-  }
-  return {ok:true,action:"submitted"};
+  if(!/^CID-\d{3,}$/.test(payload.clientId)) throw new Error("Invalid Client ID for Google Sheets sync: "+payload.clientId);
+  return postSheetSyncPayload(payload);
 }
+
 async function syncAllClientsToSheet(){
+  if(!currentUser) throw new Error("Admin session is not ready for Google Sheets sync.");
+  ensureSheetSyncFrame();
+  let count=0;
   for(const u of units){
     if(!(u?.clientCode||u?.clientId)||!u?.email) continue;
     await syncClientToSheet({...u,clientCode:u.clientCode||u.clientId,temporaryPassword:u.temporaryPassword||u.clientCode||u.clientId,passwordChanged:u.forcePasswordChange===false});
+    count++;
   }
+  console.info("[PISO WIFI] Google Sheets backfill submitted:",count);
+  return count;
 }
 
 const view = $("#view");
@@ -88,15 +99,6 @@ const ENABLE_CLIENT_DELETE = true;
 const CLIENT_AUTH_DOMAIN="@client-login.pisowifi.local";
 const clientProvisionerApp=initializeApp(firebaseConfig,"clientProvisioner");
 const clientProvisionerAuth=getAuth(clientProvisionerApp);
-// IMPORTANT: client account provisioning must never replace or persist over the Admin
-// browser session. Keep the secondary Auth instance strictly in-memory.
-let clientProvisionerReady=null;
-async function prepareClientProvisioner(){
-  if(!clientProvisionerReady){
-    clientProvisionerReady=setPersistence(clientProvisionerAuth,inMemoryPersistence);
-  }
-  return clientProvisionerReady;
-}
 const clientAuthEmailFromUsername=(username)=>`${String(username||"").trim().toLowerCase().replace(/[^a-z0-9]+/g,"-")}${CLIENT_AUTH_DOMAIN}`;
 const firstNameFromFullName=(name)=>String(name||"").trim().split(/\s+/)[0]||"Client";
 const sanitizeUsernamePart=(name)=>firstNameFromFullName(name).replace(/[^A-Za-z0-9]/g,"")||"Client";
@@ -120,14 +122,15 @@ async function nextClientId(){
   });
 }
 async function previewNextClientId(){
-  // Preview must never block the Add Client form on a Firestore read.
-  // The actual save still uses nextClientId(), which reserves the CID
-  // transactionally and preserves the no-reuse rule.
+  const ref=doc(db,"settings","clientSequence");
   const maxExisting=units.reduce((max,u)=>{
     const m=String(u.clientCode||"").match(/^CID-(\d+)$/i);
     return m?Math.max(max,Number(m[1])):max;
   },0);
-  return `CID-${String(Math.max(1,maxExisting+1)).padStart(4,"0")}`;
+  const snap=await getDoc(ref);
+  const storedNext=Number(snap.exists()?snap.data().next:0);
+  const next=Math.max(Number.isInteger(storedNext)&&storedNext>0?storedNext:1,maxExisting+1);
+  return `CID-${String(next).padStart(4,"0")}`;
 }
 
 function availableUnitCodes(currentCode=""){
@@ -180,67 +183,66 @@ function calc(r){
 }
 function totals(rows){ return rows.reduce((a,x)=>{a.gross+=x.c.gross;a.internet+=x.c.internet;a.net+=x.c.net;a.owner+=x.c.owner;a.client+=x.c.client;a.elec+=x.c.elec;a.misc+=x.c.miscellaneous||0;a.due+=x.c.clientTotal;a.paid+=x.c.paid;a.balance+=x.c.balance;return a},{gross:0,internet:0,net:0,owner:0,client:0,elec:0,due:0,paid:0,balance:0}); }
 
-function timedPromise(promise, ms, label){
-  return Promise.race([
-    promise,
-    new Promise((_,reject)=>setTimeout(()=>{
-      const e=new Error(label+" timed out.");
-      e.code="piso/timeout";
-      reject(e);
-    },ms))
-  ]);
-}
-
 async function loadData(){
-  // Read core data independently. One slow collection must not prevent the
-  // others from appearing in the dashboard.
-  const readDocs = async (path, label, fallback=[]) => {
-    try {
-      const snap=await timedPromise(getDocs(collection(db,path)),9000,label);
-      return snap.docs.map(d=>({id:d.id,...d.data()}));
-    } catch(e) {
-      console.warn("[PISO WIFI DATA]",label,e);
-      return fallback;
-    }
-  };
+  // Core financial collections are required for the dashboard.
+  // Notifications and Activity Log are optional during rollout so a missing
+  // Firestore rule for those newer collections cannot blank the whole app.
+  const [u,r,p,s] = await Promise.all([
+    getDocs(collection(db,"units")),
+    getDocs(collection(db,"monthlyRecords")),
+    getDocs(collection(db,"payments")),
+    getDoc(doc(db,"settings","business"))
+  ]);
+
+  units=u.docs.map(d=>({id:d.id,...d.data()}));
+  try { await syncCustomerDirectory(); } catch(e) { console.warn("Customer directory sync skipped",e); }
+  try {
+    await syncAllClientsToSheet();
+    localStorage.setItem("pisoSheetSyncV2","1");
+  } catch(e) {
+    console.error("Google Sheets client backfill failed",e);
+  }
+  records=r.docs.map(d=>({id:d.id,...d.data()}));
+  payments=p.docs.map(d=>({id:d.id,...d.data()}));
+  if(s.exists()) settings={...settings,...s.data()};
 
   try {
-    const snap=await timedPromise(getDoc(doc(db,"settings","business")),9000,"Business settings");
-    if(snap.exists()) settings={...settings,...snap.data()};
+    const n=await getDocs(collection(db,"notifications"));
+    notifications=n.docs.map(d=>({id:d.id,...d.data()}))
+      .sort((a,b)=>timeValue(b.createdAt)-timeValue(a.createdAt));
   } catch(e) {
-    console.warn("[PISO WIFI DATA] Business settings",e);
+    console.warn("Notifications collection is not readable yet. Publish the latest Firestore rules.",e);
+    notifications=[];
   }
 
-  units=await readDocs("units","Units");
-  records=await readDocs("monthlyRecords","Monthly records");
-  payments=await readDocs("payments","Payments");
-  notifications=await readDocs("notifications","Notifications",notifications);
-  activities=await readDocs("activities","Activities",activities);
-  supportChats=await readDocs("supportChats","Support chats",supportChats);
+  try {
+    const a=await getDocs(collection(db,"activities"));
+    activities=a.docs.map(d=>({id:d.id,...d.data()}))
+      .sort((a,b)=>timeValue(b.createdAt)-timeValue(a.createdAt));
+  } catch(e) {
+    console.warn("Activities collection is not readable yet. Publish the latest Firestore rules.",e);
+    activities=[];
+  }
 
-  // Background synchronization must never block the dashboard.
-  try { await timedPromise(syncCustomerDirectory(),6000,"Customer directory sync"); }
-  catch(e) { console.warn("[PISO WIFI SYNC] Customer directory",e); }
-
-  try { await timedPromise(syncAllClientsToSheet(),6000,"Google Sheets sync"); }
-  catch(e) { console.warn("[PISO WIFI SYNC] Google Sheets",e); }
-
-  notifications.sort((a,b)=>timeValue(b.createdAt)-timeValue(a.createdAt));
-  activities.sort((a,b)=>timeValue(b.createdAt)-timeValue(a.createdAt));
-  supportChats.sort((a,b)=>timeValue(b.updatedAt||b.createdAt)-timeValue(a.updatedAt||a.createdAt));
-
+  try {
+    const sc=await getDocs(collection(db,"supportChats"));
+    supportChats=sc.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>timeValue(b.updatedAt||b.createdAt)-timeValue(a.updatedAt||a.createdAt));
+  } catch(e) {
+    console.warn("Support chats collection is not readable yet. Publish the latest Firestore rules.",e);
+    supportChats=[];
+  }
   updateNotificationBadge();
   updateSupportBadge();
 }
-
 function timeValue(v){ if(!v)return 0; if(v.toMillis)return v.toMillis(); const n=new Date(v).getTime(); return Number.isNaN(n)?0:n; }
 async function authorize(user){
-  // Admin authentication is already established by Firebase Authentication.
-  // The previous Firestore users/{uid} role lookup caused the dashboard to
-  // remain blank because that read was timing out. Keep the Admin gate tied
-  // to the dedicated authorized Admin account without blocking the dashboard.
-  const email=String(user?.email||"").trim().toLowerCase();
-  if(email!=="pisonet@admin.com"){
+  const snap=await getDoc(doc(db,"users",user.uid));
+  if(!snap.exists()) throw new Error("Your Firebase account is not authorized as an admin.");
+  const d=snap.data();
+
+  // Admin is identified by role. The active field is optional for legacy
+  // Admin records; only an explicit false value disables access.
+  if(d.role!=="admin" || d.active===false){
     throw new Error("Your account is not authorized as an Admin.");
   }
 }
@@ -277,44 +279,11 @@ function pageLoader(){ view.innerHTML=`<div class="loading-panel"><div class="lo
 
 function render(){
   nav();
-  const renderers={
-    dashboard:renderDashboard,
-    units:renderUnits,
-    reports:renderReports,
-    payments:renderPayments,
-    support:renderSupport,
-    notifications:renderNotifications,
-    statements:renderStatements,
-    activity:renderActivity,
-    settings:renderSettings,
-    profile:renderProfile
-  };
-  const renderer=renderers[route]||renderDashboard;
-  try{
-    renderer();
-  }catch(e){
-    console.error("[PISO WIFI NAVIGATION]",route,e);
-    view.innerHTML=`
-      <div class="panel" style="margin:24px;padding:32px;text-align:center">
-        <h2>Unable to open this section</h2>
-        <p>${esc(e?.message||"This section could not be loaded.")}</p>
-        <button class="primary-btn" data-route="dashboard">Back to Dashboard</button>
-      </div>`;
-  }
+  const renderers={dashboard:renderDashboard,units:renderUnits,reports:renderReports,payments:renderPayments,statements:renderStatements,notifications:renderNotifications,activity:renderActivity,settings:renderSettings,profile:renderProfile,support:renderSupport};
+  (renderers[route]||renderDashboard)();
   closeMenu();
   updateNotificationBadge();
   window.scrollTo({top:0,behavior:"smooth"});
-}
-
-function navigateTo(target){
-  const clean=String(target||"dashboard").replace(/^#/,"").split("?")[0]||"dashboard";
-  route=clean;
-  const current=location.hash.replace(/^#/,"").split("?")[0];
-  if(current===clean){
-    render();
-  }else{
-    location.hash="#"+clean;
-  }
 }
 
 function renderDashboard(){
@@ -431,7 +400,7 @@ function yearMonths(k){const y=Number(k.slice(0,4));return Array.from({length:12
 function renderUnits(){
   const rows=normalizeRows().filter(x=>(!unitSearch||`${x.u.name} ${x.u.unitCode} ${x.u.location} ${x.u.contact}`.toLowerCase().includes(unitSearch.toLowerCase()))&&(!unitStatus||String(x.u.active!==false?"Active":"Inactive")===unitStatus)&&(!unitPaymentStatus||x.c.status===unitPaymentStatus));
   view.innerHTML=baseHead("Units / Clients","Manage your Piso WiFi units and clients.",`<button class="primary-btn" id="addUnitBtn">+ Add New Client</button>`)+`<div class="panel"><div class="panel-head"><div><h3>Registered Units</h3><p>Showing ${rows.length} of ${units.length} units · ${monthLabel(selectedMonth)}</p></div><div class="tools"><input id="unitSearch" class="search" placeholder="Search client or unit…" value="${esc(unitSearch)}"><select id="unitStatus" class="search"><option value="">All Status</option><option ${unitStatus==="Active"?"selected":""}>Active</option><option ${unitStatus==="Inactive"?"selected":""}>Inactive</option></select><select id="unitPaymentStatus" class="search"><option value="">All Payment Status</option><option ${unitPaymentStatus==="Paid"?"selected":""}>Paid</option><option ${unitPaymentStatus==="Partial"?"selected":""}>Partial</option><option ${unitPaymentStatus==="Unpaid"?"selected":""}>Unpaid</option></select><button class="secondary-btn" id="exportUnits">Export Excel/CSV</button></div></div><div class="table-wrap accumulating-table"><table><thead><tr><th>Unit Code</th><th>Client Name</th><th>Location</th><th>Contact</th><th>Status</th><th>This Month</th><th>Payment</th><th>Actions</th></tr></thead><tbody>${rows.length?rows.map(x=>`<tr><td><b>${esc(x.u.unitCode||"—")}</b></td><td>${esc(x.u.name||"—")}</td><td>${esc(x.u.location||"—")}</td><td>${esc(x.u.contact||"—")}</td><td>${statusBadge(x.u.active!==false?"Active":"Inactive")}</td><td class="amount">${money(x.c.gross)}</td><td>${statusBadge(x.c.status)}</td><td><button class="action-btn" data-sale="${x.u.id}">Gross Sale</button><button class="action-btn" data-profile="${x.u.id}">View</button><button class="action-btn" data-edit-unit="${x.u.id}">Edit</button><button class="action-btn danger" data-toggle-unit="${x.u.id}">${x.u.active!==false?"Deactivate":"Activate"}</button>${ENABLE_CLIENT_DELETE?`<button class="action-btn danger solid-danger" data-delete-unit="${x.u.id}">Delete</button>`:""}</td></tr>`).join(""):emptyRow(8,"No clients or units found.")}</tbody></table></div></div>`;
-  $("#addUnitBtn").onclick=()=>openUnitModal().catch(e=>notify(e?.message||"Unable to open Add Client form.","error"));
+  $("#addUnitBtn").onclick=()=>openUnitModal();
   $("#unitSearch").oninput=e=>{unitSearch=e.target.value;renderUnits()};
   $("#unitStatus").onchange=e=>{unitStatus=e.target.value;renderUnits()};
   $("#unitPaymentStatus").onchange=e=>{unitPaymentStatus=e.target.value;renderUnits()};
@@ -664,7 +633,7 @@ function openModal(title,body,saveText,onSave,{danger=false}={}){
   $("#closeModal").onclick=closeModal; $("#cancelModal").onclick=closeModal;
   // Keep the form open when the user clicks outside the modal. Only the explicit X/Cancel controls close it.
   $("#modalBackdrop").onclick=e=>{ e.stopPropagation(); };
-  $("#saveModal").onclick=async()=>{try{await onSave();closeModal();notify("Saved successfully.");try{await loadData();render();}catch(refreshError){console.warn("[PISO WIFI REFRESH AFTER SAVE]",refreshError);render();}}catch(e){notify(e?.message||"Unable to save.","error");}};
+  $("#saveModal").onclick=async()=>{try{await onSave();closeModal();await loadData();render();notify("Saved successfully.");}catch(e){notify(e?.message||"Unable to save.","error");}};
   setTimeout(()=>document.querySelector("#modalRoot input, #modalRoot select")?.focus(),50);
 }
 function closeModal(){ $("#modalRoot").innerHTML=""; }
@@ -724,7 +693,6 @@ async function openUnitModal(id=null){
         const authEmail=clientAuthEmailFromUsername(username);
         const temporaryPassword=clientCode;
         let cred;
-        await prepareClientProvisioner();
         try{ cred=await createUserWithEmailAndPassword(clientProvisionerAuth,authEmail,temporaryPassword); }
         catch(e){
           if(e?.code==="auth/email-already-in-use") throw new Error("This generated username already has a login account. Please try again.");
@@ -734,16 +702,7 @@ async function openUnitModal(id=null){
         data.forcePasswordChange=true;
         data.loginId=username;
         data.authEmail=authEmail;
-        let ref;
-        try{
-          ref=await addDoc(collection(db,"units"),{...data,createdAt:serverTimestamp()});
-        }catch(e){
-          // Roll back the newly-created secondary Auth account so a failed Firestore
-          // permission check never leaves an orphaned customer login.
-          try{ await deleteUser(cred.user); }catch(rollbackError){ console.warn("[PISO WIFI CLIENT AUTH ROLLBACK]",rollbackError); }
-          if(String(e?.code||"")==="permission-denied") throw new Error("Admin Firestore permission is not active yet. The website session was kept intact.");
-          throw e;
-        }
+        const ref=await addDoc(collection(db,"units"),{...data,createdAt:serverTimestamp()});
         await syncClientToSheet({
           ...data,
           temporaryPassword,
@@ -856,105 +815,15 @@ function startCoreRealtime(){
 }
 
 function showAuthError(message){console.error("[PISO WIFI]",message);const loader=$("#authLoading");if(loader){loader.innerHTML=`<div class="auth-error"><strong>Unable to open the dashboard</strong><span>${esc(message)}</span><button onclick="location.href='index.html'">Return to Login</button></div>`;loader.classList.remove("hidden");}}
-let dashboardBooted=false;
-async function bootstrap(user){
-  if(!user){ location.replace("index.html"); return; }
-  if(dashboardBooted) return;
-
-  const email=String(user.email||"").trim().toLowerCase();
-  if(email!=="pisonet@admin.com"){
-    showAuthError("Your account is not authorized as an Admin.");
-    return;
-  }
-
-  dashboardBooted=true;
-  currentUser=user;
-
-  // Render the Admin shell first. Firestore reads must never keep the page blank.
-  setupMonthSelector();
-  route=location.hash.replace("#","").split("?")[0]||"dashboard";
-  $("#authLoading").classList.add("hidden");
-  $("#app").classList.remove("hidden");
-  $("#userEmail").textContent=user.email||"Admin";
-  render();
-
-  // Load business data in the background. Never show a blocking/error toast
-  // just because one Firestore collection is slow or temporarily unavailable.
-  // Realtime listeners below remain responsible for updating the dashboard.
-  loadData()
-    .then(()=>{ try{ render(); }catch(e){ console.warn("[PISO WIFI RENDER]",e); } })
-    .catch(e=>console.warn("[PISO WIFI DASHBOARD DATA]",e));
-
-  try{
-    await logActivity("System",`Admin login — ${user.email||"Admin"}`);
-  }catch(e){
-    console.warn("[PISO WIFI ACTIVITY]",e);
-  }
-
-  try{ startSupportRealtime(); }catch(e){ console.warn("[PISO WIFI SUPPORT REALTIME]",e); }
-  try{ startCoreRealtime(); }catch(e){ console.warn("[PISO WIFI CORE REALTIME]",e); }
-}
+async function bootstrap(user){if(!user){location.replace("index.html");return;}currentUser=user;try{await authorize(user);await loadData();await logActivity("System",`Admin login — ${user.email||"Admin"}`);setupMonthSelector();startSupportRealtime();startCoreRealtime();$("#authLoading").classList.add("hidden");$("#app").classList.remove("hidden");$("#userEmail").textContent=user.email||"Owner";route=location.hash.replace("#","").split("?")[0]||"dashboard";render();}catch(e){showAuthError(e?.message||"Firebase authorization or database access failed.");}}
 
 function parseRoute(){const raw=location.hash.replace("#","");return raw.split("?")[0]||"dashboard";}
-document.addEventListener("click",e=>{
-  const a=e.target.closest("[data-route]");
-  if(a){
-    e.preventDefault();
-    e.stopPropagation();
-    navigateTo(a.dataset.route);
-    return;
-  }
-
-  const p=e.target.closest("[data-print-inline]");
-  if(p){
-    const id=$("#statementUnit")?.value;
-    if(id)printStatement(id,$("#statementMonth").value);
-  }
-
-  const pdf=e.target.closest("[data-pdf-inline]");
-  if(pdf){
-    const id=$("#statementUnit")?.value;
-    if(id)downloadStatementPdf(id,$("#statementMonth").value);
-  }
-
-  const html=e.target.closest("[data-html-inline]");
-  if(html){
-    const id=$("#statementUnit")?.value;
-    if(id)downloadStatementHtml(id,$("#statementMonth").value);
-  }
-});
-
-document.addEventListener("keydown",e=>{
-  if(e.key!=="Enter" && e.key!==" ") return;
-  const target=e.target.closest("[data-route]");
-  if(!target) return;
-  if(target.tagName==="A" || target.tagName==="BUTTON") return;
-  e.preventDefault();
-  navigateTo(target.dataset.route);
-});
-
+document.addEventListener("click",e=>{const a=e.target.closest("[data-route]");if(a){e.preventDefault();location.hash="#"+a.dataset.route;} const p=e.target.closest("[data-print-inline]");if(p){const id=$("#statementUnit")?.value;if(id)printStatement(id,$("#statementMonth").value);} const pdf=e.target.closest("[data-pdf-inline]");if(pdf){const id=$("#statementUnit")?.value;if(id)downloadStatementPdf(id,$("#statementMonth").value);} const html=e.target.closest("[data-html-inline]");if(html){const id=$("#statementUnit")?.value;if(id)downloadStatementHtml(id,$("#statementMonth").value);}});
 window.addEventListener("hashchange",()=>{route=parseRoute();render();});
 $("#menuBtn").onclick=()=>{$("#sidebar").classList.add("open");$("#overlay").classList.add("show")};$("#overlay").onclick=closeMenu;
 $("#logoutBtn").onclick=async()=>{await signOut(auth);location.href="index.html"};
 $("#globalSearch").oninput=e=>{const q=e.target.value.trim();if(q.length>=2){unitSearch=q;route="units";if(location.hash!=="#units")location.hash="#units";else renderUnits();}else if(!q){unitSearch="";if(route==="units")renderUnits();}};
 
-let adminAuthResolved=false;
-let adminAuthGraceTimer=null;
-onAuthStateChanged(auth,user=>{
-  if(user){
-    adminAuthResolved=true;
-    if(adminAuthGraceTimer) clearTimeout(adminAuthGraceTimer);
-    bootstrap(user).catch(e=>showAuthError(e?.message||"Unable to initialize the Admin dashboard."));
-    return;
-  }
-  // Firebase can briefly emit null while restoring the persisted Admin session.
-  // Never redirect during that restoration window.
-  if(!adminAuthResolved){
-    if(adminAuthGraceTimer) clearTimeout(adminAuthGraceTimer);
-    adminAuthGraceTimer=setTimeout(()=>{
-      if(!auth.currentUser) location.replace("index.html");
-    },5000);
-  }else if(!auth.currentUser){
-    location.replace("index.html");
-  }
-});
+let authResolved=false;
+const authTimeout=setTimeout(()=>{if(!authResolved){const u=auth.currentUser;if(u)bootstrap(u);else showAuthError("Firebase Authentication did not finish loading. Please refresh the page and try logging in again.");}},8000);
+onAuthStateChanged(auth,user=>{authResolved=true;clearTimeout(authTimeout);bootstrap(user);});

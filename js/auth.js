@@ -1,143 +1,129 @@
-import { auth } from "./firebase.js";
+import { auth, db } from "./firebase.js";
 import {
   signInWithEmailAndPassword,
   onAuthStateChanged,
   sendPasswordResetEmail,
-  signOut
+  signOut,
+  setPersistence,
+  browserSessionPersistence
 } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-auth.js";
+import {
+  doc,
+  getDoc
+} from "https://www.gstatic.com/firebasejs/12.2.1/firebase-firestore.js";
 
-const ADMIN_EMAIL = "pisonet@admin.com";
 const form = document.querySelector("#loginForm");
 const msg = document.querySelector("#loginMessage");
-const emailInput = document.querySelector("#email");
-const passwordInput = document.querySelector("#password");
-const submitButton = form?.querySelector('button[type="submit"]');
-const togglePassword = document.querySelector("#togglePassword");
-const resetPassword = document.querySelector("#resetPassword");
+const REMEMBER_ADMIN_KEY = "pisoWifi.rememberedAdminEmail";
 const rememberAdmin = document.querySelector("#rememberAdmin");
-const KEY = "pisoWifi.rememberedAdminEmail";
-let busy = false;
-let redirecting = false;
+try {
+  const savedAdminEmail = localStorage.getItem(REMEMBER_ADMIN_KEY);
+  if (savedAdminEmail && document.querySelector("#email")) {
+    document.querySelector("#email").value = savedAdminEmail;
+    if (rememberAdmin) rememberAdmin.checked = true;
+  }
+} catch {}
 
-function showMessage(text, type="") {
-  if (!msg) return;
+function showMessage(text, type = "") {
   msg.textContent = text;
   msg.className = `login-message ${type}`.trim();
 }
-function setBusy(value) {
-  busy = value;
-  if (submitButton) {
-    submitButton.disabled = false;
-    submitButton.style.pointerEvents = "auto";
-    submitButton.textContent = value ? "Signing in…" : "Sign in to Admin";
-  }
-}
-function timeout(promise, ms, label) {
-  return Promise.race([
-    promise,
-    new Promise((_, reject) => setTimeout(() => {
-      const e = new Error(label + " timed out after " + Math.round(ms/1000) + " seconds.");
-      e.code = "piso/timeout";
-      reject(e);
-    }, ms))
-  ]);
-}
-function isAdminUser(user) {
-  return !!user && String(user.email || "").trim().toLowerCase() === ADMIN_EMAIL;
-}
-async function route(user) {
-  if (!isAdminUser(user) || redirecting) return;
-  redirecting = true;
-  window.location.replace("/admin/dashboard.html");
-}
-try {
-  const saved = localStorage.getItem(KEY);
-  if (saved && emailInput) {
-    emailInput.value = saved;
-    if (rememberAdmin) rememberAdmin.checked = true;
-  }
-} catch (_) {}
 
-let authRestoreTimer=null;
-onAuthStateChanged(auth, user => {
-  if (user && !busy) {
-    if(authRestoreTimer) clearTimeout(authRestoreTimer);
-    route(user);
+async function getRole(user) {
+  const snap = await getDoc(doc(db, "users", user.uid));
+  return snap.exists() ? snap.data() : null;
+}
+
+async function routeSignedInUser(user) {
+  if (!user) return;
+
+  try {
+    const profile = await getRole(user);
+
+    // ADMIN PORTAL IS STRICTLY ADMIN-ONLY.
+    if (profile?.role === "admin" && profile?.active !== false) {
+      try {
+      if (rememberAdmin?.checked) localStorage.setItem(REMEMBER_ADMIN_KEY, email);
+      else localStorage.removeItem(REMEMBER_ADMIN_KEY);
+    } catch {}
+    window.location.replace("/admin/dashboard.html");
+      return;
+    }
+
+    // A customer must never be routed into the Admin portal.
+    await signOut(auth);
+    showMessage(
+      "This account is a Customer Account. Please use the Customer Account login.",
+      "error"
+    );
+  } catch (e) {
+    console.error("[PISO WIFI ADMIN AUTH]", e);
+    try { await signOut(auth); } catch {}
+    showMessage(
+      "This account is not authorized for the Admin Portal.",
+      "error"
+    );
   }
+}
+
+// Session persistence is per browser tab so Admin and Customer portals
+// do not share an authentication session across tabs.
+onAuthStateChanged(auth, user => {
+  if (user) routeSignedInUser(user);
 });
 
-form?.addEventListener("submit", async e => {
+form.addEventListener("submit", async e => {
   e.preventDefault();
-  e.stopPropagation();
-  if (busy || redirecting) return;
+  const email = document.querySelector("#email").value.trim().toLowerCase();
+  const password = document.querySelector("#password").value;
 
-  const email = String(emailInput?.value || "").trim().toLowerCase();
-  const password = String(passwordInput?.value || "");
   if (!email || !password) {
     showMessage("Enter your email and password.", "error");
     return;
   }
-  if (email !== ADMIN_EMAIL) {
-    showMessage("This login is for the authorized Admin account only.", "error");
-    return;
-  }
 
-  setBusy(true);
   showMessage("Signing in…");
 
   try {
-    const cred = await timeout(
-      signInWithEmailAndPassword(auth, email, password),
-      15000,
-      "Firebase Admin sign-in"
-    );
+    await setPersistence(auth, browserSessionPersistence);
 
-    // Firebase Authentication accepted the credentials.
-    // Do not perform the Firestore users/{uid} lookup here: that read is
-    // currently timing out and is the cause of the previous stuck login.
-    try {
-      if (rememberAdmin?.checked) localStorage.setItem(KEY, email);
-      else localStorage.removeItem(KEY);
-    } catch (_) {}
+    const cred = await signInWithEmailAndPassword(auth, email, password);
+    const profile = await getRole(cred.user);
 
-    redirecting = true;
-    showMessage("Admin verified. Opening dashboard…", "success");
+    if (profile?.role !== "admin" || profile?.active === false) {
+      await signOut(auth);
+      showMessage(
+        "Access denied. This account is not an active Admin account.",
+        "error"
+      );
+      return;
+    }
+
     window.location.replace("/admin/dashboard.html");
   } catch (err) {
     console.error("[PISO WIFI ADMIN LOGIN]", err);
-    setBusy(false);
-    const code = String(err?.code || "");
-    let text = "Login failed. Please check your Admin email and password.";
-    if (code === "piso/timeout") text = err.message;
-    else if (["auth/invalid-credential","auth/wrong-password","auth/user-not-found"].includes(code))
-      text = "Incorrect Admin email or password.";
-    else if (code === "auth/too-many-requests")
-      text = "Too many attempts. Please wait a moment and try again.";
-    else if (code === "auth/network-request-failed")
-      text = "Firebase network connection failed. Please check the connection and try again.";
-    else if (code === "auth/operation-not-allowed")
-      text = "Firebase Email/Password sign-in is not enabled for this project.";
-    showMessage(text, "error");
+    showMessage("Login failed. Please check your Admin email and password.", "error");
   }
 });
 
-togglePassword?.addEventListener("click", e => {
-  e.preventDefault();
-  const p = passwordInput;
-  if (!p) return;
+document.querySelector("#togglePassword").onclick = () => {
+  const p = document.querySelector("#password");
   p.type = p.type === "password" ? "text" : "password";
-  togglePassword.textContent = p.type === "password" ? "Show" : "Hide";
-});
+  document.querySelector("#togglePassword").textContent =
+    p.type === "password" ? "Show" : "Hide";
+};
 
-resetPassword?.addEventListener("click", async e => {
-  e.preventDefault();
-  const email = String(emailInput?.value || "").trim().toLowerCase();
+document.querySelector("#resetPassword").onclick = async () => {
+  const email = document.querySelector("#email").value.trim();
   if (!email) {
     showMessage("Enter your Admin email first.", "error");
     return;
   }
+
   try {
-    await timeout(sendPasswordResetEmail(auth, email), 10000, "Password reset request");
-  } catch (_) {}
-  showMessage("If an Admin account exists for that email, password reset instructions have been sent.", "success");
-});
+    await sendPasswordResetEmail(auth, email);
+    showMessage("If an Admin account exists for that email, password reset instructions have been sent.", "success");
+  } catch {
+    showMessage("If an Admin account exists for that email, password reset instructions have been sent.", "success");
+  }
+};
