@@ -6,15 +6,18 @@
 export function calculateFinancialRecord(record = {}, settings = {}, payments = []) {
   const gross = Math.max(0, Number(record.grossSales || 0));
   const internet = Math.max(0, Number(settings.internetCost || 0));
-  const net = Math.max(0, gross - internet);
+  // NEW BUSINESS FORMULA: split the TOTAL GROSS directly.
+  // Internet (default ₱1,000) is tracked as a separate business cost;
+  // it is NOT deducted before the 70% / 30% gross split.
+  const net = gross;
 
   const ownerPercent = Number(settings.ownerPercent ?? 70);
   const clientPercent = Number(settings.clientPercent ?? 30);
-  const owner = net * ownerPercent / 100;
-  const client = net * clientPercent / 100;
+  const owner = gross * ownerPercent / 100;
+  const client = gross * clientPercent / 100;
 
-  const electricity = Math.max(0, Number(settings.electricity || 0));
-  const electricityRule = String(settings.electricityRule || "ADD_TO_CLIENT");
+  const electricity = Math.max(0, Number(settings.electricity ?? 100));
+  const electricityRule = "ADD_TO_CLIENT";
   // Electricity is a customer earning when the business rule is ADD_TO_CLIENT.
   // It is never deducted from the customer's share under this rule.
   const electricityAdjustment = electricityRule === "SUBTRACT_FROM_CLIENT"

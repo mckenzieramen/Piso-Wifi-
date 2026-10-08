@@ -1,3 +1,4 @@
+console.info("[PISO WIFI] BUILD v79 — customer login, logout, and OTP recovery workflow");
 import { auth, db } from "./firebase.js";
 import {
   signInWithEmailAndPassword,
@@ -6,13 +7,16 @@ import {
   setPersistence,
   browserSessionPersistence,
 } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-auth.js";
-import { doc, getDoc, setDoc, addDoc, collection, serverTimestamp } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-firestore.js";
+import { doc, getDoc, getDocs, setDoc, addDoc, collection, query, where, serverTimestamp } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-firestore.js";
+
+console.info("[PISO WIFI] BUILD v61 — navigation/auth syntax fixed");
 
 const form = document.querySelector("#clientLoginForm");
 const msg = document.querySelector("#clientLoginMessage");
 const submit = document.querySelector("#clientLoginButton");
 const remember = document.querySelector("#clientRememberMe");
 const CLIENT_REMEMBER_KEY = "pisoWifi.rememberedUsername";
+const CLIENT_LAST_EMAIL_KEY = "pisoWifi.lastCustomerEmail";
 
 function message(text, type = "") {
   msg.textContent = text;
@@ -24,17 +28,81 @@ function normalizeUsername(value) {
 }
 
 try {
-  const savedUnit = localStorage.getItem(CLIENT_REMEMBER_KEY);
-  if (savedUnit && document.querySelector("#clientEmail")) {
-    document.querySelector("#clientEmail").value = savedUnit;
-    if (remember) remember.checked = true;
+  const justLoggedOut = new URLSearchParams(window.location.search).get("loggedOut") === "1";
+  const emailInput = document.querySelector("#clientEmail");
+  const passwordInput = document.querySelector("#clientPassword");
+  if (justLoggedOut) {
+    // Never carry the previous customer session/password into a fresh login.
+    if (passwordInput) passwordInput.value = "";
   }
+  const savedEmail = localStorage.getItem(CLIENT_LAST_EMAIL_KEY);
+  if (savedEmail && emailInput) {
+    emailInput.value = savedEmail;
+  }
+  const savedUnit = localStorage.getItem(CLIENT_REMEMBER_KEY);
+  if (remember && savedUnit) remember.checked = true;
 } catch {}
 
 
 async function getRole(user) {
-  const snap = await getDoc(doc(db, "users", user.uid));
-  return snap.exists() ? snap.data() : null;
+  // Primary source: users/{uid}. If that profile is missing or temporarily
+  // unavailable, resolve the customer from the unit explicitly linked to the
+  // authenticated Firebase UID. This keeps a valid Auth login from being
+  // incorrectly reported as a failed login.
+  try {
+    const snap = await getDoc(doc(db, "users", user.uid));
+    if (snap.exists()) return snap.data();
+  } catch (e) {
+    console.warn("[PISO WIFI CUSTOMER AUTH] users profile lookup failed; using unit fallback.", e);
+  }
+
+  try {
+    const byUid = await getDocs(query(
+      collection(db, "units"),
+      where("authUserId", "==", user.uid)
+    ));
+    const unit = byUid.docs.find(d => d.data()?.active !== false);
+    if (unit) {
+      const data = unit.data();
+      return {
+        role: "client",
+        active: data?.active !== false,
+        clientUnitId: unit.id,
+        unitId: unit.id,
+        clientCode: data?.clientCode || "",
+        username: data?.username || "",
+        email: data?.email || user.email || "",
+        authEmail: data?.authEmail || user.email || ""
+      };
+    }
+  } catch (e) {
+    console.warn("[PISO WIFI CUSTOMER AUTH] authUserId unit lookup failed.", e);
+  }
+
+  try {
+    const byEmail = await getDocs(query(
+      collection(db, "units"),
+      where("email", "==", String(user.email || "").trim().toLowerCase())
+    ));
+    const unit = byEmail.docs.find(d => d.data()?.active !== false);
+    if (unit) {
+      const data = unit.data();
+      return {
+        role: "client",
+        active: data?.active !== false,
+        clientUnitId: unit.id,
+        unitId: unit.id,
+        clientCode: data?.clientCode || "",
+        username: data?.username || "",
+        email: data?.email || user.email || "",
+        authEmail: data?.authEmail || user.email || ""
+      };
+    }
+  } catch (e) {
+    console.warn("[PISO WIFI CUSTOMER AUTH] email unit lookup failed.", e);
+  }
+
+  return null;
 }
 
 async function routeUser(user) {
@@ -45,12 +113,14 @@ async function routeUser(user) {
 
     if (profile?.role === "client" && profile?.active !== false) {
       try {
-      const rememberedUsername = String(profile?.username || "").trim();
-      if (remember?.checked && rememberedUsername) localStorage.setItem(CLIENT_REMEMBER_KEY, rememberedUsername);
-      else if (!remember?.checked) localStorage.removeItem(CLIENT_REMEMBER_KEY);
-    } catch {}
+        const customerEmail = String(user?.email || profile?.authEmail || profile?.email || "").trim().toLowerCase();
+        if (customerEmail) localStorage.setItem(CLIENT_LAST_EMAIL_KEY, customerEmail);
+        const rememberedUsername = String(profile?.username || "").trim();
+        if (remember?.checked && rememberedUsername) localStorage.setItem(CLIENT_REMEMBER_KEY, rememberedUsername);
+        else if (!remember?.checked) localStorage.removeItem(CLIENT_REMEMBER_KEY);
+      } catch {}
 
-    window.location.replace("/client/");
+      window.location.replace("/client/index.html");
       return;
     }
 
@@ -70,7 +140,28 @@ async function routeUser(user) {
   }
 }
 
-onAuthStateChanged(auth, user => {
+let logoutGateActive = false;
+const logoutUrl = new URLSearchParams(window.location.search).get("loggedOut")==="1";
+
+// After logout, never route a stale Firebase auth callback back into the
+// customer dashboard. Keep the gate until Firebase confirms signed-out state.
+onAuthStateChanged(auth, async user => {
+  const justLoggedOut=sessionStorage.getItem("pisoWifi.justLoggedOut")==="1";
+  if(justLoggedOut || logoutUrl || logoutGateActive){
+    logoutGateActive = true;
+    if(user){
+      try{ await signOut(auth); }
+      catch(e){ console.warn("[PISO WIFI CUSTOMER LOGOUT] cleanup failed",e); }
+      return;
+    }
+    sessionStorage.removeItem("pisoWifi.justLoggedOut");
+    logoutGateActive = false;
+    if(logoutUrl){
+      const cleanUrl = window.location.pathname;
+      window.history.replaceState({}, document.title, cleanUrl);
+    }
+    return;
+  }
   if (user) routeUser(user);
 });
 
@@ -126,6 +217,21 @@ form.addEventListener("submit", async e => {
 
     const profile = await getRole(cred.user);
 
+    // Keep the just-used temporary credential for the Customer portal's
+    // first-login password setup. The password-change flag lives on the
+    // unit record in some account versions, so relying on users/{uid}
+    // forcePasswordChange here can leave the dashboard without the
+    // temporary credential it needs. Store it for every successful client
+    // login, then remove it immediately after the password is changed or
+    // when the customer completes a normal login.
+    try {
+      if (profile?.role === "client" && profile?.active !== false) {
+        sessionStorage.setItem("pisoWifi.pendingCurrentPassword", password);
+      } else {
+        sessionStorage.removeItem("pisoWifi.pendingCurrentPassword");
+      }
+    } catch {}
+
     if (profile?.role !== "client" || profile?.active === false) {
       await signOut(auth);
       message(
@@ -137,7 +243,7 @@ form.addEventListener("submit", async e => {
       return;
     }
 
-    window.location.replace("/client/");
+    window.location.replace("/client/index.html");
   } catch (err) {
     const debugDetails = [
       `Registered Gmail entered: ${email}`,
@@ -155,10 +261,12 @@ form.addEventListener("submit", async e => {
         stack: err?.stack || ""
       });
     }
-    message(
-      "Login failed. Please check the temporary error popup for the exact Firebase error.",
-      "error"
-    );
+    const code = err?.code || "";
+    const firebaseMessage = String(err?.message || "").replace(/^Firebase:\s*/i, "");
+    const detail = code
+      ? `Login failed (${code}). ${firebaseMessage || "Please try again."}`
+      : `Login failed. ${firebaseMessage || "Please try again."}`;
+    message(detail, "error");
     submit.disabled = false;
     submit.textContent = "Login";
   }
@@ -220,7 +328,7 @@ function openForgotPasswordModal(){
 }
 
 async function callRecovery(payload){
-  const res=await fetch(APPS_SCRIPT_OTP_URL,{method:"POST",headers:{"Content-Type":"text/plain;charset=utf-8"},body:JSON.stringify(payload)});
+  const res=await fetch("/api/password-recovery",{method:"POST",headers:{"Content-Type":"application/json;charset=utf-8"},body:JSON.stringify(payload),cache:"no-store"});
   const text=await res.text();
   let data={}; try{data=JSON.parse(text);}catch{throw new Error("Invalid recovery response from server.");}
   if(!data.ok) throw new Error(data.error||"Unable to complete account recovery.");

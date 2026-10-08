@@ -1,3 +1,4 @@
+console.info("[PISO WIFI] BUILD v63 — unified Admin/Customer auth flow");
 import { auth, db } from "./firebase.js";
 import {
   signInWithEmailAndPassword,
@@ -43,7 +44,7 @@ async function routeSignedInUser(user) {
     // ADMIN PORTAL IS STRICTLY ADMIN-ONLY.
     if (profile?.role === "admin" && profile?.active !== false) {
       try {
-      if (rememberAdmin?.checked) localStorage.setItem(REMEMBER_ADMIN_KEY, email);
+      if (rememberAdmin?.checked) localStorage.setItem(REMEMBER_ADMIN_KEY, user.email || "");
       else localStorage.removeItem(REMEMBER_ADMIN_KEY);
     } catch {}
     window.location.replace("/admin/dashboard.html");
@@ -66,7 +67,9 @@ async function routeSignedInUser(user) {
   }
 }
 
-// Admin login is intentionally a fresh-login screen.
+// The Admin Login page is always a fresh-login screen.
+// If a previous Admin session exists, clear it here instead of silently
+// redirecting the user back into the dashboard after a refresh/visit to /admin.
 (async () => {
   try {
     await setPersistence(auth, browserSessionPersistence);
@@ -106,7 +109,14 @@ form.addEventListener("submit", async e => {
     window.location.replace("/admin/dashboard.html");
   } catch (err) {
     console.error("[PISO WIFI ADMIN LOGIN]", err);
-    showMessage("Login failed. Please check your Admin email and password.", "error");
+    window.pisoDebug?.capture(err?.message || String(err), {type:"ADMIN LOGIN", operation:"signInWithEmailAndPassword", errorCode:err?.code || "unknown", email});
+    const code = err?.code || "unknown";
+    const detail = code === "auth/invalid-credential" || code === "auth/wrong-password"
+      ? "The Admin email exists, but the Firebase password is not the one entered. Use Forgot password to set a new Admin password."
+      : code === "auth/user-not-found"
+        ? "That Admin email is not registered in Firebase Authentication."
+        : `Admin login failed (${code}). ${err?.message || "Please try again."}`;
+    showMessage(detail, "error");
   }
 });
 
