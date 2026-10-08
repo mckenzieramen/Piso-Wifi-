@@ -1,2 +1,0 @@
-PISO WIFI v75
-Customer logout now signs out Firebase and navigates directly to the canonical clean Customer Login route: /client-login. Auth error return link also uses /client-login. Cache-busters updated to v75. No Admin, Firestore Rules, Apps Script, or data changes.

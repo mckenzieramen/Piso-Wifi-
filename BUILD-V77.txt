@@ -1,5 +1,0 @@
-PISO WIFI v77 — Customer logout clean-route fix
-
-Root cause: Cloudflare Pages _redirects rewrote /client-login to /client-login.html while clean URL handling could canonicalize the .html asset back to /client-login, creating ERR_TOO_MANY_REDIRECTS.
-
-Fix: remove the conflicting /client-login _redirects entries and serve /client-login directly through a Pages Function that returns the existing client-login.html asset. Customer logout continues to navigate to /client-login?loggedOut=1. No Firebase, Firestore Rules, Apps Script, Admin, support, or customer data changes.

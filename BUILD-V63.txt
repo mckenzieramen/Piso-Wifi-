@@ -1,5 +1,0 @@
-PISO WIFI v63
-
-Admin login: use the Firebase Authentication Admin email (currently pisonet@admin.com) and its actual Firebase password. If Admin123 is rejected, use Forgot password; the website cannot safely invent/change a Firebase password without authentication.
-
-Customer login: use the Registered Gmail created by Admin. First temporary password is the generated CID-****. On first login, the customer is required to create a private password; forcePasswordChange is cleared only after updatePassword succeeds.

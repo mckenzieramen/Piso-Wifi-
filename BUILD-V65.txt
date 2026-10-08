@@ -1,4 +1,0 @@
-PISO WIFI v65 — physical-file auth navigation fix
-Admin: /admin/index.html -> /admin/dashboard.html
-Customer: /client-login.html -> /client/index.html
-Firebase config unchanged.
