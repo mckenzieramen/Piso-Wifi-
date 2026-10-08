@@ -1,1 +1,26 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>PISO WIFI — Cashiers</title><link rel="stylesheet" href="/css/style.css"><link rel="stylesheet" href="/css/cashier-admin.css"></head><body><div id="authLoading" class="auth-loading" style="position:fixed;inset:0;z-index:9999;display:grid;place-items:center;background:#f5f8fc;"><div class="loader"></div><span>Checking Admin access…</span><small style="display:block;margin-top:8px;color:#64748b">Loading Cashier Management</small></div><main id="app" class="cashier-admin"><header class="cashier-admin-head"><div><h1>Cashiers</h1><p>Manage cashier accounts, transactions, receipts and remittances.</p></div><a class="secondary-btn" href="/admin/dashboard.html#dashboard">← Back to Admin</a></header><nav class="cashier-tabs"><button data-tab="cashiers" class="active">Cashiers</button><button data-tab="transactions">Transactions</button><button data-tab="receipts">Receipts</button><button data-tab="remittances">Remittances</button><button data-tab="wifi">WiFi Plans</button><button data-tab="escalations">Escalations</button></nav><section id="view"></section></main><div id="modalRoot"></div><script type="module" src="/js/cashier-admin.js?v=1"></script></body></html>
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>PISO WIFI — Cashier Management</title>
+  <link rel="stylesheet" href="/css/style.css">
+  <link rel="stylesheet" href="/css/cashier-admin.css">
+</head>
+<body>
+  <div id="authLoading" class="auth-loading">
+    <div class="cashier-loading-card"><div class="loader"></div><strong>Checking Admin access</strong><span>Verifying your Admin session…</span></div>
+  </div>
+  <main id="app" class="cashier-admin hidden">
+    <header class="cashier-admin-head">
+      <div><h1>Cashier Management</h1><p>Manage cashier accounts, transactions, receipts and remittances.</p></div>
+      <a class="secondary-btn" href="/admin/dashboard.html#dashboard">← Back to Admin</a>
+    </header>
+    <nav class="cashier-tabs" aria-label="Cashier management sections">
+      <button data-tab="cashiers" class="active">Cashiers</button><button data-tab="transactions">Transactions</button><button data-tab="receipts">Receipts</button><button data-tab="remittances">Remittances</button><button data-tab="wifi">WiFi Plans</button><button data-tab="escalations">Escalations</button>
+    </nav>
+    <section id="view"></section>
+  </main>
+  <div id="modalRoot"></div>
+  <script type="module" src="/js/cashier-admin.js?v=2"></script>
+</body>
+</html>
