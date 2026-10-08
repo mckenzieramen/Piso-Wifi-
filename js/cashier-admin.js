@@ -21,12 +21,51 @@ function openCashier(){ $("#modalRoot").innerHTML=`<div class="admin-modal-backd
 async function approve(id){const t=transactions.find(x=>x.id===id);if(!t)return;const invoice=`<!doctype html><html><head><meta charset="utf-8"><title>Invoice ${esc(t.transactionId)}</title></head><body><h1>PISO WIFI</h1><h2>INVOICE</h2><p>Invoice #: INV-${esc(t.transactionId)}</p><p>Transaction #: ${esc(t.transactionId)}</p><p>Customer: ${esc(t.customerName)}</p><p>Service: ${esc(t.productName)}</p><p>Gross Sales: ${money(t.grossSales)}</p><p>Amount Paid: ${money(t.amountReceived)}</p><p>Balance: ${money(t.balance)}</p><p>Payment Method: ${esc(t.paymentMethod)}</p><p>Reference: ${esc(t.referenceNumber)}</p><p>Status: PAID / APPROVED</p><p>Cashier: ${esc(t.cashierName)}</p><p>Approved By: ADMIN</p></body></html>`;await updateDoc(doc(db,"cashierTransactions",id),{status:"APPROVED",approvedAt:serverTimestamp(),approvedBy:auth.currentUser.uid,invoiceHtml:invoice,invoiceReady:true});await audit("SALE_APPROVED",id);await addDoc(collection(db,"notifications"),{type:"cashier","title":"Cashier transaction approved",message:`${t.transactionId} was approved and invoice generated.`,relatedId:id,read:false,createdAt:serverTimestamp()});load()}
 function openPlan(){ $("#modalRoot").innerHTML=`<div class="admin-modal-backdrop"><div class="admin-modal"><h2>Add WiFi Plan</h2><div class="admin-grid"><div class="admin-field"><label>Plan Name *</label><input id="pName"></div><div class="admin-field"><label>Price *</label><input id="pPrice" type="number" min="0" step="0.01"></div><div class="admin-field"><label>Duration *</label><input id="pDuration" placeholder="24 Hours"></div><div class="admin-field"><label>Status</label><select id="pStatus"><option>ACTIVE</option><option>INACTIVE</option></select></div><div class="admin-field full"><label>Description</label><textarea id="pDescription"></textarea></div></div><div class="admin-actions"><button class="secondary-btn" id="cancelPlan">Cancel</button><button class="primary-btn" id="savePlan">Save Plan</button></div></div></div>`;$("#cancelPlan").onclick=()=>$("#modalRoot").innerHTML="";$("#savePlan").onclick=async()=>{const name=$("#pName").value.trim(),price=Number($("#pPrice").value),duration=$("#pDuration").value.trim();if(!name||price<0||!duration) return alert("Plan name, price and duration are required.");await addDoc(collection(db,"wifi_plans"),{name,price,duration,description:$("#pDescription").value.trim(),status:$("#pStatus").value,sortOrder:0,createdAt:serverTimestamp(),updatedAt:serverTimestamp()});$("#modalRoot").innerHTML="";load()}}
 async function finalizeRemittance(id){const r=remittances.find(x=>x.id===id);if(!r)return;const actual=Number(prompt(`Expected collection: ${money(r.expectedCollection)}\nEnter actual remittance amount:`));if(!Number.isFinite(actual)||actual<0)return;const variance=actual-Number(r.expectedCollection||0);if(!confirm(`Finalize ${r.remittanceId} for ${money(actual)}? Variance: ${money(variance)}`))return;await updateDoc(doc(db,"remittances",id),{actualRemittance:actual,variance,status:"REMITTED",authorizedBy:auth.currentUser.uid,authorizedAt:serverTimestamp()});await audit("ADMIN_REMIT_AUTHORIZED",id,{actualRemittance:actual,variance});for(const tid of (r.transactionIds||[])){await updateDoc(doc(db,"cashierTransactions",tid),{remittanceFinalized:true,remittanceAuthorizedAt:serverTimestamp()})}await addDoc(collection(db,"notifications"),{type:"cashier-remittance",title:"Cashier remittance finalized",message:`${r.cashierName} remitted ${money(actual)}. Variance ${money(variance)}.`,relatedId:id,read:false,createdAt:serverTimestamp()});load()}
-async function load(){const [c,t,r,m,ch,w]=await Promise.all([getDocs(query(collection(db,"users"))),getDocs(query(collection(db,"cashierTransactions"),orderBy("createdAt","desc"))),getDocs(query(collection(db,"receipts"),orderBy("createdAt","desc"))),getDocs(query(collection(db,"remittances"),orderBy("createdAt","desc"))),getDocs(query(collection(db,"customerChats"),orderBy("updatedAt","desc"))),getDocs(query(collection(db,"wifi_plans")))]);cashiers=c.docs.map(d=>({id:d.id,...d.data()})).filter(x=>x.role==="cashier");transactions=t.docs.map(d=>({id:d.id,...d.data()}));receipts=r.docs.map(d=>({id:d.id,...d.data()}));remittances=m.docs.map(d=>({id:d.id,...d.data()}));chats=ch.docs.map(d=>({id:d.id,...d.data()}));wifiPlans=w.docs.map(d=>({id:d.id,...d.data()}));render()}
+async function safeDocs(path, sortField=""){
+  try{
+    const ref=collection(db,path);
+    try{
+      return await getDocs(sortField ? query(ref,orderBy(sortField,"desc")) : query(ref));
+    }catch(primaryError){
+      console.warn(`[CASHIER ADMIN] ${path} ordered query failed; retrying without orderBy.`,primaryError);
+      return await getDocs(query(ref));
+    }
+  }catch(error){
+    console.warn(`[CASHIER ADMIN] ${path} is unavailable.`,error);
+    return {docs:[]};
+  }
+}
+async function load(){
+  const [c,t,r,m,ch,w]=await Promise.all([
+    safeDocs("users"),
+    safeDocs("cashierTransactions","createdAt"),
+    safeDocs("receipts","createdAt"),
+    safeDocs("remittances","createdAt"),
+    safeDocs("customerChats","updatedAt"),
+    safeDocs("wifi_plans")
+  ]);
+  cashiers=c.docs.map(d=>({id:d.id,...d.data()})).filter(x=>x.role==="cashier");
+  transactions=t.docs.map(d=>({id:d.id,...d.data()}));
+  receipts=r.docs.map(d=>({id:d.id,...d.data()}));
+  remittances=m.docs.map(d=>({id:d.id,...d.data()}));
+  chats=ch.docs.map(d=>({id:d.id,...d.data()}));
+  wifiPlans=w.docs.map(d=>({id:d.id,...d.data()}));
+  render();
+}
 onAuthStateChanged(auth,async u=>{
   if(!u)return deny();
   try{
     const profile=await getDoc(doc(db,"users",u.uid));
     if(!profile.exists()||profile.data()?.role!=="admin"||profile.data()?.active===false)return deny();
-    $("#authLoading").classList.add("hidden");$("#app").classList.remove("hidden");await load();
-  }catch(e){console.error("[CASHIER ADMIN AUTH]",e);deny()}
+    $("#authLoading").classList.add("hidden");$("#app").classList.remove("hidden");
+    await load();
+  }catch(e){
+    console.error("[CASHIER ADMIN AUTH]",e);
+    const loader=$("#authLoading");
+    if(loader){
+      loader.innerHTML=`<div class="auth-error"><strong>Cashier Management could not load</strong><span>${esc(e?.message||"Unable to load this page.")}</span><button type="button" id="returnAdminLogin">Back to Admin</button></div>`;
+      loader.classList.remove("hidden");
+      $("#returnAdminLogin")?.addEventListener("click",()=>location.replace("/admin/dashboard.html#dashboard"));
+    }
+  }
 });
