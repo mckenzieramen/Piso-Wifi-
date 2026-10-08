@@ -1,0 +1,14 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    function isAdmin() { return request.auth != null && request.auth.token.email == "pisonet@admin.com"; }
+    function isCashier() {
+      return request.auth != null && firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.role == "cashier" && firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.active == true;
+    }
+    match /receipts/{uid}/{recordId}/{fileName} {
+      allow read: if isAdmin() || (isCashier() && uid == request.auth.uid);
+      allow write: if isAdmin() || (isCashier() && uid == request.auth.uid && request.resource.size < 10 * 1024 * 1024 && (request.resource.contentType == "image/jpeg" || request.resource.contentType == "image/png" || request.resource.contentType == "application/pdf"));
+      allow delete: if isAdmin();
+    }
+  }
+}

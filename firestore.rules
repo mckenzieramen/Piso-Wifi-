@@ -2,138 +2,80 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
-
-    function isSignedIn() {
-      return request.auth != null;
-    }
-
-    // PISO WIFI has one dedicated Admin Authentication account.
-    // Keep this check deterministic so Admin writes do not depend on a
-    // users/{uid} profile read during another Firestore rule evaluation.
-    function isAdmin() {
-      return isSignedIn()
-        && request.auth.token.email == "pisonet@admin.com";
-    }
-
+    function isSignedIn() { return request.auth != null; }
+    function isAdmin() { return isSignedIn() && request.auth.token.email == "pisonet@admin.com"; }
+    function userDoc() { return get(/databases/$(database)/documents/users/$(request.auth.uid)); }
+    function isCashier() { return isSignedIn() && userDoc().data.role == "cashier" && userDoc().data.active == true; }
     function isClientUnit(data) {
-      return isSignedIn()
-        && (
-          (data.authUserId != null && data.authUserId == request.auth.uid)
-          || (data.email != null
-              && data.email != ""
-              && data.email == request.auth.token.email)
-        );
+      return isSignedIn() && ((data.authUserId != null && data.authUserId == request.auth.uid) || (data.email != null && data.email != "" && data.email == request.auth.token.email));
     }
-
     function isOwnUnitDocument(unitId) {
-      return exists(/databases/$(database)/documents/units/$(unitId))
-        && isClientUnit(get(/databases/$(database)/documents/units/$(unitId)).data);
+      return exists(/databases/$(database)/documents/units/$(unitId)) && isClientUnit(get(/databases/$(database)/documents/units/$(unitId)).data);
     }
 
     match /users/{uid} {
       allow read: if isAdmin() || (isSignedIn() && uid == request.auth.uid);
       allow write: if isAdmin();
     }
-
     match /units/{document} {
       allow read: if isAdmin() || isClientUnit(resource.data);
-
-      allow create: if isAdmin()
-        || (
-          request.resource.data.type == "password-reset"
-          && request.resource.data.read == false
-          && request.resource.data.title == "Customer password reset requested"
-          && request.resource.data.clientCode is string
-          && request.resource.data.unitCode is string
-          && request.resource.data.email is string
-          && exists(/databases/$(database)/documents/customerLoginDirectory/$(request.resource.data.clientCode))
-          && get(/databases/$(database)/documents/customerLoginDirectory/$(request.resource.data.clientCode)).data.unitCode == request.resource.data.unitCode
-          && get(/databases/$(database)/documents/customerLoginDirectory/$(request.resource.data.clientCode)).data.email == request.resource.data.email
-          && get(/databases/$(database)/documents/customerLoginDirectory/$(request.resource.data.clientCode)).data.active == true
-        );
-
+      allow create: if isAdmin() || (request.resource.data.type == "password-reset" && request.resource.data.read == false && request.resource.data.title == "Customer password reset requested" && request.resource.data.clientCode is string && request.resource.data.unitCode is string && request.resource.data.email is string && exists(/databases/$(database)/documents/customerLoginDirectory/$(request.resource.data.clientCode)) && get(/databases/$(database)/documents/customerLoginDirectory/$(request.resource.data.clientCode)).data.unitCode == request.resource.data.unitCode && get(/databases/$(database)/documents/customerLoginDirectory/$(request.resource.data.clientCode)).data.email == request.resource.data.email && get(/databases/$(database)/documents/customerLoginDirectory/$(request.resource.data.clientCode)).data.active == true);
       allow delete: if isAdmin();
-
-      allow update: if isAdmin()
-        || (
-          isClientUnit(resource.data)
-          && request.resource.data.diff(resource.data).affectedKeys()
-              .hasOnly(["name", "contact", "address", "authUserId", "forcePasswordChange", "passwordChangedAt", "updatedAt"])
-        );
+      allow update: if isAdmin() || (isClientUnit(resource.data) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["name","contact","address","authUserId","forcePasswordChange","passwordChangedAt","updatedAt"]));
     }
-
-    match /monthlyRecords/{document} {
-      allow read: if isAdmin() || isOwnUnitDocument(resource.data.unitId);
-      allow write: if isAdmin();
-    }
-
-    match /payments/{document} {
-      allow read: if isAdmin() || isOwnUnitDocument(resource.data.unitId);
-      allow write: if isAdmin();
-    }
-
-    match /settings/{document} {
-      allow read: if isAdmin() || isSignedIn();
-      allow write: if isAdmin();
-    }
-
-    match /customerLoginDirectory/{clientCode} {
-      allow read, write: if isAdmin();
-    }
-
+    match /monthlyRecords/{document} { allow read: if isAdmin() || isOwnUnitDocument(resource.data.unitId); allow write: if isAdmin(); }
+    match /payments/{document} { allow read: if isAdmin() || isOwnUnitDocument(resource.data.unitId); allow write: if isAdmin(); }
+    match /settings/{document} { allow read: if isAdmin() || isSignedIn(); allow write: if isAdmin(); }
+    match /customerLoginDirectory/{clientCode} { allow read, write: if isAdmin(); }
     match /passwordResetRequests/{requestId} {
-      allow create: if
-        request.resource.data.status == "email_sent"
-        && request.resource.data.adminRead == false
-        && request.resource.data.clientCode is string
-        && request.resource.data.email is string
-        && request.resource.data.createdAt == request.time
-        && exists(/databases/$(database)/documents/customerLoginDirectory/$(request.resource.data.clientCode))
-        && get(/databases/$(database)/documents/customerLoginDirectory/$(request.resource.data.clientCode)).data.email == request.resource.data.email
-        && get(/databases/$(database)/documents/customerLoginDirectory/$(request.resource.data.clientCode)).data.active == true;
-
+      allow create: if request.resource.data.status == "email_sent" && request.resource.data.adminRead == false && request.resource.data.clientCode is string && request.resource.data.email is string && request.resource.data.createdAt == request.time && exists(/databases/$(database)/documents/customerLoginDirectory/$(request.resource.data.clientCode)) && get(/databases/$(database)/documents/customerLoginDirectory/$(request.resource.data.clientCode)).data.email == request.resource.data.email && get(/databases/$(database)/documents/customerLoginDirectory/$(request.resource.data.clientCode)).data.active == true;
       allow read, update, delete: if isAdmin();
     }
-
     match /notifications/{document} {
-      allow read: if isAdmin() || (
-        resource.data.relatedId != null
-        && isOwnUnitDocument(resource.data.relatedId)
-      );
-
+      allow read: if isAdmin() || (resource.data.relatedId != null && isOwnUnitDocument(resource.data.relatedId));
       allow create, delete: if isAdmin();
-
-      allow update: if isAdmin()
-        || (
-          resource.data.relatedId != null
-          && isOwnUnitDocument(resource.data.relatedId)
-          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["read"])
-        );
+      allow update: if isAdmin() || (resource.data.relatedId != null && isOwnUnitDocument(resource.data.relatedId) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["read"]));
     }
-
     match /supportChats/{chatId} {
-      allow read: if isAdmin()
-        || (isSignedIn() && resource.data.authUserId == request.auth.uid);
-
-      allow create: if isAdmin()
-        || (isSignedIn()
-          && request.resource.data.authUserId == request.auth.uid
-          && request.resource.data.status is string
-          && request.resource.data.messages is list);
-
-      allow update: if isAdmin()
-        || (isSignedIn()
-          && resource.data.authUserId == request.auth.uid
-          && request.resource.data.authUserId == resource.data.authUserId
-          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-            "messages", "updatedAt", "typingBy", "unreadForAdmin", "unreadForCustomer", "status", "reopenedAt"
-          ]));
-
+      allow read: if isAdmin() || (isSignedIn() && resource.data.authUserId == request.auth.uid);
+      allow create: if isAdmin() || (isSignedIn() && request.resource.data.authUserId == request.auth.uid && request.resource.data.status is string && request.resource.data.messages is list);
+      allow update: if isAdmin() || (isSignedIn() && resource.data.authUserId == request.auth.uid && request.resource.data.authUserId == resource.data.authUserId && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["messages","updatedAt","typingBy","unreadForAdmin","unreadForCustomer","status","reopenedAt"]));
       allow delete: if isAdmin();
     }
+    match /activities/{document} { allow read, write: if isAdmin(); }
 
-    match /activities/{document} {
-      allow read, write: if isAdmin();
+    // CASHIER PORTAL — cashier access is restricted to records owned by the authenticated cashier.
+    match /cashierTransactions/{id} {
+      allow read: if isAdmin() || (isCashier() && resource.data.cashierId == request.auth.uid);
+      allow create: if isCashier() && request.resource.data.cashierId == request.auth.uid && request.resource.data.status == "PENDING ADMIN REVIEW";
+      allow update: if isAdmin();
+      allow delete: if isAdmin();
+    }
+    match /receipts/{id} {
+      allow read: if isAdmin() || (isCashier() && resource.data.cashierId == request.auth.uid);
+      allow create: if isCashier() && request.resource.data.cashierId == request.auth.uid;
+      allow update, delete: if isAdmin();
+    }
+    match /customerChats/{id} {
+      allow read: if isAdmin() || (isCashier() && resource.data.cashierId == request.auth.uid);
+      allow create: if isAdmin() || (isCashier() && request.resource.data.cashierId == request.auth.uid);
+      allow update: if isAdmin() || (isCashier() && resource.data.cashierId == request.auth.uid && resource.data.status != "TRANSFERRED TO ADMIN" && request.resource.data.cashierId == request.auth.uid);
+      allow delete: if isAdmin();
+    }
+    match /chat_messages/{id} { allow read, write: if isAdmin(); }
+    match /wifi_plans/{id} {
+      allow read: if isAdmin() || (isCashier() && resource.data.status == "ACTIVE");
+      allow create, update, delete: if isAdmin();
+    }
+    match /remittances/{id} {
+      allow read: if isAdmin() || (isCashier() && resource.data.cashierId == request.auth.uid);
+      allow create: if isCashier() && request.resource.data.cashierId == request.auth.uid && request.resource.data.status == "PENDING ADMIN AUTHORIZATION";
+      allow update, delete: if isAdmin();
+    }
+    match /audit_logs/{id} {
+      allow read: if isAdmin() || (isCashier() && resource.data.userId == request.auth.uid);
+      allow create: if isAdmin() || (isCashier() && request.resource.data.userId == request.auth.uid && request.resource.data.role == "cashier");
+      allow update, delete: if isAdmin();
     }
   }
 }
