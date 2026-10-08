@@ -8,3 +8,6 @@
 
 /client*
   Cache-Control: no-cache, no-store, must-revalidate
+
+/cashier*
+  Cache-Control: no-cache, no-store, must-revalidate
