@@ -1,0 +1,12 @@
+PISO WIFI WEBSITE — GOOGLE SHEETS SYNC BASELINE
+
+This website package is configured to use the NEW Google Apps Script Web App URL:
+https://script.google.com/macros/s/AKfycbzJcIf9rpdunJ8-1kDvgePWTT1L-cQOFzZLQHFQMaqBYTlviovyxjz4JOX-FpvUrjFu/exec
+
+The website sends action: syncClient with the Firebase admin ID token.
+
+IMPORTANT:
+- This ZIP is WEBSITE/Cloudflare only.
+- Google Apps Script Code.gs is NOT included.
+- Firebase rules are NOT included.
+- Do not replace the Apps Script URL with the old deployment URL.
