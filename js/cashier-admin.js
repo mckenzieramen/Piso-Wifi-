@@ -5,7 +5,9 @@ import { auth, db } from "./firebase.js";
 import { firebaseConfig } from "./firebase-config.js";
 const provisioner=initializeApp(firebaseConfig,"cashierAdminProvisioner");
 const provisionAuth=getAuth(provisioner);
-const $=s=>document.querySelector(s);const esc=v=>String(v??"").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#039;"}[m]));const money=n=>`₱${Number(n||0).toLocaleString("en-PH",{minimumFractionDigits:2,maximumFractionDigits:2})}`;
+const $=s=>document.querySelector(s);
+function setLoading(message){const el=$("#authLoading");if(el){el.innerHTML=`<div style="text-align:center;padding:30px"><div class="loader" style="margin:0 auto 14px"></div><strong>${esc(message)}</strong></div>`;el.classList.remove("hidden");}}
+function showApp(){const el=$("#authLoading");if(el)el.classList.add("hidden");const app=$("#app");if(app)app.classList.remove("hidden");}const esc=v=>String(v??"").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#039;"}[m]));const money=n=>`₱${Number(n||0).toLocaleString("en-PH",{minimumFractionDigits:2,maximumFractionDigits:2})}`;
 let tab="cashiers",cashiers=[],transactions=[],receipts=[],remittances=[],chats=[],wifiPlans=[];
 async function audit(action,recordId,metadata={}){try{await addDoc(collection(db,"audit_logs"),{userId:auth.currentUser.uid,role:"admin",action,recordId:String(recordId||""),metadata,createdAt:serverTimestamp()})}catch(e){}}
 function deny(){location.replace("/admin/index.html");}
@@ -36,6 +38,7 @@ async function safeDocs(path, sortField=""){
   }
 }
 async function load(){
+  setLoading("Loading Cashier Management…");
   const [c,t,r,m,ch,w]=await Promise.all([
     safeDocs("users"),
     safeDocs("cashierTransactions","createdAt"),
@@ -51,13 +54,13 @@ async function load(){
   chats=ch.docs.map(d=>({id:d.id,...d.data()}));
   wifiPlans=w.docs.map(d=>({id:d.id,...d.data()}));
   render();
+  showApp();
 }
 onAuthStateChanged(auth,async u=>{
-  if(!u)return deny();
+  if(!u){setLoading("Checking Admin access…");return deny();}
   try{
     const profile=await getDoc(doc(db,"users",u.uid));
     if(!profile.exists()||profile.data()?.role!=="admin"||profile.data()?.active===false)return deny();
-    $("#authLoading").classList.add("hidden");$("#app").classList.remove("hidden");
     await load();
   }catch(e){
     console.error("[CASHIER ADMIN AUTH]",e);
