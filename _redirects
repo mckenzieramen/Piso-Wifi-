@@ -1,4 +1,4 @@
-# PISO WIFI OFFICIAL ROUTES — Cloudflare Pages
+# PISO WIFI OFFICIAL ROUTES — cumulative current master
 / /index.html 200
 
 # Admin portal
@@ -9,5 +9,8 @@
 /client-login /index.html 200
 /client-login/ /index.html 200
 
-# Customer dashboard uses the native /client/ directory route.
-# Do NOT rewrite /client or /client/ here; Cloudflare Pages serves client/index.html directly.
+# Customer dashboard routes
+/client /client/index.html 200
+/client/ /client/index.html 200
+/client/dashboard /client/index.html 200
+/client/dashboard/ /client/index.html 200

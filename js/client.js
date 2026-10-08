@@ -1,12 +1,13 @@
 import { auth, db } from "./firebase.js";
 import {
-  onAuthStateChanged, signOut, updatePassword
+  onAuthStateChanged, signOut, signInWithEmailAndPassword
 } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-auth.js";
 import {
   collection, doc, getDoc, getDocs, query, where, updateDoc, setDoc, onSnapshot, arrayUnion,
   serverTimestamp, writeBatch
 } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-firestore.js";
 import { calculateFinancialRecord } from "./finance.js";
+import { firebaseConfig } from "./firebase-config.js";
 
 const $ = s => document.querySelector(s);
 const money = n => `₱${Number(n || 0).toLocaleString("en-PH",{minimumFractionDigits:2,maximumFractionDigits:2})}`;
@@ -228,6 +229,7 @@ let supportChatSending=false;
 let supportTypingTimer=null;
 let supportChatDocId="";
 const supportChatId=()=>String(supportChatDocId||currentUser?.uid||"");
+const supportStatusValue=chat=>{const s=String(chat?.status||"Open").trim().toLowerCase(); if(s==="closed") return "Closed"; if(s==="solved") return "Solved"; return "Open";};
 const supportChatRef=()=>supportChatId()?doc(db,"supportChats",supportChatId()):null;
 function supportNow(){return new Date().toISOString();}
 function supportMessageHtml(m){
@@ -257,18 +259,19 @@ function hasRealSupportConversation(chat){
 }
 function renderSupportLobby(){
   const lobby=$("#supportLobby"), convo=$("#supportConversationView"); if(!lobby||!convo)return;
-  const status=String(supportChat?.status||"Open");
+  const status=supportStatusValue(supportChat);
   const active=hasRealSupportConversation(supportChat);
   const closed=status==="Closed"||status==="Solved";
-  lobby.innerHTML=`<div class="piso-support-hero"><div class="support-icon">${icons.bell}</div><span class="eyebrow">PISO WIFI CUSTOMER SUPPORT</span><h2>How can we help?</h2><p>Chat directly with the PISO WIFI Admin. Your conversation stays connected to your Customer Account.</p></div><div class="piso-ticket-card"><div><b>Customer Support</b><small>${status==="Closed"?"Ticket was closed.":status==="Solved"?"Ticket was closed by PISO WIFI Support.":active?"Your active support conversation.":"No conversation started yet."}</small></div><span class="piso-ticket-status ${status.toLowerCase()}">${esc(status)}</span></div><button id="startSupportChat" class="client-primary piso-support-start" ${closed?"disabled":""}>${active?"Open Conversation":"Start Chat"}</button>`;
+  const actionLabel = closed ? "Start New Chat" : (active ? "Open Conversation" : "Start Chat");
+  lobby.innerHTML=`<div class="piso-support-hero"><div class="support-icon">${icons.bell}</div><span class="eyebrow">PISO WIFI CUSTOMER SUPPORT</span><h2>How can we help?</h2><p>Chat directly with the PISO WIFI Admin. Your conversation stays connected to your Customer Account.</p></div><div class="piso-ticket-card"><div><b>Customer Support</b><small>${status==="Closed"?"Ticket was closed. You can open a new chat anytime.":status==="Solved"?"This concern was solved. You can open chat support again anytime.":active?"Your active support conversation.":"No conversation started yet."}</small></div><span class="piso-ticket-status ${status.toLowerCase()}">${esc(status)}</span></div><button id="startSupportChat" class="client-primary piso-support-start">${actionLabel}</button>`;
   convo.classList.add("hidden");
   const start=$("#startSupportChat");
-  if(start&&!closed) start.onclick=()=>openSupportConversation();
+  if(start) start.onclick=()=>openSupportConversation();
 }
 function renderSupportChat(){
   const lobby=$("#supportLobby"), convo=$("#supportConversationView"); if(!lobby||!convo)return;
   lobby.classList.add("hidden"); convo.classList.remove("hidden");
-  const status=String(supportChat?.status||"Open");
+  const status=supportStatusValue(supportChat);
   $("#supportStatus").textContent=status;
   $("#supportChatCustomer").textContent=clientName();
   renderSupportConversation();
@@ -279,28 +282,39 @@ function renderSupportChat(){
 }
 async function loadExistingSupportChat(){
   if(!currentUser?.uid) return null;
-  const direct=doc(db,"supportChats",currentUser.uid);
-  const directSnap=await getDoc(direct);
-  if(directSnap.exists()){
-    supportChatDocId=directSnap.id;
-    supportChat={id:directSnap.id,...directSnap.data()};
+  // Load the most recent support conversation for this customer.
+  // A solved/closed conversation is history; a new concern gets a new ticket.
+  const q=query(collection(db,"supportChats"),where("authUserId","==",currentUser.uid));
+  const snap=await getDocs(q);
+  const chats=snap.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>{
+    const av=a?.updatedAt?.toMillis?a.updatedAt.toMillis():new Date(a?.updatedAt||a?.createdAt||0).getTime();
+    const bv=b?.updatedAt?.toMillis?b.updatedAt.toMillis():new Date(b?.updatedAt||b?.createdAt||0).getTime();
+    return bv-av;
+  });
+  const latest=chats[0]||null;
+  if(latest){
+    supportChatDocId=latest.id;
+    supportChat=latest;
     return supportChat;
   }
-  supportChatDocId=currentUser.uid;
+  supportChatDocId="";
   supportChat=null;
   return null;
 }
-async function createSupportChat(){
+async function createSupportChat(forceNew=false){
   if(!currentUser?.uid)throw new Error("Customer account is not ready.");
-  if(!supportChat) await loadExistingSupportChat();
-  if(supportChat) return supportChat;
-  supportChatDocId=currentUser.uid;
+  if(!forceNew){
+    if(!supportChat) await loadExistingSupportChat();
+    if(supportChat && !["Closed","Solved"].includes(supportStatusValue(supportChat))) return supportChat;
+  }
+  // Every new concern gets its own support ticket/document.
+  supportChatDocId=`${currentUser.uid}_${Date.now()}`;
   const ref=supportChatRef();
   const unit=primaryUnit();
   const greeting={senderType:"admin",text:"Hi! I’m PISO WIFI Customer Support. Let us know what you need help with, and our Admin will assist you here.",createdAt:supportNow()};
   const payload={authUserId:currentUser.uid,unitId:unit.id||"",clientCode:unit.clientCode||"",customerName:clientName(),customerEmail:clientEmail(),status:"Open",messages:[greeting],typingBy:{customer:false,admin:false},unreadForAdmin:true,unreadForCustomer:false,createdAt:serverTimestamp(),updatedAt:supportNow()};
   await setDoc(ref,payload);
-  supportChat={id:ref.id,...payload,createdAt:new Date()};
+  supportChat={id:ref.id,...payload,createdAt:new Date(),updatedAt:supportNow()};
   return supportChat;
 }
 function subscribeSupportChat(){
@@ -318,7 +332,7 @@ function subscribeSupportChat(){
         // entire modal, so the input keeps focus and the scroll position.
         $("#supportStatus").textContent=String(supportChat?.status||"Open");
         renderSupportConversation();
-        const closed=["Solved","Closed"].includes(String(supportChat?.status||"Open"));
+        const closed=["Solved","Closed"].includes(supportStatusValue(supportChat));
         const input=$("#supportChatInput"),send=$("#supportSend");
         if(input){input.disabled=closed;input.placeholder=closed?"Ticket was closed.":"Type your concern…";}
         if(send)send.disabled=closed;
@@ -330,12 +344,24 @@ function subscribeSupportChat(){
   });
 }
 async function openSupportConversation(){
-  try{await createSupportChat();subscribeSupportChat();supportChatOpen=true;renderSupportChat();await updateDoc(supportChatRef(),{unreadForCustomer:false,updatedAt:supportNow()});}catch(e){toast(e?.message||"Unable to open support chat. Please contact Admin if this continues.","error");}
+  try{
+    const currentStatus=supportStatusValue(supportChat);
+    if(["Closed","Solved"].includes(currentStatus)){
+      // Do NOT reopen the old ticket. Start a completely new support conversation/document.
+      await createSupportChat(true);
+    }else{
+      await createSupportChat(false);
+    }
+    subscribeSupportChat();
+    supportChatOpen=true;
+    renderSupportChat();
+    await updateDoc(supportChatRef(),{unreadForCustomer:false,updatedAt:supportNow()});
+  }catch(e){toast(e?.message||"Unable to open a new support chat. Please contact Admin if this continues.","error");}
 }
 function closeSupportChat(){supportChatOpen=false;$("#supportConversationView")?.classList.add("hidden");$("#supportLobby")?.classList.remove("hidden");}
 async function sendSupportMessage(){
   if(supportChatSending)return; const input=$("#supportChatInput");const text=String(input?.value||"").trim();if(!text)return;
-  if(["Closed","Solved"].includes(String(supportChat?.status||"Open"))){toast("This support conversation is not open. Please wait for Admin to reopen it.","error");return;}
+  if(["Closed","Solved"].includes(supportStatusValue(supportChat))){toast("This support conversation is closed. Please start a new chat for a new concern.","error");return;}
   supportChatSending=true;
   try{
     await createSupportChat();
@@ -598,11 +624,20 @@ function toggleNotificationPopover(){
   $("#notificationPopover")?.classList.toggle("show");
 }
 
+function navigateTo(next){
+  const target=String(next||"dashboard").replace(/^#/,"").split("?")[0]||"dashboard";
+  route=target;
+  if(location.hash!=="#"+target) location.hash="#"+target;
+  render();
+  syncProfileMenu?.();
+}
 function bindRouteButtons(){
-  document.querySelectorAll("[data-route]").forEach(el=>el.onclick=e=>{e.preventDefault();location.hash="#"+el.dataset.route;});
+  document.querySelectorAll("[data-route]").forEach(el=>{
+    el.onclick=e=>{e.preventDefault();e.stopPropagation();navigateTo(el.dataset.route);};
+  });
 }
 function renderNav(){
-  document.querySelectorAll("#clientNav a[data-route]").forEach(a=>a.classList.toggle("active",a.dataset.route===route));
+  document.querySelectorAll("#clientNav [data-route]").forEach(a=>a.classList.toggle("active",a.dataset.route===route));
 }
 function render(){
   renderNav();
@@ -615,7 +650,7 @@ function render(){
 function parseRoute(){return location.hash.replace("#","").split("?")[0]||"dashboard";}
 
 function openAuthError(message){
-  const loader=$("#clientAuthLoading");loader.innerHTML=`<div class="client-auth-error"><strong>Unable to open Customer Account</strong><span>${esc(message)}</span><a href="client-login.html">Return to Customer Account Login</a></div>`;
+  const loader=$("#clientAuthLoading");loader.innerHTML=`<div class="client-auth-error"><strong>Unable to open Customer Account</strong><span>${esc(message)}</span><a href="/">Return to Customer Account Login</a></div>`;
   loader.classList.remove("hidden");
 }
 function setupPasswordVisibilityToggles(){
@@ -649,13 +684,57 @@ async function maybeShowFirstLoginPasswordSetup(){
     if(a!==b){msg.textContent="Passwords do not match.";msg.className="client-login-message error";return;}
     const btn=form.querySelector("button"); btn.disabled=true; btn.textContent="Saving…";
     try{
-      await updatePassword(currentUser,a);
+      // Firebase Auth can still reject updatePassword with auth/requires-recent-login
+      // even immediately after reauthentication in this first-login flow. Use a
+      // fresh password sign-in token and the official Identity Toolkit REST
+      // account-update endpoint instead. This changes only the authenticated
+      // user's password and avoids weakening Firestore or Auth security rules.
+      let pendingCurrentPassword="";
+      try { pendingCurrentPassword=sessionStorage.getItem("pisoWifi.pendingCurrentPassword") || ""; } catch {}
+      if (!pendingCurrentPassword || !currentUser?.email) {
+        throw Object.assign(new Error("Your temporary login session has expired. Please return to Customer Login and sign in again with your temporary password."), {code:"auth/missing-temporary-password"});
+      }
+
+      const freshCred = await signInWithEmailAndPassword(auth,currentUser.email,pendingCurrentPassword);
+      const freshIdToken = await freshCred.user.getIdToken(true);
+      const apiKey = firebaseConfig.apiKey;
+      const response = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:update?key=${encodeURIComponent(apiKey)}`, {
+        method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({idToken:freshIdToken,password:a,returnSecureToken:true})
+      });
+      const result = await response.json();
+      if (!response.ok || !result.idToken) {
+        const authError = new Error(result?.error?.message || "Unable to update your password.");
+        authError.code = `auth/${String(result?.error?.message || "password-update-failed").toLowerCase()}`;
+        throw authError;
+      }
+
+      // Refresh the browser Firebase session with the new password before
+      // changing the customer's Firestore first-login flag.
+      const updatedCred = await signInWithEmailAndPassword(auth,currentUser.email,a);
+      await updatedCred.user.getIdToken(true);
       await updateDoc(doc(db,"units",unit.id),{forcePasswordChange:false,passwordChangedAt:serverTimestamp(),updatedAt:serverTimestamp()});
+      try { sessionStorage.removeItem("pisoWifi.pendingCurrentPassword"); } catch {}
       unit.forcePasswordChange=false;
-      modal.classList.add("hidden"); modal.setAttribute("aria-hidden","true");
-      toast("Your new password has been saved.");
+      form.reset();
+      msg.className="client-login-message success";
+      msg.textContent="Congratulations! You can now use your PISO WIFI portal.";
+      const btn=form.querySelector("button");
+      btn.disabled=true;
+      btn.textContent="Password Saved";
+      setTimeout(()=>{
+        modal.classList.add("hidden"); modal.setAttribute("aria-hidden","true");
+        toast("Congratulations! You can now use your PISO WIFI portal.");
+      },1800);
     }catch(err){
-      console.error(err); msg.textContent="Unable to update your password. Please sign in again and try once more.";msg.className="client-login-message error";
+      console.error(err);
+      if(err?.code==="auth/requires-recent-login") {
+        msg.textContent="Your temporary login session could not be refreshed. Please return to Customer Login and sign in again with your temporary password.";
+      } else {
+        msg.textContent=err?.message || "Unable to update your password. Please try again.";
+      }
+      msg.className="client-login-message error";
       btn.disabled=false;btn.textContent="Save My Password";
     }
   };
@@ -679,7 +758,7 @@ async function withTimeout(promise,ms,label){
 async function bootstrap(user){
   if(!user){
     bootstrapFinished=true; clearTimeout(bootTimer);
-    location.replace("/");
+    location.replace("/client-login.html");
     return;
   }
   currentUser=user;
@@ -706,7 +785,23 @@ async function bootstrap(user){
 }
 $("#clientMenuBtn").onclick=()=>{$("#clientSidebar").classList.add("open");$("#clientOverlay").classList.add("show");};
 $("#clientOverlay").onclick=()=>{$("#clientSidebar").classList.remove("open");$("#clientOverlay").classList.remove("show");};
-async function logoutClient(){await signOut(auth);location.replace("/");}
+async function logoutClient(){
+  // Mark the logout before touching Firebase so the login page can suppress
+  // any stale auth-state callback during the browser navigation.
+  try{
+    sessionStorage.setItem("pisoWifi.justLoggedOut","1");
+    sessionStorage.removeItem("pisoWifi.pendingCurrentPassword");
+    if(supportChatUnsub){supportChatUnsub();supportChatUnsub=null;}
+    supportChatOpen=false;
+    await signOut(auth);
+  }catch(e){
+    console.error("[PISO WIFI CUSTOMER LOGOUT]",e);
+  }finally{
+    // Use the canonical clean login route. The previous .html target could
+    // interact badly with the Pages clean-URL rewrite and cause a redirect loop.
+    window.location.replace("/");
+  }
+}
 $("#clientLogout").onclick=logoutClient;
 $("#menuLogout").onclick=logoutClient;
 $("#notificationBtn").onclick=toggleNotificationPopover;
@@ -720,14 +815,23 @@ function updateSupportBadge(){const b=$("#supportUnreadBadge");if(!b)return;cons
 $("#menuChangePassword").onclick=()=>{$("#clientProfileMenu")?.classList.remove("show");$("#clientProfileBtn")?.setAttribute("aria-expanded","false");const modal=$("#clientPasswordSetup");if(modal){modal.classList.remove("hidden");modal.setAttribute("aria-hidden","false");}};
 function syncProfileMenu(){const name=clientName(), av=initials(name);if($("#menuClientName"))$("#menuClientName").textContent=name;if($("#menuAvatar"))$("#menuAvatar").textContent=av;}
 function routeFromSearch(q){const v=String(q||"").trim().toLowerCase();if(!v)return null;if(v.includes("dashboard")||v.includes("home"))return"dashboard";if(v.includes("unit"))return"units";if(v.includes("sale")||v.includes("revenue"))return"sales";if(v.includes("pay"))return"payments";if(v.includes("statement")||v.includes("bill"))return"statement";if(v.includes("profile")||v.includes("account"))return"profile";if(v.includes("notification")||v.includes("alert"))return"notifications";return null;}
-function bindQuickSearch(){const input=$("#clientQuickSearch"),box=$("#clientSearchSuggestions");if(!input||!box)return;const items=[['dashboard','Dashboard','Overview of your account'],['units','My Units','Assigned Piso WiFi units'],['sales','Sales History','Monthly sales records'],['payments','Payments','Payment history and balance'],['statement','Statement','Monthly client statement'],['profile','My Profile','Account information'],['notifications','Notifications','Updates from Admin']];const draw=(q='')=>{const f=items.filter(x=>!q||x[1].toLowerCase().includes(q.toLowerCase())||x[2].toLowerCase().includes(q.toLowerCase()));box.innerHTML=f.slice(0,5).map(x=>`<button type="button" data-search-route="${x[0]}"><b>${esc(x[1])}</b><small>${esc(x[2])}</small></button>`).join('');box.querySelectorAll('[data-search-route]').forEach(b=>b.onclick=()=>{location.hash='#'+b.dataset.searchRoute;box.classList.add('hidden');input.value='';});box.classList.toggle('hidden',f.length===0);};input.addEventListener('focus',()=>draw(input.value));input.addEventListener('input',()=>{const target=routeFromSearch(input.value);if(target&&input.value.trim().length>=3){draw(input.value)}else draw(input.value)});}
+function bindQuickSearch(){const input=$("#clientQuickSearch"),box=$("#clientSearchSuggestions");if(!input||!box)return;const items=[['dashboard','Dashboard','Overview of your account'],['units','My Units','Assigned Piso WiFi units'],['sales','Sales History','Monthly sales records'],['payments','Payments','Payment history and balance'],['statement','Statement','Monthly client statement'],['profile','My Profile','Account information'],['notifications','Notifications','Updates from Admin']];const draw=(q='')=>{const f=items.filter(x=>!q||x[1].toLowerCase().includes(q.toLowerCase())||x[2].toLowerCase().includes(q.toLowerCase()));box.innerHTML=f.slice(0,5).map(x=>`<button type="button" data-search-route="${x[0]}"><b>${esc(x[1])}</b><small>${esc(x[2])}</small></button>`).join('');box.querySelectorAll('[data-search-route]').forEach(b=>b.onclick=()=>{navigateTo(b.dataset.searchRoute);box.classList.add('hidden');input.value='';});box.classList.toggle('hidden',f.length===0);};input.addEventListener('focus',()=>draw(input.value));input.addEventListener('input',()=>{const target=routeFromSearch(input.value);if(target&&input.value.trim().length>=3){draw(input.value)}else draw(input.value)});}
 bindQuickSearch();
 syncProfileMenu();
 document.addEventListener("click",e=>{
   if(!e.target.closest("#notificationWrap"))$("#notificationPopover")?.classList.remove("show");
   if(!e.target.closest("#clientProfileWrap")){ $("#clientProfileMenu")?.classList.remove("show"); $("#clientProfileBtn")?.setAttribute("aria-expanded","false"); }
   if(!e.target.closest("#clientSearchWrap"))$("#clientSearchSuggestions")?.classList.add("hidden");
-  const routeEl=e.target.closest("[data-route]");if(routeEl&&routeEl.closest("#clientProfileMenu")){e.preventDefault();location.hash="#"+routeEl.dataset.route;$("#clientProfileMenu")?.classList.remove("show");$("#clientProfileBtn")?.setAttribute("aria-expanded","false");}
+  const routeEl=e.target.closest("[data-route]");if(routeEl){e.preventDefault();e.stopPropagation();navigateTo(routeEl.dataset.route);if(routeEl.closest("#clientProfileMenu")){$("#clientProfileMenu")?.classList.remove("show");$("#clientProfileBtn")?.setAttribute("aria-expanded","false");}}
 });
 window.addEventListener("hashchange",()=>{route=parseRoute();render();syncProfileMenu();});
-onAuthStateChanged(auth,bootstrap);
+(async()=>{
+  try{
+    if(typeof auth.authStateReady === "function") await auth.authStateReady();
+    await bootstrap(auth.currentUser);
+  }catch(e){
+    console.error("Customer auth initialization failed:",e);
+    openAuthError(e?.message||"Firebase Authentication could not be initialized.");
+  }
+})();
+onAuthStateChanged(auth,user=>{if(bootstrapFinished && user?.uid===currentUser?.uid) return; bootstrap(user);});

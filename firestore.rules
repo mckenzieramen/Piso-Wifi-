@@ -113,22 +113,20 @@ service cloud.firestore {
 
     match /supportChats/{chatId} {
       allow read: if isAdmin()
-        || (isSignedIn() && chatId == request.auth.uid);
+        || (isSignedIn() && resource.data.authUserId == request.auth.uid);
 
       allow create: if isAdmin()
         || (isSignedIn()
-          && chatId == request.auth.uid
           && request.resource.data.authUserId == request.auth.uid
           && request.resource.data.status is string
           && request.resource.data.messages is list);
 
       allow update: if isAdmin()
         || (isSignedIn()
-          && chatId == request.auth.uid
           && resource.data.authUserId == request.auth.uid
           && request.resource.data.authUserId == resource.data.authUserId
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-            "messages", "updatedAt", "typingBy", "unreadForAdmin", "unreadForCustomer", "status"
+            "messages", "updatedAt", "typingBy", "unreadForAdmin", "unreadForCustomer", "status", "reopenedAt"
           ]));
 
       allow delete: if isAdmin();
