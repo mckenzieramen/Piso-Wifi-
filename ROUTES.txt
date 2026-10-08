@@ -18,3 +18,12 @@ https://piso-wifi.pages.dev/client-login
 
 Do not add redirect rules that bounce between slash/no-slash variants.
 All rules above are Cloudflare Pages internal rewrites (status 200).
+
+
+CASHIER WEBSITE (SEPARATE PORTAL)
+https://piso-wifi.pages.dev/cashier
+-> Cashier Login / Cashier Portal
+
+ADMIN CASHIER MANAGEMENT
+https://piso-wifi.pages.dev/admin/cashiers
+-> Admin-only cashier management; this is NOT the cashier login portal.
