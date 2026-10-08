@@ -6,3 +6,6 @@
 /client/ /client/index.html 200
 /client/dashboard /client/index.html 200
 /client/dashboard/ /client/index.html 200
+/admin/cashiers /admin/cashiers/index.html 200
+/admin/cashiers/ /admin/cashiers/index.html 200
+/admin/cashiers.html /admin/cashiers/index.html 200
