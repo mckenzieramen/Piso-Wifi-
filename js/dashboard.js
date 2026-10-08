@@ -719,7 +719,8 @@ async function openUnitModal(id=null){
       <div class="field"><label>Unit Code *</label><div class="unit-combobox"><input id="fCodeSearch" value="${esc(currentCode)}" placeholder="Search or select 1–50" autocomplete="off" aria-autocomplete="list"><input id="fCode" type="hidden" value="${esc(currentCode)}"><div id="unitCodeOptions" class="unit-options">${codeOptions}</div></div><small class="hint">Active unit codes cannot be selected. Deactivated unit codes become available again.</small></div>
       <div class="field"><label>First Name *</label><input id="fFirstName" value="${esc(u?.firstName||"")}" placeholder="First Name" autocomplete="off"></div>
       <div class="field"><label>Last Name *</label><input id="fLastName" value="${esc(u?.lastName||String(u?.name||"").trim().split(/\s+/).slice(1).join(" "))}" placeholder="Last Name" autocomplete="off"></div>
-      <div class="field full"><label>Registered Gmail *</label><input id="fEmail" type="email" value="${esc(u?.email||"")}" placeholder="customer@gmail.com" autocomplete="off"><small class="hint">Used for account recovery and customer records.</small></div>
+      <div class="field full"><label>Registered Gmail *</label><input id="fEmail" type="email" value="${esc(u?.email||"")}" placeholder="customer@gmail.com" autocomplete="off"><small class="hint">Used for Customer Account login and account recovery.</small></div>
+      ${id?"":`<div class="field full"><label>Temporary Password *</label><input id="fPassword" type="password" value="" placeholder="Create temporary password" autocomplete="new-password" minlength="6"><small class="hint">Customer will use this password for the first login, then create a private permanent password.</small></div>`}
       <div class="field"><label>Contact Number</label><input id="fContact" value="${esc(u?.contact||"")}" placeholder="09171234567" autocomplete="off"></div>
       <div class="field"><label>Date Joined</label><input id="fDateJoined" type="date" value="${esc(suggestedDate)}"></div>
       <div class="field full"><label>Unit Location</label><input id="fLocation" value="${esc(u?.location||"")}" placeholder="Brgy. San Isidro, Antipolo" autocomplete="off"></div>
@@ -761,7 +762,9 @@ async function openUnitModal(id=null){
         await addNotification("client","Client profile updated.",`${name} (${clientCode}) was updated.`,id);
       }else{
         const authEmail=email;
-        const temporaryPassword=clientCode;
+        const enteredPassword=String($("#fPassword")?.value||"").trim();
+        const temporaryPassword=enteredPassword || clientCode;
+        if(temporaryPassword.length<6) throw new Error("Temporary password must be at least 6 characters.");
         let cred;
         try{ cred=await createUserWithEmailAndPassword(clientProvisionerAuth,authEmail,temporaryPassword); }
         catch(e){
