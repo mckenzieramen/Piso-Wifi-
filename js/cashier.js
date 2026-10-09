@@ -13,28 +13,62 @@ async function loadProfile(u){const snap=await getDoc(doc(db,"users",u.uid));if(
 function renderForcePasswordChange(){const host=$("#view");if(!host)return;host.innerHTML=`<section class="panel" style="max-width:560px;margin:32px auto;padding:24px"><h2>Set a New Password</h2><p>Your Admin-issued temporary password must be changed before you can use the Cashier Portal.</p><form id="cashierPasswordChange"><label>New password<input id="newCashierPassword" type="password" minlength="8" autocomplete="new-password" required></label><label style="display:block;margin-top:12px">Confirm new password<input id="confirmCashierPassword" type="password" minlength="8" autocomplete="new-password" required></label><p id="cashierPasswordMsg" class="message" role="status"></p><button class="primary" type="submit">Save New Password</button></form></section>`;$("#cashierPasswordChange").onsubmit=async e=>{e.preventDefault();const next=$("#newCashierPassword").value,confirmPassword=$("#confirmCashierPassword").value,msgEl=$("#cashierPasswordMsg");if(next.length<8){msgEl.textContent="Use at least 8 characters for your new password.";return;}if(next!==confirmPassword){msgEl.textContent="The passwords do not match.";return;}try{msgEl.textContent="Updating password…";await updatePassword(user,next);await updateDoc(doc(db,"users",user.uid),{forcePasswordChange:false,passwordChangedAt:serverTimestamp()});profile.forcePasswordChange=false;msgEl.textContent="Password updated.";startRealtime();render();}catch(error){msgEl.textContent=error?.message||"Could not update password. Sign in again and retry.";}};}
 function startRealtime(){unsubs.forEach(f=>f());unsubs=[];unsubs.push(onSnapshot(query(collection(db,"cashierTransactions"),where("cashierId","==",user.uid)),s=>{txns=s.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>String(b.createdAt||"").localeCompare(String(a.createdAt||"")));render()}));unsubs.push(onSnapshot(query(collection(db,"customerChats"),where("cashierId","==",user.uid)),s=>{chats=s.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>String(b.updatedAt||"").localeCompare(String(a.updatedAt||"")));render()}));unsubs.push(onSnapshot(query(collection(db,"remittances"),where("cashierId","==",user.uid)),s=>{remittances=s.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>String(b.createdAt||"").localeCompare(String(a.createdAt||"")));render()}));unsubs.push(onSnapshot(collection(db,"wifi_plans"),s=>{plans=s.docs.map(d=>({id:d.id,...d.data()})).filter(x=>x.status==="ACTIVE").sort((a,b)=>Number(a.sortOrder||0)-Number(b.sortOrder||0));render()}));loadRegisteredCustomers().catch(error=>{customerLoadStatus="error";customerLoadError=error?.message||"Could not start customer loading.";console.error("[Cashier] Could not start customer loader:",error);render()});}
 async function loadRegisteredCustomers(){
-  if(customerUnsub){customerUnsub();customerUnsub=null;}
-  customerLoadStatus="loading";customerLoadError="";render();
-  // First fetch existing records once, so the dropdown does not depend on the realtime stream's first event.
+  if (customerUnsub) { customerUnsub(); customerUnsub = null; }
+  customerLoadStatus = "loading";
+  customerLoadError = "";
+  render();
+
+  // Bind the live listener immediately. Do not wait for getDocs before listening.
+  let firstSnapshotReceived = false;
+  const watchdog = setTimeout(() => {
+    if (!firstSnapshotReceived && customerLoadStatus === "loading") {
+      customerLoadStatus = "error";
+      customerLoadError = "Customer list did not respond within 8 seconds. Check the deployed site and Firestore connection.";
+      console.error("[Cashier] Customer listener timed out waiting for the first snapshot.");
+      render();
+    }
+  }, 8000);
+
+  customerUnsub = onSnapshot(
+    collection(db, "units"),
+    snapshot => {
+      firstSnapshotReceived = true;
+      clearTimeout(watchdog);
+      applyCustomerSnapshot(snapshot);
+    },
+    error => {
+      firstSnapshotReceived = true;
+      clearTimeout(watchdog);
+      customerLoadStatus = "error";
+      customerLoadError = error?.code
+        ? `${error.code}: ${error.message || "Could not read registered customers."}`
+        : (error?.message || "Could not connect to registered customers.");
+      console.error("[Cashier] Registered customer listener failed:", error);
+      render();
+    }
+  );
+
+  // The one-time fetch is supplemental and cannot block the live listener.
   try {
     const result = await Promise.race([
-      getDocs(collection(db,"units")),
-      new Promise((_,reject)=>setTimeout(()=>reject(new Error("Timed out while contacting Firestore. Check connection and deployed Firebase configuration.")),12000))
+      getDocs(collection(db, "units")),
+      new Promise((_, reject) => setTimeout(() => reject(new Error("Timed out fetching registered customers.")), 8000))
     ]);
-    applyCustomerSnapshot(result);
-  } catch(error) {
-    customerLoadStatus="error";
-    customerLoadError=error?.code ? `${error.code}: ${error.message||"Could not read units collection."}` : (error?.message||"Could not load registered customers.");
-    console.error("[Cashier] Initial units fetch failed:",error);
-    render();
+    if (!firstSnapshotReceived) {
+      firstSnapshotReceived = true;
+      clearTimeout(watchdog);
+      applyCustomerSnapshot(result);
+    }
+  } catch (error) {
+    console.error("[Cashier] One-time customer fetch failed:", error);
+    if (!firstSnapshotReceived && customerLoadStatus === "loading") {
+      customerLoadStatus = "error";
+      customerLoadError = error?.code
+        ? `${error.code}: ${error.message || "Could not read registered customers."}`
+        : (error?.message || "Could not load registered customers.");
+      render();
+    }
   }
-  // Keep the dropdown live after the initial fetch. Listener errors now surface visibly.
-  customerUnsub=onSnapshot(collection(db,"units"),snapshot=>applyCustomerSnapshot(snapshot),error=>{
-    customerLoadStatus="error";
-    customerLoadError=error?.code ? `${error.code}: ${error.message||"Could not read units collection."}` : (error?.message||"Realtime customer connection failed.");
-    console.error("[Cashier] Realtime units listener failed:",error);
-    render();
-  });
 }
 function applyCustomerSnapshot(snapshot){
   customers=snapshot.docs.map(d=>({id:d.id,...d.data()}))
