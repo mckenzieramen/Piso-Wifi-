@@ -96,16 +96,19 @@ async function bootCashierAdmin(){
     // Match the main Admin portal: wait for Firebase's persisted auth state,
     // rather than relying only on an auth-state callback that can stall here.
     if(typeof auth.authStateReady === "function"){
-      await Promise.race([auth.authStateReady(),new Promise((_,reject)=>setTimeout(()=>reject(new Error("Admin session check timed out. Open Admin again and choose Cashier Management.")),8000))]);
-    } else {
-      await new Promise((resolve,reject)=>{
+      await Promise.race([auth.authStateReady(),new Promise((_,reject)=>setTimeout(()=>reject(new Error("Admin session check timed out. Open Admin again and choose Cashier Management.")),10000))]);
+    }
+    // Resolve from the auth observer as well: some browsers restore the persisted
+    // session just after authStateReady has completed on a fresh page navigation.
+    let u=auth.currentUser;
+    if(!u){
+      u=await new Promise((resolve,reject)=>{
         let settled=false,unsubscribe=()=>{};
-        const timer=setTimeout(()=>finish(new Error("Admin session check timed out.")),8000);
-        function finish(err){if(settled)return;settled=true;clearTimeout(timer);unsubscribe();err?reject(err):resolve();}
-        unsubscribe=onAuthStateChanged(auth,()=>finish(),finish);
+        const timer=setTimeout(()=>finish(new Error("Admin session could not be restored. Please return to Admin, then open Cashier Management again.")),10000);
+        function finish(value,error){if(settled)return;settled=true;clearTimeout(timer);unsubscribe();error?reject(error):resolve(value);}
+        unsubscribe=onAuthStateChanged(auth,user=>{if(user)finish(user);},error=>finish(null,error));
       });
     }
-    const u=auth.currentUser;
     if(!u) return deny();
     const email=String(u.email||"").trim().toLowerCase();
     if(email!=="pisonet@admin.com") return deny();

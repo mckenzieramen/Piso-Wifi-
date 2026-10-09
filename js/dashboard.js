@@ -8,8 +8,6 @@ import {
   collection, doc, getDoc, getDocs, setDoc, addDoc, updateDoc, deleteDoc, writeBatch, runTransaction, onSnapshot, arrayUnion,
   serverTimestamp, Timestamp
 } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-firestore.js";
-import { getStorage, ref as storageRef, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-storage.js";
-const subscriptionStorage = getStorage();
 
 console.info("[PISO WIFI] BUILD v62 — WiFi subscription tracking + navigation fixes");
 
@@ -546,26 +544,68 @@ function renderActivity(){
 function activityRows(filter){const list=activities.filter(a=>!filter||a.activityType===filter);return list.length?list.map(a=>`<tr><td>${dateTimeLabel(a.createdAt)}</td><td><span class="activity-dot"></span>${esc(a.activityType||"Activity")}</td><td>${esc(a.description||"—")}</td><td>${esc(a.userEmail||currentUser?.email||"Admin")}</td></tr>`).join(""):emptyRow(4,"No activity recorded yet. Actions you perform will appear here automatically.");}
 
 let wifiSubscriptions=[];
-function subscriptionDate(v){if(!v)return null;const d=new Date(v);return Number.isNaN(d.getTime())?null:d;}
+function subscriptionDate(v){if(!v)return null;const d=v?.toDate?v.toDate():new Date(v);return Number.isNaN(d.getTime())?null:d;}
 function subscriptionTotalPaid(){return wifiSubscriptions.reduce((sum,x)=>sum+Math.max(0,Number(x.paymentAmount||0)),0);}
-function expiryLabel(x){const end=subscriptionDate(x.periodEnd);if(!end)return "No end date";const days=Math.ceil((end.getTime()-Date.now())/86400000);if(days<0)return `Expired ${Math.abs(days)} day(s) ago`;if(days<=7)return `Ends in ${days} day(s)`;return `Ends ${end.toLocaleDateString()}`;}
+function expiryLabel(x){const end=subscriptionDate(x.periodEnd);if(!end)return "No end date";const days=Math.ceil((new Date(end.getFullYear(),end.getMonth(),end.getDate())-new Date(new Date().getFullYear(),new Date().getMonth(),new Date().getDate()))/86400000);if(days<0)return `Expired ${Math.abs(days)} day(s) ago`;if(days===0)return "Expires today";if(days<=7)return `Ends in ${days} day(s)`;return `Ends ${end.toLocaleDateString()}`;}
+function subscriptionEndingSoon(x){const d=subscriptionDate(x.periodEnd);return !!d&&d>=new Date(new Date().setHours(0,0,0,0))&&d<=new Date(Date.now()+7*86400000);}
 async function loadWiFiSubscriptions(){
   const snap=await getDocs(collection(db,"wifiSubscriptions"));
   wifiSubscriptions=snap.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>(subscriptionDate(b.paymentDate)?.getTime()||0)-(subscriptionDate(a.paymentDate)?.getTime()||0));
+  updateWiFiSubscriptionSummary();
+  // Create one Admin notification per subscription end date when it enters the
+  // 7-day reminder window. Updating the period later allows a fresh reminder.
+  for(const sub of wifiSubscriptions){
+    const end=subscriptionDate(sub.periodEnd);if(!end)continue;
+    const days=Math.ceil((new Date(end.getFullYear(),end.getMonth(),end.getDate())-new Date(new Date().getFullYear(),new Date().getMonth(),new Date().getDate()))/86400000);
+    if(days<0||days>7||sub.expiryReminderSentFor===sub.periodEnd)continue;
+    try{
+      await addDoc(collection(db,"notifications"),{type:"wifi-subscription-expiry",title:"WiFi subscription expiring soon",message:`${sub.wifiName||"WiFi subscription"} — ${days===0?"expires today":`expires in ${days} day(s)`} (${sub.periodEnd}). Please review renewal/payment.`,relatedId:sub.id,read:false,createdAt:serverTimestamp()});
+      await updateDoc(doc(db,"wifiSubscriptions",sub.id),{expiryReminderSentFor:sub.periodEnd,expiryReminderSentAt:serverTimestamp()});
+      sub.expiryReminderSentFor=sub.periodEnd;
+    }catch(error){console.warn("Could not save WiFi subscription expiry reminder",sub.id,error);}
+  }
 }
 function renderWiFiSubscriptions(){
-  view.innerHTML=baseHead("WiFi Subscription","Track WiFi subscriptions, payments, receipts and renewal reminders.",`<button class="primary-btn" id="addWiFiSubscription">+ Add WiFi Subscription</button>`)+`<div class="report-cards">${reportCard("Total Paid",money(subscriptionTotalPaid()),"green")}${reportCard("Subscriptions",wifiSubscriptions.length)}${reportCard("Ending Soon",wifiSubscriptions.filter(x=>{const d=subscriptionDate(x.periodEnd);return d&&d>=new Date()&&d<=new Date(Date.now()+7*86400000)}).length,"red")}</div><div class="panel"><div class="panel-head"><div><h3>Subscription Payment History</h3><p>Every saved payment and receipt is listed here.</p></div></div><div class="table-wrap"><table><thead><tr><th>Wi-Fi Name</th><th>Subscription Info</th><th>Payment</th><th>Payment Date</th><th>Period</th><th>Mode</th><th>Reference</th><th>Receipt</th><th>Reminder</th></tr></thead><tbody>${wifiSubscriptions.length?wifiSubscriptions.map(x=>{const d=subscriptionDate(x.periodEnd),soon=d&&d>=new Date()&&d<=new Date(Date.now()+7*86400000);return `<tr><td>${esc(x.wifiName||"—")}</td><td>${esc(x.subscriptionInfo||"—")}</td><td>${money(x.paymentAmount)}</td><td>${esc(x.paymentDate||"—")}</td><td>${esc(x.periodStart||"—")} – ${esc(x.periodEnd||"—")}</td><td>${esc(x.paymentMode||"—")}</td><td>${esc(x.referenceNumber||"—")}</td><td>${x.receiptUrl?`<a href="${esc(x.receiptUrl)}" target="_blank" rel="noopener">View receipt</a>`:"—"}</td><td style="color:${soon|| (d&&d<new Date())?"#d33":"#15803d"};font-weight:700">${esc(expiryLabel(x))}</td></tr>`}).join(""):`<tr><td colspan="9">No WiFi subscriptions recorded yet.</td></tr>`}</tbody></table></div></div>`;
+  const ending=wifiSubscriptions.filter(subscriptionEndingSoon).length;
+  view.innerHTML=baseHead("WiFi Subscription","Track WiFi subscriptions, payments, receipts and renewal reminders.",`<button class="primary-btn" id="addWiFiSubscription">+ Add WiFi Subscription</button>`)+`<div class="report-cards">${reportCard("Total Paid",money(subscriptionTotalPaid()),"green")}${reportCard("Subscriptions",wifiSubscriptions.length)}${reportCard("Ending Soon",ending,ending?"red":"green")}</div>${ending?`<div class="notice" style="margin-bottom:16px;border-left:4px solid #d97706"><b>Upcoming expiry reminders</b><ul>${wifiSubscriptions.filter(subscriptionEndingSoon).map(x=>`<li>${esc(x.wifiName)} — ${esc(expiryLabel(x))}</li>`).join("")}</ul></div>`:""}<div class="panel"><div class="panel-head"><div><h3>Subscription Payment History</h3><p>Every saved payment and receipt is listed here. Receipt images are stored in Firestore, not Firebase Storage.</p></div></div><div class="table-wrap"><table><thead><tr><th>Wi-Fi Name</th><th>Subscription Info</th><th>Payment</th><th>Payment Date</th><th>Period</th><th>Mode</th><th>Reference</th><th>Receipt</th><th>Reminder</th></tr></thead><tbody>${wifiSubscriptions.length?wifiSubscriptions.map(x=>{const d=subscriptionDate(x.periodEnd),soon=subscriptionEndingSoon(x),expired=d&&d<new Date(new Date().setHours(0,0,0,0));return `<tr><td>${esc(x.wifiName||"—")}</td><td>${esc(x.subscriptionInfo||"—")}</td><td>${money(x.paymentAmount)}</td><td>${esc(x.paymentDate||"—")}</td><td>${esc(x.periodStart||"—")} – ${esc(x.periodEnd||"—")}</td><td>${esc(x.paymentMode||"—")}</td><td>${esc(x.referenceNumber||"—")}</td><td>${x.receiptDataUrl?`<button type="button" class="action-btn" data-view-wifi-receipt="${x.id}">View</button> <button type="button" class="action-btn" data-download-wifi-receipt="${x.id}">Download</button>`:"—"}</td><td style="color:${soon||expired?"#d33":"#15803d"};font-weight:700">${esc(expiryLabel(x))}</td></tr>`}).join(""):`<tr><td colspan="9">No WiFi subscriptions recorded yet.</td></tr>`}</tbody></table></div></div>`;
   $("#addWiFiSubscription")?.addEventListener("click",openWiFiSubscriptionModal);
+  document.querySelectorAll("[data-view-wifi-receipt]").forEach(b=>b.addEventListener("click",()=>viewWiFiReceipt(b.dataset.viewWifiReceipt)));
+  document.querySelectorAll("[data-download-wifi-receipt]").forEach(b=>b.addEventListener("click",()=>downloadWiFiReceipt(b.dataset.downloadWifiReceipt)));
 }
+function compressReceiptImage(file){
+  return new Promise((resolve,reject)=>{
+    if(!file||!file.type.startsWith("image/")){reject(new Error("Please upload a JPG, PNG or WEBP receipt photo."));return;}
+    const reader=new FileReader();
+    reader.onerror=()=>reject(new Error("Could not read the receipt image."));
+    reader.onload=()=>{
+      const img=new Image();
+      img.onerror=()=>reject(new Error("This receipt image could not be opened. Try a JPG or PNG photo."));
+      img.onload=()=>{
+        const maxDimension=1400,scale=Math.min(1,maxDimension/Math.max(img.width,img.height));
+        const canvas=document.createElement("canvas");canvas.width=Math.max(1,Math.round(img.width*scale));canvas.height=Math.max(1,Math.round(img.height*scale));
+        const ctx=canvas.getContext("2d");if(!ctx){reject(new Error("Image compression is not supported by this browser."));return;}
+        ctx.fillStyle="#ffffff";ctx.fillRect(0,0,canvas.width,canvas.height);ctx.drawImage(img,0,0,canvas.width,canvas.height);
+        let quality=.78,data=canvas.toDataURL("image/jpeg",quality);
+        while(data.length>650000&&quality>.35){quality-=.08;data=canvas.toDataURL("image/jpeg",quality);}
+        if(data.length>650000){const shrink=Math.sqrt(500000/data.length);canvas.width=Math.max(1,Math.round(canvas.width*shrink));canvas.height=Math.max(1,Math.round(canvas.height*shrink));ctx.drawImage(img,0,0,canvas.width,canvas.height);data=canvas.toDataURL("image/jpeg",.48);}
+        if(data.length>700000){reject(new Error("Receipt photo is too large after compression. Please crop the image closer to the receipt and try again."));return;}
+        resolve({dataUrl:data,mimeType:"image/jpeg",fileName:(file.name||"receipt").replace(/\.[^.]+$/,".jpg"),size:data.length});
+      };
+      img.src=reader.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+function viewWiFiReceipt(id){const x=wifiSubscriptions.find(r=>r.id===id);if(!x?.receiptDataUrl)return;const root=$("#modalRoot");root.innerHTML=`<div class="modal-backdrop" id="receiptBackdrop"><div class="modal" style="width:min(900px,96vw)"><div class="modal-head"><h3>${esc(x.wifiName)} — Receipt</h3><button class="close" id="closeReceipt">×</button></div><div class="modal-body" style="text-align:center"><img src="${x.receiptDataUrl}" alt="Receipt for ${esc(x.wifiName)}" style="max-width:100%;max-height:68vh;object-fit:contain;border:1px solid #e2e8f0;border-radius:8px"></div><div class="modal-actions"><button class="secondary-btn" id="cancelReceipt">Close</button><button class="primary-btn" id="downloadReceiptNow">Download Receipt</button></div></div></div>`;$("#closeReceipt").onclick=closeModal;$("#cancelReceipt").onclick=closeModal;$("#downloadReceiptNow").onclick=()=>downloadWiFiReceipt(id);}
+function downloadWiFiReceipt(id){const x=wifiSubscriptions.find(r=>r.id===id);if(!x?.receiptDataUrl)return;const a=document.createElement("a");a.href=x.receiptDataUrl;a.download=x.receiptFileName||`wifi-receipt-${id}.jpg`;document.body.appendChild(a);a.click();a.remove();}
 function openWiFiSubscriptionModal(){
-  openModal("Add WiFi Subscription",`<div class="form-grid"><div class="field full"><label>A. Wi-Fi Name *</label><input id="wsName" required placeholder="e.g. Main PISO WIFI"></div><div class="field full"><label>B. WiFi Subscription Information *</label><input id="wsInfo" required placeholder="Provider / plan / account information"></div><div class="field"><label>C. Payment Information *</label><input id="wsAmount" type="number" min="0.01" step="0.01" required placeholder="Amount paid"></div><div class="field"><label>D. Subscription Period *</label><div style="display:flex;gap:8px"><input id="wsStart" type="date" required aria-label="Period start"><input id="wsEnd" type="date" required aria-label="Period end"></div></div><div class="field"><label>E. Payment Date *</label><input id="wsPaymentDate" type="date" required value="${new Date().toISOString().slice(0,10)}"></div><div class="field"><label>F. Mode of Payment *</label><select id="wsMode"><option>GCash</option><option>Bank Transfer</option><option>Cash</option><option>Credit/Debit Card</option><option>Other</option></select></div><div class="field full"><label>G. Reference Number</label><input id="wsReference" placeholder="Reference / transaction number"></div><div class="field full"><label>H. Upload Photo of Receipt *</label><input id="wsReceipt" type="file" accept="image/jpeg,image/png,image/webp,application/pdf" required><small>JPG, PNG, WEBP or PDF; maximum 10 MB.</small></div></div>`,"Save Subscription Payment",async()=>{
+  openModal("Add WiFi Subscription",`<div class="form-grid"><div class="field full"><label>A. Wi-Fi Name *</label><input id="wsName" required placeholder="e.g. Main PISO WIFI"></div><div class="field full"><label>B. WiFi Subscription Information *</label><input id="wsInfo" required placeholder="Provider / plan / account information"></div><div class="field"><label>C. Payment Information (Amount Paid) *</label><input id="wsAmount" type="number" min="0.01" step="0.01" required placeholder="Amount paid"></div><div class="field"><label>D. Subscription Period *</label><div style="display:flex;gap:8px"><input id="wsStart" type="date" required aria-label="Period start"><input id="wsEnd" type="date" required aria-label="Period end"></div></div><div class="field"><label>E. Payment Date *</label><input id="wsPaymentDate" type="date" required value="${new Date().toISOString().slice(0,10)}"></div><div class="field"><label>F. Mode of Payment *</label><select id="wsMode"><option>GCash</option><option>Bank Transfer</option><option>Cash</option><option>Credit/Debit Card</option><option>Other</option></select></div><div class="field full"><label>G. Reference Number</label><input id="wsReference" placeholder="Reference / transaction number"></div><div class="field full"><label>H. Upload Photo of Receipt *</label><input id="wsReceipt" type="file" accept="image/jpeg,image/png,image/webp" required><small>JPG, PNG or WEBP only. The photo is compressed and saved in Firestore. No Firebase Storage or billing upgrade is used. Please use a clear, cropped photo of the receipt.</small></div></div>`,"Save Subscription Payment",async()=>{
     const wifiName=$("#wsName").value.trim(),subscriptionInfo=$("#wsInfo").value.trim(),paymentAmount=Number($("#wsAmount").value),periodStart=$("#wsStart").value,periodEnd=$("#wsEnd").value,paymentDate=$("#wsPaymentDate").value,paymentMode=$("#wsMode").value,referenceNumber=$("#wsReference").value.trim(),file=$("#wsReceipt").files[0];
-    if(!wifiName||!subscriptionInfo||!(paymentAmount>0)||!periodStart||!periodEnd||periodEnd<periodStart||!paymentDate||!file)throw new Error("Complete all required fields and ensure the subscription end date is after the start date.");
-    if(file.size>10*1024*1024)throw new Error("Receipt must be 10 MB or smaller.");
-    if(!["image/jpeg","image/png","image/webp","application/pdf"].includes(file.type))throw new Error("Upload a JPG, PNG, WEBP or PDF receipt.");
-    const id=`WIFI-SUB-${Date.now()}`,path=`wifi-subscription-receipts/${currentUser.uid}/${id}/${file.name}`;const uploaded=await uploadBytes(storageRef(subscriptionStorage,path),file,{contentType:file.type});const receiptUrl=await getDownloadURL(uploaded.ref);
-    await addDoc(collection(db,"wifiSubscriptions"),{wifiName,subscriptionInfo,paymentAmount,periodStart,periodEnd,paymentDate,paymentMode,referenceNumber,receiptUrl,receiptStoragePath:path,receiptFileName:file.name,createdBy:currentUser.uid,createdAt:serverTimestamp()});
-    await logActivity("WiFi Subscription",`Recorded subscription payment for ${wifiName} — ${money(paymentAmount)}`);await loadWiFiSubscriptions();renderWiFiSubscriptions();
+    if(!wifiName||!subscriptionInfo||!(paymentAmount>0)||!periodStart||!periodEnd||periodEnd<periodStart||!paymentDate||!file)throw new Error("Complete all required fields and ensure the subscription end date is on or after the start date.");
+    if(file.size>15*1024*1024)throw new Error("Choose a receipt photo smaller than 15 MB before compression.");
+    const receipt=await compressReceiptImage(file);
+    await addDoc(collection(db,"wifiSubscriptions"),{wifiName,subscriptionInfo,paymentAmount,periodStart,periodEnd,paymentDate,paymentMode,referenceNumber,receiptDataUrl:receipt.dataUrl,receiptMimeType:receipt.mimeType,receiptFileName:receipt.fileName,receiptSize:receipt.size,createdBy:currentUser.uid,createdAt:serverTimestamp()});
+    await logActivity("WiFi Subscription",`Recorded subscription payment for ${wifiName} — ${money(paymentAmount)}`);await loadWiFiSubscriptions();
   });
 }
 
