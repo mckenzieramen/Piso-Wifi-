@@ -26,11 +26,6 @@ service cloud.firestore {
     match /monthlyRecords/{document} { allow read: if isAdmin() || isOwnUnitDocument(resource.data.unitId); allow write: if isAdmin(); }
     match /payments/{document} { allow read: if isAdmin() || isOwnUnitDocument(resource.data.unitId); allow write: if isAdmin(); }
     match /settings/{document} { allow read: if isAdmin() || isSignedIn(); allow write: if isAdmin(); }
-    match /wifi_plans/{planId} {
-      allow read: if isAdmin() || (isSignedIn() && resource.data.status == "ACTIVE" && request.auth.token.email != "pisonet@admin.com");
-      allow create, update, delete: if isAdmin();
-    }
-
     match /customerLoginDirectory/{clientCode} { allow read, write: if isAdmin(); }
     match /passwordResetRequests/{requestId} {
       allow create: if request.resource.data.status == "email_sent" && request.resource.data.adminRead == false && request.resource.data.clientCode is string && request.resource.data.email is string && request.resource.data.createdAt == request.time && exists(/databases/$(database)/documents/customerLoginDirectory/$(request.resource.data.clientCode)) && get(/databases/$(database)/documents/customerLoginDirectory/$(request.resource.data.clientCode)).data.email == request.resource.data.email && get(/databases/$(database)/documents/customerLoginDirectory/$(request.resource.data.clientCode)).data.active == true;
