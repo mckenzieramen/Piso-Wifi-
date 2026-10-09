@@ -10,5 +10,10 @@ service firebase.storage {
       allow write: if isAdmin() || (isCashier() && uid == request.auth.uid && request.resource.size < 10 * 1024 * 1024 && (request.resource.contentType == "image/jpeg" || request.resource.contentType == "image/png" || request.resource.contentType == "application/pdf"));
       allow delete: if isAdmin();
     }
+    match /wifi-subscription-receipts/{adminUid}/{recordId}/{fileName} {
+      allow read: if isAdmin() && adminUid == request.auth.uid;
+      allow write: if isAdmin() && adminUid == request.auth.uid && request.resource.size < 10 * 1024 * 1024 && (request.resource.contentType == "image/jpeg" || request.resource.contentType == "image/png" || request.resource.contentType == "image/webp" || request.resource.contentType == "application/pdf");
+      allow delete: if isAdmin() && adminUid == request.auth.uid;
+    }
   }
 }

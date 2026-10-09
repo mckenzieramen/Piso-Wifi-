@@ -8,8 +8,10 @@ import {
   collection, doc, getDoc, getDocs, setDoc, addDoc, updateDoc, deleteDoc, writeBatch, runTransaction, onSnapshot, arrayUnion,
   serverTimestamp, Timestamp
 } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-firestore.js";
+import { getStorage, ref as storageRef, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-storage.js";
+const subscriptionStorage = getStorage();
 
-console.info("[PISO WIFI] BUILD v61 — navigation/auth syntax fixed");
+console.info("[PISO WIFI] BUILD v62 — WiFi subscription tracking + navigation fixes");
 
 const $ = (s) => document.querySelector(s);
 const APPS_SCRIPT_SHEET_SYNC_URL = "https://script.google.com/macros/s/AKfycbzJcIf9rpdunJ8-1kDvgePWTT1L-cQOFzZLQHFQMaqBYTlviovyxjz4JOX-FpvUrjFu/exec";
@@ -349,7 +351,7 @@ function pageLoader(){ view.innerHTML=`<div class="loading-panel"><div class="lo
 
 function render(){
   nav();
-  const renderers={dashboard:renderDashboard,units:renderUnits,reports:renderReports,payments:renderPayments,statements:renderStatements,notifications:renderNotifications,activity:renderActivity,settings:renderSettings,profile:renderProfile,support:renderSupport};
+  const renderers={dashboard:renderDashboard,units:renderUnits,reports:renderReports,payments:renderPayments,statements:renderStatements,notifications:renderNotifications,activity:renderActivity,settings:renderSettings,profile:renderProfile,support:renderSupport,"wifi-subscription":renderWiFiSubscriptions};
   (renderers[route]||renderDashboard)();
   closeMenu();
   updateNotificationBadge();
@@ -397,6 +399,8 @@ function renderDashboard(){
       </div>
     </div>
 
+    <div class="panel" style="margin:18px 0"><div class="panel-head"><div><h3>WiFi Subscription</h3><p>Track subscription payments and upcoming expiry dates.</p></div><button class="primary-btn" data-route="wifi-subscription">Manage Subscriptions</button></div><div id="wifiSubscriptionSummary" style="padding:14px 18px;color:#52637a">Open WiFi Subscription to view total paid and reminders.</div></div>
+
     <div class="dashboard-lower-grid">
       <div class="panel">
         <div class="panel-head"><div><h3>Outstanding Payments</h3><p>Customers with an unpaid balance.</p></div><button class="link-btn" data-route="payments">View All</button></div>
@@ -421,6 +425,7 @@ function renderDashboard(){
   $("#topPeriod").onchange=e=>renderTopUnits(e.target.value);
   document.querySelectorAll("[data-pay-unit]").forEach(b=>b.onclick=()=>openPaymentModal(b.dataset.payUnit));
   bindDynamicButtons();
+  updateWiFiSubscriptionSummary();
 }
 function kpi(icon,title,value,sub,cls="",routeTarget=""){ return `<article class="kpi ${cls} ${routeTarget?"is-clickable":""}" ${routeTarget?`data-route="${routeTarget.replace("#","")}" tabindex="0" role="button"`:""}><div class="kpi-icon">${icon}</div><span>${title}</span><b>${value}</b><small>${sub}</small></article>`; }
 const metricIcons={
@@ -466,6 +471,8 @@ function renderTopUnits(period){
 function shiftMonth(k,delta){const [y,m]=k.split("-").map(Number);const d=new Date(y,m-1+delta,1);return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`;}
 function rangeMonths(n){return Array.from({length:n},(_,i)=>shiftMonth(selectedMonth,-i));}
 function yearMonths(k){const y=Number(k.slice(0,4));return Array.from({length:12},(_,i)=>`${y}-${String(i+1).padStart(2,"0")}`);}
+
+function updateWiFiSubscriptionSummary(){const el=$("#wifiSubscriptionSummary");if(!el)return;const upcoming=wifiSubscriptions.filter(x=>{const d=subscriptionDate(x.periodEnd);return d&&d>=new Date()&&d<=new Date(Date.now()+7*86400000)});el.innerHTML=`<b>Total paid: ${money(subscriptionTotalPaid())}</b> · ${wifiSubscriptions.length} payment record(s) · <span style="color:${upcoming.length?"#c2410c":"#15803d"}">${upcoming.length} subscription(s) ending within 7 days</span>${upcoming.length?`<ul>${upcoming.map(x=>`<li>${esc(x.wifiName)} — ${esc(expiryLabel(x))}</li>`).join("")}</ul>`:""}`;}
 
 function renderUnits(){
   const rows=normalizeRows().filter(x=>(!unitSearch||`${x.u.name} ${x.u.unitCode} ${x.u.location} ${x.u.contact}`.toLowerCase().includes(unitSearch.toLowerCase()))&&(!unitStatus||String(x.u.active!==false?"Active":"Inactive")===unitStatus)&&(!unitPaymentStatus||x.c.status===unitPaymentStatus));
@@ -537,6 +544,30 @@ function renderActivity(){
   $("#activityFilter").onchange=e=>$("#activityBody").innerHTML=activityRows(e.target.value);
 }
 function activityRows(filter){const list=activities.filter(a=>!filter||a.activityType===filter);return list.length?list.map(a=>`<tr><td>${dateTimeLabel(a.createdAt)}</td><td><span class="activity-dot"></span>${esc(a.activityType||"Activity")}</td><td>${esc(a.description||"—")}</td><td>${esc(a.userEmail||currentUser?.email||"Admin")}</td></tr>`).join(""):emptyRow(4,"No activity recorded yet. Actions you perform will appear here automatically.");}
+
+let wifiSubscriptions=[];
+function subscriptionDate(v){if(!v)return null;const d=new Date(v);return Number.isNaN(d.getTime())?null:d;}
+function subscriptionTotalPaid(){return wifiSubscriptions.reduce((sum,x)=>sum+Math.max(0,Number(x.paymentAmount||0)),0);}
+function expiryLabel(x){const end=subscriptionDate(x.periodEnd);if(!end)return "No end date";const days=Math.ceil((end.getTime()-Date.now())/86400000);if(days<0)return `Expired ${Math.abs(days)} day(s) ago`;if(days<=7)return `Ends in ${days} day(s)`;return `Ends ${end.toLocaleDateString()}`;}
+async function loadWiFiSubscriptions(){
+  const snap=await getDocs(collection(db,"wifiSubscriptions"));
+  wifiSubscriptions=snap.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>(subscriptionDate(b.paymentDate)?.getTime()||0)-(subscriptionDate(a.paymentDate)?.getTime()||0));
+}
+function renderWiFiSubscriptions(){
+  view.innerHTML=baseHead("WiFi Subscription","Track WiFi subscriptions, payments, receipts and renewal reminders.",`<button class="primary-btn" id="addWiFiSubscription">+ Add WiFi Subscription</button>`)+`<div class="report-cards">${reportCard("Total Paid",money(subscriptionTotalPaid()),"green")}${reportCard("Subscriptions",wifiSubscriptions.length)}${reportCard("Ending Soon",wifiSubscriptions.filter(x=>{const d=subscriptionDate(x.periodEnd);return d&&d>=new Date()&&d<=new Date(Date.now()+7*86400000)}).length,"red")}</div><div class="panel"><div class="panel-head"><div><h3>Subscription Payment History</h3><p>Every saved payment and receipt is listed here.</p></div></div><div class="table-wrap"><table><thead><tr><th>Wi-Fi Name</th><th>Subscription Info</th><th>Payment</th><th>Payment Date</th><th>Period</th><th>Mode</th><th>Reference</th><th>Receipt</th><th>Reminder</th></tr></thead><tbody>${wifiSubscriptions.length?wifiSubscriptions.map(x=>{const d=subscriptionDate(x.periodEnd),soon=d&&d>=new Date()&&d<=new Date(Date.now()+7*86400000);return `<tr><td>${esc(x.wifiName||"—")}</td><td>${esc(x.subscriptionInfo||"—")}</td><td>${money(x.paymentAmount)}</td><td>${esc(x.paymentDate||"—")}</td><td>${esc(x.periodStart||"—")} – ${esc(x.periodEnd||"—")}</td><td>${esc(x.paymentMode||"—")}</td><td>${esc(x.referenceNumber||"—")}</td><td>${x.receiptUrl?`<a href="${esc(x.receiptUrl)}" target="_blank" rel="noopener">View receipt</a>`:"—"}</td><td style="color:${soon|| (d&&d<new Date())?"#d33":"#15803d"};font-weight:700">${esc(expiryLabel(x))}</td></tr>`}).join(""):`<tr><td colspan="9">No WiFi subscriptions recorded yet.</td></tr>`}</tbody></table></div></div>`;
+  $("#addWiFiSubscription")?.addEventListener("click",openWiFiSubscriptionModal);
+}
+function openWiFiSubscriptionModal(){
+  openModal("Add WiFi Subscription",`<div class="form-grid"><div class="field full"><label>A. Wi-Fi Name *</label><input id="wsName" required placeholder="e.g. Main PISO WIFI"></div><div class="field full"><label>B. WiFi Subscription Information *</label><input id="wsInfo" required placeholder="Provider / plan / account information"></div><div class="field"><label>C. Payment Information *</label><input id="wsAmount" type="number" min="0.01" step="0.01" required placeholder="Amount paid"></div><div class="field"><label>D. Subscription Period *</label><div style="display:flex;gap:8px"><input id="wsStart" type="date" required aria-label="Period start"><input id="wsEnd" type="date" required aria-label="Period end"></div></div><div class="field"><label>E. Payment Date *</label><input id="wsPaymentDate" type="date" required value="${new Date().toISOString().slice(0,10)}"></div><div class="field"><label>F. Mode of Payment *</label><select id="wsMode"><option>GCash</option><option>Bank Transfer</option><option>Cash</option><option>Credit/Debit Card</option><option>Other</option></select></div><div class="field full"><label>G. Reference Number</label><input id="wsReference" placeholder="Reference / transaction number"></div><div class="field full"><label>H. Upload Photo of Receipt *</label><input id="wsReceipt" type="file" accept="image/jpeg,image/png,image/webp,application/pdf" required><small>JPG, PNG, WEBP or PDF; maximum 10 MB.</small></div></div>`,"Save Subscription Payment",async()=>{
+    const wifiName=$("#wsName").value.trim(),subscriptionInfo=$("#wsInfo").value.trim(),paymentAmount=Number($("#wsAmount").value),periodStart=$("#wsStart").value,periodEnd=$("#wsEnd").value,paymentDate=$("#wsPaymentDate").value,paymentMode=$("#wsMode").value,referenceNumber=$("#wsReference").value.trim(),file=$("#wsReceipt").files[0];
+    if(!wifiName||!subscriptionInfo||!(paymentAmount>0)||!periodStart||!periodEnd||periodEnd<periodStart||!paymentDate||!file)throw new Error("Complete all required fields and ensure the subscription end date is after the start date.");
+    if(file.size>10*1024*1024)throw new Error("Receipt must be 10 MB or smaller.");
+    if(!["image/jpeg","image/png","image/webp","application/pdf"].includes(file.type))throw new Error("Upload a JPG, PNG, WEBP or PDF receipt.");
+    const id=`WIFI-SUB-${Date.now()}`,path=`wifi-subscription-receipts/${currentUser.uid}/${id}/${file.name}`;const uploaded=await uploadBytes(storageRef(subscriptionStorage,path),file,{contentType:file.type});const receiptUrl=await getDownloadURL(uploaded.ref);
+    await addDoc(collection(db,"wifiSubscriptions"),{wifiName,subscriptionInfo,paymentAmount,periodStart,periodEnd,paymentDate,paymentMode,referenceNumber,receiptUrl,receiptStoragePath:path,receiptFileName:file.name,createdBy:currentUser.uid,createdAt:serverTimestamp()});
+    await logActivity("WiFi Subscription",`Recorded subscription payment for ${wifiName} — ${money(paymentAmount)}`);await loadWiFiSubscriptions();renderWiFiSubscriptions();
+  });
+}
 
 function renderSettings(){
   view.innerHTML=baseHead("Settings","Configure the business rules used by all calculations.")+`<div class="settings-layout"><div class="panel settings-card"><div class="panel-head"><div><h3>Business Settings</h3><p>These values drive dashboard, payments, statements and reports.</p></div></div><div class="settings-body"><div class="setting-row"><div><b>Internet Cost</b><small>Fixed internet cost per unit/month.</small></div><input id="sInternet" type="number" min="0" step="0.01" value="${settings.internetCost}"></div><div class="setting-row"><div><b>Owner Share</b><small>Percentage of net sales allocated to owner.</small></div><input id="sOwner" type="number" min="0" max="100" step="1" value="${settings.ownerPercent}"></div><div class="setting-row"><div><b>Client Share</b><small>Percentage of net sales allocated to client.</small></div><input id="sClient" type="number" min="0" max="100" step="1" value="${settings.clientPercent}"></div><div class="setting-row"><div><b>Electricity</b><small>Electricity amount per unit/month.</small></div><input id="sElec" type="number" min="0" step="0.01" value="${settings.electricity}"></div><div class="setting-row"><div><b>Electricity Rule</b><small>How electricity affects the client amount.</small></div><select id="sRule"><option value="ADD_TO_CLIENT" ${settings.electricityRule==="ADD_TO_CLIENT"?"selected":""}>Add to Client</option><option value="SUBTRACT_FROM_CLIENT" ${settings.electricityRule==="SUBTRACT_FROM_CLIENT"?"selected":""}>Deduct from Client</option><option value="SEPARATE_CHARGE" ${settings.electricityRule==="SEPARATE_CHARGE"?"selected":""}>Separate Charge</option></select></div><div class="settings-actions"><button class="primary-btn" id="saveSettings">Save Settings</button></div></div></div><div class="panel"><div class="panel-head"><div><h3>Current Formula</h3><p>Used for ${monthLabel(selectedMonth)}</p></div></div><div class="formula-box"><div>Gross Sales</div><div>= Gross Split Base</div><strong>× ${settings.ownerPercent}% Owner = ${money(10000 * settings.ownerPercent / 100)} per ₱10,000</strong><strong>× ${settings.clientPercent}% Client = ${money(10000 * settings.clientPercent / 100)} per ₱10,000</strong><div>Internet: <b>${money(settings.internetCost)}</b> (separate cost — not deducted before 70/30)</div><div>Electricity: <b>+ ${money(settings.electricity)}</b> added to customer earnings</div></div></div></div>`;
@@ -889,7 +920,7 @@ function startCoreRealtime(){
 
 function showAuthError(message){console.error("[PISO WIFI]",message);const loader=$("#authLoading");if(loader){loader.innerHTML=`<div class="auth-error"><strong>Unable to open the dashboard</strong><span>${esc(message)}</span><button type="button" id="returnAdminLogin">Return to Login</button></div>`;loader.classList.remove("hidden");$("#returnAdminLogin")?.addEventListener("click",()=>location.replace("/admin/index.html"));}}
 let bootstrappedUserUid="";
-async function bootstrap(user){if(!user){location.replace("/admin/index.html");return;}if(bootstrappedUserUid===user.uid && !$("#app")?.classList.contains("hidden"))return;bootstrappedUserUid=user.uid;currentUser=user;try{await authorize(user);await loadData();await logActivity("System",`Admin login — ${user.email||"Admin"}`);setupMonthSelector();startSupportRealtime();startCoreRealtime();$("#authLoading").classList.add("hidden");$("#app").classList.remove("hidden");$("#userEmail").textContent=user.email||"Owner";route=parseRoute();render();}catch(e){bootstrappedUserUid="";showAuthError(e?.message||"Firebase authorization or database access failed.");}}
+async function bootstrap(user){if(!user){location.replace("/admin/index.html");return;}if(bootstrappedUserUid===user.uid && !$("#app")?.classList.contains("hidden"))return;bootstrappedUserUid=user.uid;currentUser=user;try{await authorize(user);await loadData();try{await loadWiFiSubscriptions();}catch(e){console.warn("WiFi subscriptions unavailable",e);}await logActivity("System",`Admin login — ${user.email||"Admin"}`);setupMonthSelector();startSupportRealtime();startCoreRealtime();$("#authLoading").classList.add("hidden");$("#app").classList.remove("hidden");$("#userEmail").textContent=user.email||"Owner";route=parseRoute();render();}catch(e){bootstrappedUserUid="";showAuthError(e?.message||"Firebase authorization or database access failed.");}}
 
 function parseRoute(){const raw=location.hash.replace("#","");return raw.split("?")[0]||"dashboard";}
 document.addEventListener("click",e=>{const a=e.target.closest("[data-route]");if(a){e.preventDefault();e.stopPropagation();navigateTo(a.dataset.route);return;} const p=e.target.closest("[data-print-inline]");if(p){const id=$("#statementUnit")?.value;if(id)printStatement(id,$("#statementMonth").value);} const pdf=e.target.closest("[data-pdf-inline]");if(pdf){const id=$("#statementUnit")?.value;if(id)downloadStatementPdf(id,$("#statementMonth").value);} const html=e.target.closest("[data-html-inline]");if(html){const id=$("#statementUnit")?.value;if(id)downloadStatementHtml(id,$("#statementMonth").value);}});

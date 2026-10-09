@@ -91,28 +91,26 @@ async function showAuthFailure(message){
 }
 
 async function bootCashierAdmin(){
-  setLoading("Checking Admin access…");
+  setLoading("Restoring Admin session…");
   try{
-    const u=await new Promise((resolve,reject)=>{
-      let settled=false;
-      const finish=(value)=>{if(!settled){settled=true;unsubscribe?.();resolve(value);}};
-      const fail=(error)=>{if(!settled){settled=true;unsubscribe?.();reject(error);}};
-      const unsubscribe=onAuthStateChanged(auth,finish,fail);
-      setTimeout(()=>fail(new Error("Firebase Authentication timed out. Please reload the Admin portal.")),8000);
-    });
-    if(!u){
-      return deny();
+    // Match the main Admin portal: wait for Firebase's persisted auth state,
+    // rather than relying only on an auth-state callback that can stall here.
+    if(typeof auth.authStateReady === "function"){
+      await Promise.race([auth.authStateReady(),new Promise((_,reject)=>setTimeout(()=>reject(new Error("Admin session check timed out. Open Admin again and choose Cashier Management.")),8000))]);
+    } else {
+      await new Promise((resolve,reject)=>{
+        let settled=false,unsubscribe=()=>{};
+        const timer=setTimeout(()=>finish(new Error("Admin session check timed out.")),8000);
+        function finish(err){if(settled)return;settled=true;clearTimeout(timer);unsubscribe();err?reject(err):resolve();}
+        unsubscribe=onAuthStateChanged(auth,()=>finish(),finish);
+      });
     }
-    setLoading("Verifying your Admin session…");
-    // Use the same deterministic Admin identity check as Firestore rules.
-    // Do not require a users/{uid} profile just to open this Admin page.
+    const u=auth.currentUser;
+    if(!u) return deny();
     const email=String(u.email||"").trim().toLowerCase();
-    if(email!=="pisonet@admin.com")return deny();
-    setLoading("Loading Cashier Management…");
+    if(email!=="pisonet@admin.com") return deny();
+    setLoading("Opening Cashier Management…");
     await load();
-  }catch(e){
-    await showAuthFailure(e?.message||"Firebase Authentication or Firestore could not be initialized.");
-  }
+  }catch(e){ await showAuthFailure(e?.message||"Firebase Authentication could not be initialized."); }
 }
-
 bootCashierAdmin();

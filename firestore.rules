@@ -77,5 +77,10 @@ service cloud.firestore {
       allow create: if isAdmin() || (isCashier() && request.resource.data.userId == request.auth.uid && request.resource.data.role == "cashier");
       allow update, delete: if isAdmin();
     }
+    // Admin-only WiFi subscription payment history and receipts metadata.
+    match /wifiSubscriptions/{subscriptionId} {
+      allow read, create, update, delete: if isAdmin();
+    }
+
   }
 }
