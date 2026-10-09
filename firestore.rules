@@ -16,6 +16,12 @@ service cloud.firestore {
     match /users/{uid} {
       allow read: if isAdmin() || (isSignedIn() && uid == request.auth.uid);
       allow write: if isAdmin();
+      // Cashiers may only clear their forced password-change flag and record its timestamp.
+      allow update: if isSignedIn()
+        && uid == request.auth.uid
+        && resource.data.role == "cashier"
+        && request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(["forcePasswordChange", "passwordChangedAt"]);
     }
     match /units/{document} {
       allow read: if isAdmin() || isClientUnit(resource.data);

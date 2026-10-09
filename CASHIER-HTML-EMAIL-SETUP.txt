@@ -1,0 +1,32 @@
+PISO WIFI — CASHIER ACCOUNT + HTML WELCOME EMAIL SETUP
+
+The website code now creates cashier accounts using only:
+- Cashier Name
+- Cashier Email
+- Temporary Password
+
+The Cashier ID field is removed from account creation and the account list. Firebase UID remains the internal account identifier used by Firebase Authentication and cashier transaction ownership.
+
+When Admin creates a cashier, the website:
+1. Creates the Firebase Authentication account.
+2. Saves the cashier profile in users/{uid} with role="cashier".
+3. Shows the temporary password to Admin in a confirmation alert.
+4. Calls /api/password-recovery with action="sendCashierWelcome" to send a branded HTML email using Google Apps Script MailApp.
+
+IMPORTANT: The HTML email action must be deployed to the Google Apps Script web app before live email sending can work.
+
+To enable the email action:
+1. Open the Google Apps Script project used by the current PISO WIFI password-recovery/sheet-sync URL.
+2. Replace/update its source with the included PISO-WIFI-APPS-SCRIPT-FINAL-PASSWORD-RECOVERY.gs, preserving any project-specific changes that are not in this master.
+3. Save the project.
+4. Deploy > Manage deployments > Edit the existing Web App deployment > select New version > Deploy. Keep the same web app URL used in js/dashboard.js and functions/api/password-recovery.js.
+5. Ensure the script is authorized to send email with MailApp when prompted.
+6. Test by creating a cashier with an email address you control. Confirm the Admin alert reports email sent and check Inbox/Spam.
+
+Security:
+- The email endpoint validates the Firebase ID token and verifies the Admin role before sending.
+- Temporary passwords are not saved to Firestore by the new cashier creation code.
+- A temporary password is sent by email because this is the requested workflow. Treat it as sensitive and have the cashier change it after signing in.
+- Do not publish a version of the Apps Script that bypasses Admin-token validation.
+
+The repository ZIP can update the website files, but it cannot update/deploy the Google Apps Script project automatically. The Apps Script deployment step above is required for the HTML email action.

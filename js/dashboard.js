@@ -9,7 +9,7 @@ import {
   serverTimestamp, Timestamp
 } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-firestore.js";
 
-console.info("[PISO WIFI] BUILD v62 — WiFi subscription tracking + navigation fixes");
+console.info("[PISO WIFI] BUILD v64 — WiFi subscription labels + cashier email onboarding");
 
 const $ = (s) => document.querySelector(s);
 const APPS_SCRIPT_SHEET_SYNC_URL = "https://script.google.com/macros/s/AKfycbzJcIf9rpdunJ8-1kDvgePWTT1L-cQOFzZLQHFQMaqBYTlviovyxjz4JOX-FpvUrjFu/exec";
@@ -349,7 +349,7 @@ function pageLoader(){ view.innerHTML=`<div class="loading-panel"><div class="lo
 
 function render(){
   nav();
-  const renderers={dashboard:renderDashboard,units:renderUnits,reports:renderReports,payments:renderPayments,statements:renderStatements,notifications:renderNotifications,activity:renderActivity,settings:renderSettings,profile:renderProfile,support:renderSupport,"wifi-subscription":renderWiFiSubscriptions};
+  const renderers={dashboard:renderDashboard,units:renderUnits,reports:renderReports,payments:renderPayments,statements:renderStatements,notifications:renderNotifications,activity:renderActivity,settings:renderSettings,profile:renderProfile,support:renderSupport,"wifi-subscription":renderWiFiSubscriptions,"cashier-management":renderCashierManagement};
   (renderers[route]||renderDashboard)();
   closeMenu();
   updateNotificationBadge();
@@ -599,7 +599,7 @@ function compressReceiptImage(file){
 function viewWiFiReceipt(id){const x=wifiSubscriptions.find(r=>r.id===id);if(!x?.receiptDataUrl)return;const root=$("#modalRoot");root.innerHTML=`<div class="modal-backdrop" id="receiptBackdrop"><div class="modal" style="width:min(900px,96vw)"><div class="modal-head"><h3>${esc(x.wifiName)} — Receipt</h3><button class="close" id="closeReceipt">×</button></div><div class="modal-body" style="text-align:center"><img src="${x.receiptDataUrl}" alt="Receipt for ${esc(x.wifiName)}" style="max-width:100%;max-height:68vh;object-fit:contain;border:1px solid #e2e8f0;border-radius:8px"></div><div class="modal-actions"><button class="secondary-btn" id="cancelReceipt">Close</button><button class="primary-btn" id="downloadReceiptNow">Download Receipt</button></div></div></div>`;$("#closeReceipt").onclick=closeModal;$("#cancelReceipt").onclick=closeModal;$("#downloadReceiptNow").onclick=()=>downloadWiFiReceipt(id);}
 function downloadWiFiReceipt(id){const x=wifiSubscriptions.find(r=>r.id===id);if(!x?.receiptDataUrl)return;const a=document.createElement("a");a.href=x.receiptDataUrl;a.download=x.receiptFileName||`wifi-receipt-${id}.jpg`;document.body.appendChild(a);a.click();a.remove();}
 function openWiFiSubscriptionModal(){
-  openModal("Add WiFi Subscription",`<div class="form-grid"><div class="field full"><label>A. Wi-Fi Name *</label><input id="wsName" required placeholder="e.g. Main PISO WIFI"></div><div class="field full"><label>B. WiFi Subscription Information *</label><input id="wsInfo" required placeholder="Provider / plan / account information"></div><div class="field"><label>C. Payment Information (Amount Paid) *</label><input id="wsAmount" type="number" min="0.01" step="0.01" required placeholder="Amount paid"></div><div class="field"><label>D. Subscription Period *</label><div style="display:flex;gap:8px"><input id="wsStart" type="date" required aria-label="Period start"><input id="wsEnd" type="date" required aria-label="Period end"></div></div><div class="field"><label>E. Payment Date *</label><input id="wsPaymentDate" type="date" required value="${new Date().toISOString().slice(0,10)}"></div><div class="field"><label>F. Mode of Payment *</label><select id="wsMode"><option>GCash</option><option>Bank Transfer</option><option>Cash</option><option>Credit/Debit Card</option><option>Other</option></select></div><div class="field full"><label>G. Reference Number</label><input id="wsReference" placeholder="Reference / transaction number"></div><div class="field full"><label>H. Upload Photo of Receipt *</label><input id="wsReceipt" type="file" accept="image/jpeg,image/png,image/webp" required><small>JPG, PNG or WEBP only. The photo is compressed and saved in Firestore. No Firebase Storage or billing upgrade is used. Please use a clear, cropped photo of the receipt.</small></div></div>`,"Save Subscription Payment",async()=>{
+  openModal("Add WiFi Subscription",`<div class="form-grid"><div class="field full"><label>Wi-Fi Name *</label><input id="wsName" required placeholder="PLDT"></div><div class="field full"><label>WiFi Subscription Information *</label><input id="wsInfo" required placeholder="UNLI FIBER"></div><div class="field"><label>Payment Information (Amount Paid) *</label><input id="wsAmount" type="number" min="0.01" step="0.01" required placeholder="Amount paid"></div><div class="field"><label>Subscription Period *</label><div style="display:flex;gap:8px"><input id="wsStart" type="date" required aria-label="Period start"><input id="wsEnd" type="date" required aria-label="Period end"></div></div><div class="field"><label>Payment Date *</label><input id="wsPaymentDate" type="date" required value="${new Date().toISOString().slice(0,10)}"></div><div class="field"><label>Mode of Payment *</label><select id="wsMode"><option>GCash</option><option>Bank Transfer</option><option>Cash</option><option>Credit/Debit Card</option><option>Other</option></select></div><div class="field full"><label>Reference Number</label><input id="wsReference" placeholder="Reference / transaction number"></div><div class="field full"><label>Upload Photo of Receipt *</label><input id="wsReceipt" type="file" accept="image/jpeg,image/png,image/webp" required><small>JPG, PNG or WEBP only. The photo is compressed and saved in Firestore. No Firebase Storage or billing upgrade is used. Please use a clear, cropped photo of the receipt.</small></div></div>`,"Save Subscription Payment",async()=>{
     const wifiName=$("#wsName").value.trim(),subscriptionInfo=$("#wsInfo").value.trim(),paymentAmount=Number($("#wsAmount").value),periodStart=$("#wsStart").value,periodEnd=$("#wsEnd").value,paymentDate=$("#wsPaymentDate").value,paymentMode=$("#wsMode").value,referenceNumber=$("#wsReference").value.trim(),file=$("#wsReceipt").files[0];
     if(!wifiName||!subscriptionInfo||!(paymentAmount>0)||!periodStart||!periodEnd||periodEnd<periodStart||!paymentDate||!file)throw new Error("Complete all required fields and ensure the subscription end date is on or after the start date.");
     if(file.size>15*1024*1024)throw new Error("Choose a receipt photo smaller than 15 MB before compression.");
@@ -609,6 +609,61 @@ function openWiFiSubscriptionModal(){
   });
 }
 
+// CASHIER ACCOUNT MANAGEMENT — stays inside the Admin dashboard.
+let cashierAccounts=[];
+async function loadCashierAccounts(){
+  const tableBody=$("#cashierAccountsBody");
+  if(tableBody)tableBody.innerHTML='<tr><td colspan="4">Loading cashier accounts…</td></tr>';
+  try{
+    const snap=await getDocs(collection(db,"users"));
+    cashierAccounts=snap.docs.map(d=>({id:d.id,...d.data()})).filter(u=>String(u.role||"").toLowerCase()==="cashier");
+    const body=$("#cashierAccountsBody");
+    if(!body)return;
+    body.innerHTML=cashierAccounts.length?cashierAccounts.map(c=>`<tr><td>${esc(c.name||"—")}</td><td>${esc(c.email||"—")}</td><td><span class="badge ${c.active===false?"inactive":"active"}">${c.active===false?"Inactive":"Active"}</span></td><td>${c.createdAt?.toDate?esc(c.createdAt.toDate().toLocaleDateString()):esc(c.createdAt||"—")}</td></tr>`).join(""):'<tr><td colspan="4">No cashier accounts yet. Use “Create Cashier Account” to add one.</td></tr>';
+  }catch(error){
+    console.error("Could not load cashier accounts",error);
+    const body=$("#cashierAccountsBody");
+    if(body)body.innerHTML=`<tr><td colspan="4">Could not load accounts: ${esc(error.message||"Check Firestore Rules and Admin access.")}</td></tr>`;
+  }
+}
+function renderCashierManagement(){
+  view.innerHTML=baseHead("Cashier Management","Create cashier login accounts here. Cashiers use their own separate portal.",'<button class="primary-btn" id="addAdminCashier">+ Create Cashier Account</button>')+
+    `<div class="panel"><div class="panel-head"><div><h3>Cashier Accounts</h3><p>Only Admin can create cashier accounts. This page remains inside the Admin dashboard.</p></div><button type="button" class="secondary-btn" id="refreshCashierAccounts">Refresh</button></div><div class="table-wrap"><table><thead><tr><th>Cashier Name</th><th>Email</th><th>Status</th><th>Created</th></tr></thead><tbody id="cashierAccountsBody"><tr><td colspan="4">Loading cashier accounts…</td></tr></tbody></table></div></div>`;
+  $("#addAdminCashier")?.addEventListener("click",openAdminCashierModal);
+  $("#refreshCashierAccounts")?.addEventListener("click",loadCashierAccounts);
+  loadCashierAccounts();
+}
+function openAdminCashierModal(){
+  openModal("Create Cashier Account",`<div class="form-grid"><div class="field full"><label>Cashier Name *</label><input id="adminCashierName" required placeholder="Cashier full name" autocomplete="name"></div><div class="field full"><label>Cashier Email *</label><input id="adminCashierEmail" type="email" required placeholder="cashier@example.com" autocomplete="email"></div><div class="field full"><label>Temporary Password *</label><input id="adminCashierPassword" type="text" minlength="6" required placeholder="At least 6 characters" autocomplete="new-password"><small>The temporary password will be shown after creation and included in the HTML welcome email sent to this cashier.</small></div></div>`,"Create Account",async()=>{
+    const name=$("#adminCashierName").value.trim();
+    const email=$("#adminCashierEmail").value.trim().toLowerCase();
+    const password=$("#adminCashierPassword").value;
+    if(!name||!email||! /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)||password.length<6)throw new Error("Enter the cashier name, a valid email address, and a temporary password of at least 6 characters.");
+    let credential=null,profileSaved=false,emailSent=false,emailError="";
+    try{
+      credential=await createUserWithEmailAndPassword(clientProvisionerAuth,email,password);
+      await setDoc(doc(db,"users",credential.user.uid),{role:"cashier",name,email,active:true,forcePasswordChange:true,createdAt:serverTimestamp(),createdBy:currentUser.uid});
+      profileSaved=true;
+      await provisionerSignOut(clientProvisionerAuth);
+      try{
+        const idToken=await currentUser.getIdToken(true);
+        const response=await fetch("/api/password-recovery",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({action:"sendCashierWelcome",idToken,name,email,temporaryPassword:password,cashierPortalUrl:"https://piso-wifi.pages.dev/cashier/"})});
+        const result=await response.json().catch(()=>({ok:false,error:"Email service returned an unreadable response."}));
+        if(!response.ok||result.ok!==true)throw new Error(result.error||"The email service could not send the welcome email.");
+        emailSent=true;
+      }catch(mailError){emailError=mailError?.message||"Email service is not configured yet.";console.error("Cashier created, welcome email failed:",mailError);}
+      await loadCashierAccounts();
+      const message=emailSent
+        ? `Cashier account created and HTML welcome email sent.\n\nName: ${name}\nEmail: ${email}\nTemporary password: ${password}\n\nPortal: https://piso-wifi.pages.dev/cashier/\n\nThe cashier should sign in and change this temporary password.`
+        : `Cashier account was created, but the welcome email was NOT sent.\n\nName: ${name}\nEmail: ${email}\nTemporary password: ${password}\n\nEmail error: ${emailError}\n\nDeploy the updated Google Apps Script email handler, then try again. Keep this password private.`;
+      window.alert(message);
+    }catch(error){
+      try{if(clientProvisionerAuth.currentUser)await provisionerSignOut(clientProvisionerAuth);}catch(_e){}
+      if(credential && !profileSaved)console.error("Cashier account profile save failed",error);
+      throw new Error(error?.code==="auth/email-already-in-use"?"This email already has a Firebase Authentication account.":(error.message||"Could not create cashier account."));
+    }
+  });
+}
 function renderSettings(){
   view.innerHTML=baseHead("Settings","Configure the business rules used by all calculations.")+`<div class="settings-layout"><div class="panel settings-card"><div class="panel-head"><div><h3>Business Settings</h3><p>These values drive dashboard, payments, statements and reports.</p></div></div><div class="settings-body"><div class="setting-row"><div><b>Internet Cost</b><small>Fixed internet cost per unit/month.</small></div><input id="sInternet" type="number" min="0" step="0.01" value="${settings.internetCost}"></div><div class="setting-row"><div><b>Owner Share</b><small>Percentage of net sales allocated to owner.</small></div><input id="sOwner" type="number" min="0" max="100" step="1" value="${settings.ownerPercent}"></div><div class="setting-row"><div><b>Client Share</b><small>Percentage of net sales allocated to client.</small></div><input id="sClient" type="number" min="0" max="100" step="1" value="${settings.clientPercent}"></div><div class="setting-row"><div><b>Electricity</b><small>Electricity amount per unit/month.</small></div><input id="sElec" type="number" min="0" step="0.01" value="${settings.electricity}"></div><div class="setting-row"><div><b>Electricity Rule</b><small>How electricity affects the client amount.</small></div><select id="sRule"><option value="ADD_TO_CLIENT" ${settings.electricityRule==="ADD_TO_CLIENT"?"selected":""}>Add to Client</option><option value="SUBTRACT_FROM_CLIENT" ${settings.electricityRule==="SUBTRACT_FROM_CLIENT"?"selected":""}>Deduct from Client</option><option value="SEPARATE_CHARGE" ${settings.electricityRule==="SEPARATE_CHARGE"?"selected":""}>Separate Charge</option></select></div><div class="settings-actions"><button class="primary-btn" id="saveSettings">Save Settings</button></div></div></div><div class="panel"><div class="panel-head"><div><h3>Current Formula</h3><p>Used for ${monthLabel(selectedMonth)}</p></div></div><div class="formula-box"><div>Gross Sales</div><div>= Gross Split Base</div><strong>× ${settings.ownerPercent}% Owner = ${money(10000 * settings.ownerPercent / 100)} per ₱10,000</strong><strong>× ${settings.clientPercent}% Client = ${money(10000 * settings.clientPercent / 100)} per ₱10,000</strong><div>Internet: <b>${money(settings.internetCost)}</b> (separate cost — not deducted before 70/30)</div><div>Electricity: <b>+ ${money(settings.electricity)}</b> added to customer earnings</div></div></div></div>`;
   $("#saveSettings").onclick=saveSettings;

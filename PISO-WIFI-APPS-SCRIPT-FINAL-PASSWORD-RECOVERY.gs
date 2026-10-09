@@ -1285,6 +1285,10 @@ function doPost(e) {
       return jsonResponse_(syncClientToSheet_(payload));
     }
 
+    if (action === 'sendCashierWelcome') {
+      return jsonResponse_(sendCashierWelcomeEmail_(payload));
+    }
+
     if (action === 'requestCode') {
 
       return jsonResponse_(requestPasswordCode_(payload));
@@ -2312,6 +2316,55 @@ const SHEET_SYNC_FIREBASE_WEB_API_KEY = 'AIzaSyAfX3sSDkJwX9u9dxEDbhG8RU3iP_k6EdI
  *
  * if (action === 'syncClient') return jsonResponse_(syncClientToSheet_(payload));
  */
+
+/**
+ * Send a branded HTML welcome email to a newly-created cashier.
+ * Requires a valid Firebase ID token for the Admin account.
+ * Temporary passwords are sent only to the cashier email and are not stored.
+ */
+function sendCashierWelcomeEmail_(payload) {
+  try {
+    const idToken = String(payload.idToken || '').trim();
+    if (!idToken) throw new Error('Missing Firebase Admin session.');
+    assertAdminFirebaseToken_(idToken);
+
+    const name = String(payload.name || '').trim();
+    const email = String(payload.email || '').trim().toLowerCase();
+    const temporaryPassword = String(payload.temporaryPassword || '');
+    const portalUrl = String(payload.cashierPortalUrl || 'https://piso-wifi.pages.dev/cashier/').trim();
+    if (!name) throw new Error('Cashier name is required.');
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new Error('A valid cashier email is required.');
+    if (temporaryPassword.length < 6 || temporaryPassword.length > 128) throw new Error('Temporary password length is invalid.');
+    if (!/^https:\/\/piso-wifi\.pages\.dev\/cashier\/?$/.test(portalUrl)) throw new Error('Invalid cashier portal URL.');
+
+    const safeName = escapeHtml(name);
+    const safeEmail = escapeHtml(email);
+    const safePassword = escapeHtml(temporaryPassword);
+    const safePortalUrl = escapeHtml(portalUrl);
+    const htmlBody = `<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:24px;background:#f1f5f9;font-family:Arial,Helvetica,sans-serif;color:#0f172a">
+<div style="max-width:600px;margin:0 auto;background:#fff;border:1px solid #e2e8f0;border-radius:16px;overflow:hidden">
+<div style="background:#0b2a52;color:#fff;padding:26px 30px"><div style="font-size:12px;letter-spacing:2px;font-weight:bold">PISO WIFI</div><h1 style="font-size:24px;margin:10px 0 0">Cashier account created</h1></div>
+<div style="padding:28px 30px"><p style="font-size:16px">Hello <strong>${safeName}</strong>,</p><p>Your PISO WIFI Cashier Portal account has been created by the Admin. Use these credentials to sign in.</p>
+<div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:18px;margin:22px 0"><p style="margin:0 0 12px"><strong>Email address</strong><br>${safeEmail}</p><p style="margin:0"><strong>Temporary password</strong><br><span style="display:inline-block;margin-top:6px;padding:10px 12px;background:#eaf2ff;border-radius:8px;font-family:monospace;font-size:16px;word-break:break-all">${safePassword}</span></p></div>
+<p style="text-align:center;margin:26px 0"><a href="${safePortalUrl}" style="display:inline-block;background:#1677ff;color:#fff;text-decoration:none;font-weight:bold;padding:13px 22px;border-radius:8px">Open Cashier Portal</a></p>
+<p style="font-size:13px;color:#475569">Keep these credentials private and change the temporary password after signing in. If you did not expect this account, contact the PISO WIFI Admin.</p><p style="margin-top:26px">Regards,<br><strong>PISO WIFI Admin</strong></p></div>
+<div style="padding:14px 30px;background:#f8fafc;color:#64748b;font-size:11px">Automated account notification from PISO WIFI Management System.</div></div></body></html>`;
+
+    MailApp.sendEmail({
+      to: email,
+      subject: 'Your PISO WIFI Cashier Account',
+      body: `Hello ${name}, your PISO WIFI cashier account has been created. Email: ${email}. Temporary password: ${temporaryPassword}. Sign in at ${portalUrl} and change your temporary password after signing in.`,
+      htmlBody: htmlBody,
+      name: 'PISO WIFI Admin'
+    });
+    return { ok: true, action: 'cashierWelcomeSent', email: email };
+  } catch (error) {
+    console.error('[CASHIER WELCOME EMAIL]', error && error.message ? error.message : error);
+    return { ok: false, error: error && error.message ? error.message : 'Unable to send cashier welcome email.' };
+  }
+}
 
 function syncClientToSheet_(payload) {
   ensurePisoWifiDatabase_();
