@@ -24,7 +24,7 @@ service cloud.firestore {
           .hasOnly(["forcePasswordChange", "passwordChangedAt"]);
     }
     match /units/{document} {
-      allow read: if isAdmin() || isClientUnit(resource.data);
+      allow read: if isAdmin() || isCashier() || isClientUnit(resource.data);
       allow create: if isAdmin() || (request.resource.data.type == "password-reset" && request.resource.data.read == false && request.resource.data.title == "Customer password reset requested" && request.resource.data.clientCode is string && request.resource.data.unitCode is string && request.resource.data.email is string && exists(/databases/$(database)/documents/customerLoginDirectory/$(request.resource.data.clientCode)) && get(/databases/$(database)/documents/customerLoginDirectory/$(request.resource.data.clientCode)).data.unitCode == request.resource.data.unitCode && get(/databases/$(database)/documents/customerLoginDirectory/$(request.resource.data.clientCode)).data.email == request.resource.data.email && get(/databases/$(database)/documents/customerLoginDirectory/$(request.resource.data.clientCode)).data.active == true);
       allow delete: if isAdmin();
       allow update: if isAdmin() || (isClientUnit(resource.data) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["name","contact","address","authUserId","forcePasswordChange","passwordChangedAt","updatedAt"]));

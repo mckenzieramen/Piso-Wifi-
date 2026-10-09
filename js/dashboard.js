@@ -88,6 +88,7 @@ const uid = () => `${Date.now()}-${Math.random().toString(36).slice(2,8)}`;
 let currentUser = null;
 let units = [], records = [], payments = [], notifications = [], activities = [], supportChats = [];
 let supportUnsub=null, selectedSupportChatId="";
+let cashierSales=[], cashierSalesUnsub=null;
 let coreRealtimeUnsubs=[];
 let dashboardRealtimeTimer=null;
 let settings = { internetCost:1000, ownerPercent:70, clientPercent:30, electricity:100, electricityRule:"ADD_TO_CLIENT" };
@@ -349,7 +350,7 @@ function pageLoader(){ view.innerHTML=`<div class="loading-panel"><div class="lo
 
 function render(){
   nav();
-  const renderers={dashboard:renderDashboard,units:renderUnits,reports:renderReports,payments:renderPayments,statements:renderStatements,notifications:renderNotifications,activity:renderActivity,settings:renderSettings,profile:renderProfile,support:renderSupport,"wifi-subscription":renderWiFiSubscriptions,"cashier-management":renderCashierManagement};
+  const renderers={dashboard:renderDashboard,units:renderUnits,reports:renderReports,payments:renderPayments,statements:renderStatements,notifications:renderNotifications,activity:renderActivity,settings:renderSettings,profile:renderProfile,support:renderSupport,"wifi-subscription":renderWiFiSubscriptions,"cashier-management":renderCashierManagement,"cashier-sales":renderCashierSales};
   (renderers[route]||renderDashboard)();
   closeMenu();
   updateNotificationBadge();
@@ -607,6 +608,23 @@ function openWiFiSubscriptionModal(){
     await addDoc(collection(db,"wifiSubscriptions"),{wifiName,subscriptionInfo,paymentAmount,periodStart,periodEnd,paymentDate,paymentMode,referenceNumber,receiptDataUrl:receipt.dataUrl,receiptMimeType:receipt.mimeType,receiptFileName:receipt.fileName,receiptSize:receipt.size,createdBy:currentUser.uid,createdAt:serverTimestamp()});
     await logActivity("WiFi Subscription",`Recorded subscription payment for ${wifiName} — ${money(paymentAmount)}`);await loadWiFiSubscriptions();
   });
+}
+
+// CASHIER SALES — Admin review and corrections. Cashier-submitted records are read-only to the cashier.
+function renderCashierSales(){
+  view.innerHTML=baseHead("Cashier Sales","Review submitted sales and make corrections as Admin.",'<button class="secondary-btn" id="refreshCashierSales">Refresh</button>')+`<div class="panel"><div class="panel-head"><div><h3>Submitted Sales</h3><p>Cashier entries are locked after submission. Only Admin can edit these records.</p></div></div><div class="table-wrap"><table><thead><tr><th>Date</th><th>Customer</th><th>Unit Code</th><th>Cashier</th><th>Gross Sales</th><th>Internet Fee</th><th>Electricity</th><th>30% Earnings</th><th>Total Customer Earn</th><th>Status</th><th>Action</th></tr></thead><tbody id="cashierSalesBody"><tr><td colspan="11">Loading sales…</td></tr></tbody></table></div></div>`;
+  const body=$("#cashierSalesBody");
+  const paint=rows=>{cashierSales=rows.sort((a,b)=>timeValue(b.createdAt)-timeValue(a.createdAt));if(!$("#cashierSalesBody"))return;$("#cashierSalesBody").innerHTML=rows.length?rows.map(x=>`<tr><td>${dateTimeLabel(x.createdAt)}</td><td>${esc(x.customerName||"—")}</td><td>${esc(x.unitCode||"—")}</td><td>${esc(x.cashierName||"—")}</td><td>${money(x.grossSales)}</td><td>${money(x.internetFee??1000)}</td><td>${money(x.electricityShare??100)}</td><td>${money(x.clientShare??Number(x.grossSales||0)*.3)}</td><td><b>${money(x.totalCustomerEarnings??Number(x.grossSales||0)*.3+100)}</b></td><td>${statusBadge(x.status||"PENDING ADMIN REVIEW")}</td><td><button class="action-btn" data-edit-cashier-sale="${esc(x.id)}">Edit / Review</button></td></tr>`).join(""):`<tr><td colspan="11">No cashier sales submitted yet.</td></tr>`;document.querySelectorAll("[data-edit-cashier-sale]").forEach(b=>b.onclick=()=>editCashierSale(b.dataset.editCashierSale));};
+  if(cashierSalesUnsub)cashierSalesUnsub();cashierSalesUnsub=onSnapshot(collection(db,"cashierTransactions"),snap=>paint(snap.docs.map(d=>({id:d.id,...d.data()}))),err=>{if(body)body.innerHTML=`<tr><td colspan="11">Could not load cashier sales: ${esc(err.message||"Check Firestore Rules")}</td></tr>`;});
+  $("#refreshCashierSales").onclick=async()=>{try{const snap=await getDocs(collection(db,"cashierTransactions"));paint(snap.docs.map(d=>({id:d.id,...d.data()})));}catch(e){toast(e.message||"Could not refresh sales.","error");}};
+}
+async function editCashierSale(id){
+  const x=cashierSales.find(r=>r.id===id);if(!x)return;
+  const grossInput=window.prompt("Correct Gross Sales (₱):",String(x.grossSales??0));if(grossInput===null)return;const gross=Number(grossInput);if(!(gross>0)){alert("Gross sales must be greater than zero.");return;}
+  const status=window.prompt("Set status (PENDING ADMIN REVIEW, APPROVED, or REJECTED):",String(x.status||"PENDING ADMIN REVIEW"));if(status===null)return;const normalized=status.trim().toUpperCase();if(!["PENDING ADMIN REVIEW","APPROVED","REJECTED"].includes(normalized)){alert("Invalid status.");return;}
+  const clientShare=gross*.30,electricity=100,totalCustomerEarnings=clientShare+electricity;
+  await updateDoc(doc(db,"cashierTransactions",id),{grossSales:gross,ownerShare:gross*.70,clientShare,internetFee:1000,electricityShare:electricity,totalCustomerEarnings,status:normalized,adminEditedBy:currentUser.uid,adminEditedAt:serverTimestamp(),cashierLocked:true});
+  await logActivity("Cashier Sale",`Admin corrected ${x.transactionId||id}; gross ${money(gross)}, status ${normalized}`);toast("Cashier sale updated by Admin.");
 }
 
 // CASHIER ACCOUNT MANAGEMENT — stays inside the Admin dashboard.
