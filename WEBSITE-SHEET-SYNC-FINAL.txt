@@ -1,6 +1,0 @@
-PISO WIFI v51 SHEET SYNC
-
-Canonical Apps Script URL:
-https://script.google.com/macros/s/AKfycbzJcIf9rpdunJ8-1kDvgePWTT1L-cQOFzZLQHFQMaqBYTlviovyxjz4JOX-FpvUrjFu/exec
-
-The admin dashboard sends syncClient as a simple form POST containing a JSON payload. This avoids browser CORS/preflight/redirect issues with Google Apps Script web apps. The Apps Script doPost accepts both form payloads and legacy raw JSON.
