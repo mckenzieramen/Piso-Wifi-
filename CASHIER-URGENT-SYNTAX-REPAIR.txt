@@ -1,0 +1,9 @@
+PISO WIFI CASHIER PORTAL — URGENT SYNTAX REPAIR
+
+The cashier.js in this package passes a local JavaScript syntax check. The live screenshot showed Unexpected end of input at the end of the deployed cashier.js, which indicates the live file is truncated/different from this verified copy or the host is serving an old artifact.
+
+This package includes the full site source, with the cashier script cache version bumped to 20261010-REPAIR-001 in BOTH cashier.html and cashier/index.html. Deploy the contents of this ZIP to the same Cloudflare Pages project using the normal full-site deployment method. Do not upload only the HTML file; include js/cashier.js too.
+
+After deployment, open /cashier/ and hard refresh with Ctrl+Shift+R. In DevTools Network, open the request for /js/cashier.js?v=20261010-REPAIR-001 and confirm its Response is the complete file. The portal build stamp should show Build 2026-10-10-REPAIR-001.
+
+Local validation: node --check js/cashier.js passed; ZIP integrity should be checked after packaging. This is not deployed by generating the ZIP.
