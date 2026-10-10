@@ -1,0 +1,14 @@
+PISO WIFI — CASHIER RECEIPT TAB FIX
+Build: 2026-10-10-2030
+
+Changes:
+- Sales History View / Print Receipt opens the Receipt tab with the selected generated receipt.
+- Receipt tab now lists generated receipts from paid cashier sales, including receipt number, customer, customer ID, transaction ID, amount, and date paid.
+- Receipt tab no longer displays a blank manual receipt-upload form.
+- The selected generated receipt can be printed or saved as PDF.
+- Cache-busting version updated in both cashier.html and cashier/index.html.
+
+Deployment note:
+- This ZIP is a source package only. It has not been uploaded to GitHub or deployed to Cloudflare Pages.
+- Do not delete the repository. Replace the matching website files in the existing project and deploy only after reviewing the changes.
+- This does not fix automatic email delivery; the password-recovery / Apps Script email handler is separate.
