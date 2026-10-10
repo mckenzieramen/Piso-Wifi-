@@ -1,4 +1,4 @@
-console.info("[PISO WIFI] BUILD v80 — customer login profile reconciliation");
+console.info("[PISO WIFI] BUILD v81 — safe customer profile lookup");
 import { auth, db } from "./firebase.js";
 import {
   signInWithEmailAndPassword,
@@ -9,7 +9,7 @@ import {
 } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-auth.js";
 import { doc, getDoc, getDocs, setDoc, addDoc, collection, query, where, serverTimestamp } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-firestore.js";
 
-console.info("[PISO WIFI] BUILD v80 — customer profile lookup fallback");
+console.info("[PISO WIFI] BUILD v81 — no collection-wide customer lookup");
 
 const form = document.querySelector("#clientLoginForm");
 const msg = document.querySelector("#clientLoginMessage");
@@ -45,77 +45,87 @@ try {
 
 
 async function getRole(user) {
-  // A stale/incomplete users/{uid} profile must not override a valid active
-  // customer unit linked to the same authenticated UID. Explicit staff roles
-  // are still denied access to the Customer portal.
   let userProfile = null;
+
   try {
     const snap = await getDoc(doc(db, "users", user.uid));
     if (snap.exists()) userProfile = snap.data() || null;
   } catch (e) {
-    console.warn("[PISO WIFI CUSTOMER AUTH] users profile lookup failed; checking linked customer record.", e);
+    console.warn("[PISO WIFI CUSTOMER AUTH] users profile lookup failed.", e);
   }
 
-  const profileRole = String(userProfile?.role || "").trim().toLowerCase();
-  if (profileRole === "admin" || profileRole === "cashier") return userProfile;
-  if (profileRole === "client" && userProfile?.active !== false) return userProfile;
+  const role = String(userProfile?.role || "").trim().toLowerCase();
 
-  // The Admin creates the authoritative customer account in units/{unitId}.
-  // Resolve by Auth UID first so a profile with an outdated role/missing role
-  // can be reconciled safely against the exact linked unit.
+  // Never turn an explicitly assigned staff/other role into a customer role.
+  if (role) {
+    if (role === "client" && userProfile?.active !== false) {
+      return { ...userProfile, role: "client" };
+    }
+    return { ...userProfile, role };
+  }
+
+  // A missing role may be recovered only from the unit explicitly linked to
+  // this profile, and only when the unit does not belong to a different UID.
+  const linkedUnitId = String(
+    userProfile?.clientUnitId || userProfile?.unitId || ""
+  ).trim();
+
+  if (linkedUnitId) {
+    try {
+      const unitSnap = await getDoc(doc(db, "units", linkedUnitId));
+      if (unitSnap.exists()) {
+        const unit = unitSnap.data() || {};
+        const linkedUid = String(unit.authUserId || "").trim();
+        const unitEmail = String(unit.authEmail || unit.email || "").trim().toLowerCase();
+        const authEmail = String(user.email || "").trim().toLowerCase();
+        const sameUid = linkedUid === user.uid;
+        const sameEmail = !linkedUid && !!authEmail && unitEmail === authEmail;
+
+        if (unit.active !== false && (sameUid || sameEmail)) {
+          return {
+            ...userProfile,
+            role: "client",
+            active: true,
+            clientUnitId: linkedUnitId,
+            unitId: linkedUnitId,
+            clientCode: unit.clientCode || userProfile?.clientCode || "",
+            username: unit.username || userProfile?.username || "",
+            email: unit.email || userProfile?.email || user.email || "",
+            authEmail: unit.authEmail || userProfile?.authEmail || user.email || "",
+            forcePasswordChange: unit.forcePasswordChange ?? userProfile?.forcePasswordChange
+          };
+        }
+      }
+    } catch (e) {
+      console.warn("[PISO WIFI CUSTOMER AUTH] linked unit lookup failed.", e);
+    }
+  }
+
+  // Query only units linked to this exact Firebase UID. Do not read the entire
+  // units collection; customer security rules commonly prohibit that operation.
   try {
     const byUid = await getDocs(query(
       collection(db, "units"),
       where("authUserId", "==", user.uid)
     ));
-    const unit = byUid.docs.find(d => d.data()?.active !== false);
-    if (unit) {
-      const data = unit.data() || {};
+    const unitDoc = byUid.docs.find(d => d.data()?.active !== false);
+    if (unitDoc) {
+      const unit = unitDoc.data() || {};
       return {
         ...userProfile,
         role: "client",
-        active: data.active !== false,
-        clientUnitId: unit.id,
-        unitId: unit.id,
-        clientCode: data.clientCode || userProfile?.clientCode || "",
-        username: data.username || userProfile?.username || "",
-        email: data.email || userProfile?.email || user.email || "",
-        authEmail: data.authEmail || userProfile?.authEmail || user.email || "",
-        forcePasswordChange: data.forcePasswordChange ?? userProfile?.forcePasswordChange
+        active: true,
+        clientUnitId: unitDoc.id,
+        unitId: unitDoc.id,
+        clientCode: unit.clientCode || userProfile?.clientCode || "",
+        username: unit.username || userProfile?.username || "",
+        email: unit.email || userProfile?.email || user.email || "",
+        authEmail: unit.authEmail || userProfile?.authEmail || user.email || "",
+        forcePasswordChange: unit.forcePasswordChange ?? userProfile?.forcePasswordChange
       };
     }
   } catch (e) {
-    console.warn("[PISO WIFI CUSTOMER AUTH] authUserId unit lookup failed.", e);
-  }
-
-  // Email fallback is only allowed when the Auth UID is not linked to another
-  // unit. Match normalized emails locally to tolerate older mixed-case records.
-  try {
-    const allUnits = await getDocs(collection(db, "units"));
-    const normalizedEmail = String(user.email || "").trim().toLowerCase();
-    const unit = allUnits.docs.find(d => {
-      const data = d.data() || {};
-      const unitEmail = String(data.email || data.authEmail || "").trim().toLowerCase();
-      return data.active !== false && unitEmail === normalizedEmail &&
-        (!data.authUserId || data.authUserId === user.uid);
-    });
-    if (unit) {
-      const data = unit.data() || {};
-      return {
-        ...userProfile,
-        role: "client",
-        active: data.active !== false,
-        clientUnitId: unit.id,
-        unitId: unit.id,
-        clientCode: data.clientCode || userProfile?.clientCode || "",
-        username: data.username || userProfile?.username || "",
-        email: data.email || user.email || "",
-        authEmail: data.authEmail || user.email || "",
-        forcePasswordChange: data.forcePasswordChange ?? userProfile?.forcePasswordChange
-      };
-    }
-  } catch (e) {
-    console.warn("[PISO WIFI CUSTOMER AUTH] email unit lookup failed.", e);
+    console.warn("[PISO WIFI CUSTOMER AUTH] UID-linked unit query failed.", e);
   }
 
   return userProfile;
