@@ -124,6 +124,20 @@ input,select,textarea{font-size:16px}
   .client-reset-actions .client-secondary{order:2}
 }
 
+
+/* PISO MOBILE LOGIN HOTFIX: compact phones and safe-area support */
+@media (max-width: 600px) {
+  html, body { width:100%; min-width:0; overflow-x:hidden; }
+  .client-login-page { min-height:100vh; min-height:100dvh; }
+  .client-login-shell { width:100%; min-width:0; }
+  .client-login-area { width:100%; min-width:0; min-height:100vh; min-height:100dvh;
+    padding: max(12px, env(safe-area-inset-top)) 10px max(18px, env(safe-area-inset-bottom)); }
+  .client-login-card { width:100%; max-width:520px; min-width:0; }
+  .input-with-icon, .input-with-icon input { min-width:0; }
+  .client-reset-modal { padding: max(8px, env(safe-area-inset-top)) 10px max(8px, env(safe-area-inset-bottom)); }
+  .client-reset-card { width:100%; max-width:470px; max-height:calc(100dvh - 16px); overflow-y:auto; }
+  button, .client-primary, .client-secondary { touch-action:manipulation; }
+}
 </style>
 
 <style>
@@ -165,7 +179,7 @@ input,select,textarea{font-size:16px}
     </section>
   </main>
   <script src="js/debug-panel.js"></script>
-  <script type="module" src="js/client-login.js?v=79"></script>
+  <script type="module" src="js/client-login.js?v=80"></script>
 </body>
 </html>
 <style>.reset-success-sub{color:#6c7e93;font-size:12px}.client-reset-card input:disabled{background:#f4f7fa;color:#8a98a8}</style>
