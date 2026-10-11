@@ -1,0 +1,14 @@
+PISO WIFI — CUSTOMER LOGIN PROFILE FIX
+Build: 2026-10-10 v80
+
+What changed:
+- Keeps explicit Admin/Cashier roles blocked from the Customer portal.
+- If users/{uid} has a missing/outdated role, checks the authoritative Admin-created units record linked by authUserId.
+- Uses normalized email matching as a fallback for older unit records, and only matches units with no conflicting authUserId or the same UID.
+- Adds forcePasswordChange from the unit profile when resolving the customer.
+- Bumps the client-login.js cache version to v80.
+
+Validation:
+- This is a targeted source patch, not a live deployment.
+- Upload the included files to the same website root while preserving all other files.
+- Do not change Firebase rules as part of this patch.

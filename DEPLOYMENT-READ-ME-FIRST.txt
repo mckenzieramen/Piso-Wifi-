@@ -1,0 +1,26 @@
+PISO WIFI CUSTOMER LOGIN SAFE PATCH — BUILD 81
+This is a PATCH, not a complete website. Do NOT replace the whole Cloudflare Pages site with this ZIP.
+
+Diagnosis from the supplied ZIP:
+1. The previous ZIP contained numerous duplicate/old pages (for example, index (1).html, dashboard (1).html, client-login (8).html, and other copies). Deploying the whole ZIP as a site risks publishing stale files.
+2. The previous customer login fallback attempted to read every document in the units collection. Customer Firestore rules may block that query, so it cannot reliably repair an account lookup and can result in access denied.
+3. The live site was not accessible for independent verification from this environment. This patch has not been deployed.
+
+This patch:
+- Keeps existing role checks; explicit Admin/Cashier/other roles are not converted to customer.
+- Checks users/{uid} first.
+- If role is missing, checks only a linked unit ID or units linked to the exact authenticated UID.
+- Removes the collection-wide units read and email-wide fallback.
+- Keeps the existing responsive customer login page and updates its script cache version to v81.
+
+Merge only these files into the EXISTING website project, preserving paths:
+- index.html
+- client-login.html
+- js/client-login.js
+- js/firebase.js
+- js/firebase-config.js
+- js/debug-panel.js
+- css/client.css
+
+The other files in the live website (including /client/index.html, Admin pages, Cashier pages, _redirects, and other JS/CSS) must remain in place.
+After deploying, test the same registered account on desktop and phone. If it still shows access denied, the account's users/{uid} role/unit link or Firestore rule is the remaining likely issue; do not loosen rules globally.

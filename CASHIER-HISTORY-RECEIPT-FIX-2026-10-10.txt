@@ -1,0 +1,12 @@
+PISO WIFI Cashier History + Receipt revision (2026-10-10 19:00)
+
+Changes in js/cashier.js:
+- Sales History no longer displays Unit Code; it displays Customer ID instead.
+- Paid sale receipt button opens a generated, printable receipt with receipt number, customer name, customer ID, transaction ID, gross sales, paid customer earnings, paid date and PAID status.
+- Receipt can be printed or saved as PDF from the browser print dialog.
+- Cache-busting version updated to 20261010-1900 in cashier/index.html and cashier.html.
+
+Important:
+- This ZIP has NOT been uploaded to GitHub or deployed to Cloudflare.
+- This receipt change creates a printable receipt in the browser; automatic email delivery still requires a working backend email handler and is not claimed as fixed here.
+- Do not delete the repository or replace Firestore Rules with public access.

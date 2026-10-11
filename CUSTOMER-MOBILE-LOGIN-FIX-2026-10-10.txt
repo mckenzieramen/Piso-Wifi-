@@ -1,0 +1,19 @@
+PISO WIFI CUSTOMER LOGIN + MOBILE OPEN FIX
+Build: 2026-10-10 v80
+
+Why the previous package could still fail on the live homepage:
+- Cloudflare Pages rewrites / to /index.html.
+- The root index.html was still loading js/client-login.js?v=79 even though the standalone client-login.html had been bumped to v80.
+- This package aligns the login script cache version across the root homepage and customer login aliases.
+
+Mobile changes:
+- Adds viewport-width and horizontal-overflow safeguards.
+- Uses dynamic viewport height and safe-area padding on phones.
+- Keeps login/recovery cards within the phone viewport and scrollable.
+- Keeps the existing account/role checks; does not relax Firebase security rules.
+
+Deployment:
+1. Upload/replace files in the website root, preserving the existing directory structure.
+2. At minimum, deploy index.html, client-login.html, client/client-login.html (if used), and js/client-login.js together.
+3. Clear/reload the mobile browser cache after deployment.
+4. This package has not been deployed to Cloudflare Pages from this environment, so live behavior must be verified after upload.
