@@ -1055,20 +1055,40 @@ function parseRoute(){const raw=location.hash.replace("#","");return raw.split("
 document.addEventListener("click",e=>{const a=e.target.closest("[data-route]");if(a){e.preventDefault();e.stopPropagation();navigateTo(a.dataset.route);return;} const p=e.target.closest("[data-print-inline]");if(p){const id=$("#statementUnit")?.value;if(id)printStatement(id,$("#statementMonth").value);} const pdf=e.target.closest("[data-pdf-inline]");if(pdf){const id=$("#statementUnit")?.value;if(id)downloadStatementPdf(id,$("#statementMonth").value);} const html=e.target.closest("[data-html-inline]");if(html){const id=$("#statementUnit")?.value;if(id)downloadStatementHtml(id,$("#statementMonth").value);}});
 window.addEventListener("hashchange",()=>{route=parseRoute();render();});
 $("#menuBtn").onclick=()=>{$("#sidebar").classList.add("open");$("#overlay").classList.add("show")};$("#overlay").onclick=closeMenu;
-async function forceAdminRelogin(){try{await signOut(auth);}finally{location.replace("/admin/index.html?relogin=1");}}
-$("#reloginBtn").onclick=forceAdminRelogin;
 $("#logoutBtn").onclick=async()=>{await signOut(auth);location.href="/admin/index.html"};
 $("#globalSearch").oninput=e=>{const q=e.target.value.trim();if(q.length>=2){unitSearch=q;route="units";if(location.hash!=="#units")location.hash="#units";else renderUnits();}else if(!q){unitSearch="";if(route==="units")renderUnits();}};
 
 let authResolved=false;
-(async()=>{
-  try{
-    if(typeof auth.authStateReady === "function") await auth.authStateReady();
+let authBootstrapStarted=false;
+let authBootstrapTimer=null;
+function startAdminAuthBootstrap(user){
+  if(authBootstrapStarted)return;
+  authBootstrapStarted=true;
+  authResolved=true;
+  if(authBootstrapTimer)clearTimeout(authBootstrapTimer);
+  Promise.resolve(bootstrap(user)).catch(error=>{
+    authBootstrapStarted=false;
+    showAuthError(error?.message||"Unable to finish Admin login.");
+  });
+}
+
+// Listen for Firebase's initial auth state immediately. Do not wait indefinitely
+// on authStateReady(), which can leave the entire page on "Checking authentication…".
+const stopInitialAuthListener=onAuthStateChanged(auth,user=>{
+  startAdminAuthBootstrap(user);
+},error=>{
+  authResolved=true;
+  showAuthError(error?.message||"Firebase could not verify your Admin session. Check your connection and reload.");
+});
+
+// If the first auth-state callback never arrives, stop showing an endless spinner.
+authBootstrapTimer=setTimeout(()=>{
+  if(authBootstrapStarted)return;
+  const user=auth.currentUser;
+  if(user){
+    startAdminAuthBootstrap(user);
+  }else{
     authResolved=true;
-    await bootstrap(auth.currentUser);
-  }catch(e){
-    authResolved=true;
-    showAuthError(e?.message||"Firebase Authentication could not be initialized.");
+    showAuthError("Authentication is taking too long. Check your internet connection, then reload the Admin page. Your data has not been deleted.");
   }
-})();
-onAuthStateChanged(auth,user=>{if(!authResolved) return; bootstrap(user);});
+},12000);
