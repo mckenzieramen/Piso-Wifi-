@@ -1,7 +1,0 @@
-PISO WIFI ADMIN LOGIN FIX
-
-Admin portal requires users/{UID}.role == "admin".
-Customer portal requires users/{UID}.role == "client".
-An omitted active field is allowed; active:false is rejected.
-Cross-portal login links were removed.
-Cloudflare Worker settings are not part of this fix.
