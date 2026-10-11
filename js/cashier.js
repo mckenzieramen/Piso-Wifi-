@@ -3,7 +3,14 @@ import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut, updat
 import { getFirestore, collection, doc, getDoc, getDocs, addDoc, updateDoc, query, where, orderBy, onSnapshot, serverTimestamp, arrayUnion } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-firestore.js";
 import { getStorage, ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-storage.js";
 import { firebaseConfig } from "./firebase-config.js";
-console.info("[PISO WIFI CASHIER] BUILD 2026-10-11-CASHIER-LOGIN-MESSAGES");
+console.info("[PISO WIFI CASHIER] BUILD 2026-10-11-CASHIER-LOADING-FIX");
+const CASHIER_AUTH_TIMEOUT_MS = 12000;
+function withCashierTimeout(promise, label){
+  return Promise.race([
+    promise,
+    new Promise((_,reject)=>setTimeout(()=>reject(new Error(`${label} is taking too long. Check your internet connection and Firestore access, then reload.`)),CASHIER_AUTH_TIMEOUT_MS))
+  ]);
+}
 const app=initializeApp(firebaseConfig,"cashierPortal");const auth=getAuth(app);const db=getFirestore(app);const storage=getStorage(app);
 const $=s=>document.querySelector(s);const money=n=>`₱${Number(n||0).toLocaleString("en-PH",{minimumFractionDigits:2,maximumFractionDigits:2})}`;const esc=v=>String(v??"").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#039;"}[m]));
 let user=null,profile=null,tab="dashboard",unsubs=[],customerUnsub=null,selectedReceiptTxnId="";let txns=[],chats=[],remittances=[],plans=[],customers=[],customerLoadError="",customerLoadStatus="loading";
@@ -32,7 +39,7 @@ function login(){
       msg(message);
     }};
 }
-async function loadProfile(u){const snap=await getDoc(doc(db,"users",u.uid));if(!snap.exists()||snap.data().role!=="cashier"||snap.data().active===false)throw new Error("This account is not authorized as an active Cashier.");user=u;profile={id:snap.id,...snap.data()};document.body.className="cashier-app";document.body.innerHTML=`<aside class="cashier-sidebar"><div class="cashier-brand">PISO WIFI<small>Cashier Portal</small></div><nav class="cashier-nav"><button data-tab="sale">Enter Sale</button><button data-tab="service">Customer Service</button><button data-tab="receipt">Receipt</button><button data-tab="remit">Remit</button></nav><button id="logout" class="secondary cashier-logout">Logout</button></aside><main class="cashier-main"><header class="cashier-top"><div><h1 id="title">Cashier Portal</h1><p>Cashier: <b>${esc(profile.name||profile.email||"Cashier")}</b></p><small id="cashierBuildStamp" style="display:block;color:#64748b;margin-top:4px">Build 2026-10-10-REPAIR-001</small></div><span class="cashier-status">ACTIVE</span></header><section id="view"></section></main>`;$("#logout").onclick=()=>signOut(auth).then(()=>location.reload());document.querySelectorAll("[data-tab]").forEach(b=>b.onclick=()=>{if(tab==="remit"&&b.dataset.tab!=="remit")remitUnlocked=false;tab=b.dataset.tab;render()});if(profile.forcePasswordChange!==false){renderForcePasswordChange();return;}startRealtime();render();}
+async function loadProfile(u){const snap=await withCashierTimeout(getDoc(doc(db,"users",u.uid)),"Cashier profile verification");if(!snap.exists()||snap.data().role!=="cashier"||snap.data().active===false)throw new Error("This account is not authorized as an active Cashier.");user=u;profile={id:snap.id,...snap.data()};document.body.className="cashier-app";document.body.innerHTML=`<aside class="cashier-sidebar"><div class="cashier-brand">PISO WIFI<small>Cashier Portal</small></div><nav class="cashier-nav"><button data-tab="sale">Enter Sale</button><button data-tab="service">Customer Service</button><button data-tab="receipt">Receipt</button><button data-tab="remit">Remit</button></nav><button id="logout" class="secondary cashier-logout">Logout</button></aside><main class="cashier-main"><header class="cashier-top"><div><h1 id="title">Cashier Portal</h1><p>Cashier: <b>${esc(profile.name||profile.email||"Cashier")}</b></p><small id="cashierBuildStamp" style="display:block;color:#64748b;margin-top:4px">Build 2026-10-11-CASHIER-LOADING-FIX</small></div><span class="cashier-status">ACTIVE</span></header><section id="view"></section></main>`;$("#logout").onclick=()=>signOut(auth).then(()=>location.reload());document.querySelectorAll("[data-tab]").forEach(b=>b.onclick=()=>{if(tab==="remit"&&b.dataset.tab!=="remit")remitUnlocked=false;tab=b.dataset.tab;render()});if(profile.forcePasswordChange!==false){renderForcePasswordChange();return;}startRealtime();render();}
 function renderForcePasswordChange(){const host=$("#view");if(!host)return;host.innerHTML=`<section class="panel" style="max-width:560px;margin:32px auto;padding:24px"><h2>Set a New Password</h2><p>Your Admin-issued temporary password must be changed before you can use the Cashier Portal.</p><form id="cashierPasswordChange"><label>New password<input id="newCashierPassword" type="password" minlength="8" autocomplete="new-password" required></label><label style="display:block;margin-top:12px">Confirm new password<input id="confirmCashierPassword" type="password" minlength="8" autocomplete="new-password" required></label><p id="cashierPasswordMsg" class="message" role="status"></p><button class="primary" type="submit">Save New Password</button></form></section>`;$("#cashierPasswordChange").onsubmit=async e=>{e.preventDefault();const next=$("#newCashierPassword").value,confirmPassword=$("#confirmCashierPassword").value,msgEl=$("#cashierPasswordMsg");if(next.length<8){msgEl.textContent="Use at least 8 characters for your new password.";return;}if(next!==confirmPassword){msgEl.textContent="The passwords do not match.";return;}try{msgEl.textContent="Updating password…";await updatePassword(user,next);await updateDoc(doc(db,"users",user.uid),{forcePasswordChange:false,passwordChangedAt:serverTimestamp()});profile.forcePasswordChange=false;msgEl.textContent="Password updated.";startRealtime();render();}catch(error){msgEl.textContent=error?.message||"Could not update password. Sign in again and retry.";}};}
 function startRealtime(){unsubs.forEach(f=>f());unsubs=[];unsubs.push(onSnapshot(query(collection(db,"cashierTransactions"),where("cashierId","==",user.uid)),s=>{txns=s.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>String(b.createdAt||"").localeCompare(String(a.createdAt||"")));render()}));unsubs.push(onSnapshot(query(collection(db,"customerChats"),where("cashierId","==",user.uid)),s=>{chats=s.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>String(b.updatedAt||"").localeCompare(String(a.updatedAt||"")));render()}));unsubs.push(onSnapshot(query(collection(db,"remittances"),where("cashierId","==",user.uid)),s=>{remittances=s.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>String(b.createdAt||"").localeCompare(String(a.createdAt||"")));render()}));unsubs.push(onSnapshot(collection(db,"wifi_plans"),s=>{plans=s.docs.map(d=>({id:d.id,...d.data()})).filter(x=>x.status==="ACTIVE").sort((a,b)=>Number(a.sortOrder||0)-Number(b.sortOrder||0));render()}));loadRegisteredCustomers().catch(error=>{customerLoadStatus="error";customerLoadError=error?.message||"Could not start customer loading.";console.error("[Cashier] Could not start customer loader:",error);render()});}
 async function loadRegisteredCustomers(){
@@ -99,4 +106,25 @@ async function sendChat(){const c=chats.find(x=>x.id===window.selectedChat);cons
 async function transferChat(){const c=chats.find(x=>x.id===window.selectedChat);if(!c)return;if(!confirm("Transfer this concern to Admin?"))return;await updateDoc(doc(db,"customerChats",c.id),{status:"TRANSFERRED TO ADMIN",transferredAt:serverTimestamp(),transferredBy:user.uid,updatedAt:serverTimestamp()});await audit("CHAT_TRANSFERRED",c.id);alert("Conversation transferred to Admin.")}
 async function requestRemit(eligible,total){if(!confirm(`Request Admin authorization for ${money(total)}?`))return;const id=`REM-${Date.now()}-${Math.random().toString(36).slice(2,7).toUpperCase()}`;const ref=await addDoc(collection(db,"remittances"),{remittanceId:id,cashierId:user.uid,cashierName:profile.name||profile.email,transactionIds:eligible.map(t=>t.id),expectedCollection:total,actualRemittance:0,variance:0,status:"PENDING ADMIN AUTHORIZATION",createdAt:serverTimestamp()});await Promise.all(eligible.map(t=>updateDoc(doc(db,"cashierTransactions",t.id),{remittanceId:ref.id})));await audit("REMIT_STARTED",ref.id,{expectedCollection:total});alert("Remittance sent to Admin for authorization. It cannot be finalized by the cashier.");render()}
 document.addEventListener("visibilitychange",()=>{if(document.hidden&&tab==="remit"&&remitUnlocked){remitUnlocked=false;}});
-login();onAuthStateChanged(auth,async u=>{if(!u)return;try{await loadProfile(u)}catch(e){await signOut(auth);$("#loginMsg").textContent=e.message;}});
+login();
+let cashierAuthHandling=false;
+const cashierAuthTimer=setTimeout(()=>{
+  if(!cashierAuthHandling && !auth.currentUser){
+    msg("Authentication is taking too long. Check your connection and reload the Cashier portal.");
+  }
+},CASHIER_AUTH_TIMEOUT_MS);
+onAuthStateChanged(auth,async u=>{
+  if(!u){clearTimeout(cashierAuthTimer);return;}
+  if(cashierAuthHandling)return;
+  cashierAuthHandling=true;
+  clearTimeout(cashierAuthTimer);
+  try{
+    await loadProfile(u);
+  }catch(e){
+    console.error("[PISO WIFI CASHIER] Portal initialization failed",e);
+    try{await signOut(auth)}catch{}
+    const el=$("#loginMsg");
+    if(el)msg(e?.message||"Could not open Cashier portal. Please reload and try again.");
+    cashierAuthHandling=false;
+  }
+});
