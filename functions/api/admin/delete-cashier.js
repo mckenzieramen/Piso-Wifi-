@@ -26,31 +26,11 @@ async function getGoogleAccessToken(serviceAccount) {
   const enc = (obj) => btoa(String.fromCharCode(...new TextEncoder().encode(JSON.stringify(obj))))
     .replace(/=/g, "").replace(/\+/g, "-").replace(/\//g, "_");
   const unsigned = `${enc(header)}.${enc(claims)}`;
-  // Google service-account JSON normally contains PEM newlines as \n escapes.
-  // Normalize both real newlines and literal escaped newlines before parsing.
-  const rawPrivateKey = String(serviceAccount.private_key || "")
-    .replace(/\\r\\n/g, "\n")
-    .replace(/\\n/g, "\n")
-    .replace(/\r\n/g, "\n")
-    .trim();
-  if (!rawPrivateKey.startsWith("-----BEGIN PRIVATE KEY-----") ||
-      !rawPrivateKey.includes("-----END PRIVATE KEY-----")) {
-    throw new Error("FIREBASE_SERVICE_ACCOUNT_JSON private_key is incomplete. Paste the entire original Google service-account JSON file as the Cloudflare Secret.");
-  }
-  const pem = rawPrivateKey
+  const pem = serviceAccount.private_key
     .replace("-----BEGIN PRIVATE KEY-----", "")
     .replace("-----END PRIVATE KEY-----", "")
     .replace(/\s/g, "");
-  if (!pem || !/^[A-Za-z0-9+/=]+$/.test(pem) || pem.length % 4 === 1) {
-    throw new Error("FIREBASE_SERVICE_ACCOUNT_JSON private_key is not valid PEM/Base64 data. Replace the Secret with the complete downloaded JSON file.");
-  }
-  const paddedPem = pem + "=".repeat((4 - pem.length % 4) % 4);
-  let der;
-  try {
-    der = Uint8Array.from(atob(paddedPem), c => c.charCodeAt(0));
-  } catch {
-    throw new Error("FIREBASE_SERVICE_ACCOUNT_JSON private_key could not be decoded. Replace the Secret with the complete downloaded JSON file.");
-  }
+  const der = Uint8Array.from(atob(pem), c => c.charCodeAt(0));
   const key = await crypto.subtle.importKey(
     "pkcs8", der, { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" }, false, ["sign"]
   );
