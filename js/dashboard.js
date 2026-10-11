@@ -9,7 +9,7 @@ import {
   serverTimestamp, Timestamp
 } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-firestore.js";
 
-console.info("[PISO WIFI] BUILD v65 — cashier password-change flag + deployment cache refresh");
+console.info("[PISO WIFI] BUILD 2026-10-11 — cashier management deactivate action");
 
 const $ = (s) => document.querySelector(s);
 const APPS_SCRIPT_SHEET_SYNC_URL = "https://script.google.com/macros/s/AKfycbzJcIf9rpdunJ8-1kDvgePWTT1L-cQOFzZLQHFQMaqBYTlviovyxjz4JOX-FpvUrjFu/exec";
@@ -88,7 +88,6 @@ const uid = () => `${Date.now()}-${Math.random().toString(36).slice(2,8)}`;
 let currentUser = null;
 let units = [], records = [], payments = [], notifications = [], activities = [], supportChats = [];
 let supportUnsub=null, selectedSupportChatId="";
-let cashierSales=[], cashierSalesUnsub=null;
 let coreRealtimeUnsubs=[];
 let dashboardRealtimeTimer=null;
 let settings = { internetCost:1000, ownerPercent:70, clientPercent:30, electricity:100, electricityRule:"ADD_TO_CLIENT" };
@@ -350,7 +349,7 @@ function pageLoader(){ view.innerHTML=`<div class="loading-panel"><div class="lo
 
 function render(){
   nav();
-  const renderers={dashboard:renderDashboard,units:renderUnits,reports:renderReports,payments:renderPayments,statements:renderStatements,notifications:renderNotifications,activity:renderActivity,settings:renderSettings,profile:renderProfile,support:renderSupport,"wifi-subscription":renderWiFiSubscriptions,"cashier-management":renderCashierManagement,"cashier-sales":renderCashierSales};
+  const renderers={dashboard:renderDashboard,units:renderUnits,reports:renderReports,payments:renderPayments,statements:renderStatements,notifications:renderNotifications,activity:renderActivity,settings:renderSettings,profile:renderProfile,support:renderSupport,"wifi-subscription":renderWiFiSubscriptions,"cashier-management":renderCashierManagement};
   (renderers[route]||renderDashboard)();
   closeMenu();
   updateNotificationBadge();
@@ -610,34 +609,18 @@ function openWiFiSubscriptionModal(){
   });
 }
 
-// CASHIER SALES — Admin review and corrections. Cashier-submitted records are read-only to the cashier.
-function renderCashierSales(){
-  view.innerHTML=baseHead("Cashier Sales","Review submitted sales and make corrections as Admin.",'<button class="secondary-btn" id="refreshCashierSales">Refresh</button>')+`<div class="panel"><div class="panel-head"><div><h3>Submitted Sales</h3><p>Cashier entries are locked after submission. Only Admin can edit these records.</p></div></div><div class="table-wrap"><table><thead><tr><th>Date</th><th>Customer</th><th>Unit Code</th><th>Cashier</th><th>Gross Sales</th><th>Internet Fee</th><th>Electricity</th><th>30% Earnings</th><th>Total Customer Earn</th><th>Status</th><th>Action</th></tr></thead><tbody id="cashierSalesBody"><tr><td colspan="11">Loading sales…</td></tr></tbody></table></div></div>`;
-  const body=$("#cashierSalesBody");
-  const paint=rows=>{cashierSales=rows.sort((a,b)=>timeValue(b.createdAt)-timeValue(a.createdAt));if(!$("#cashierSalesBody"))return;$("#cashierSalesBody").innerHTML=rows.length?rows.map(x=>`<tr><td>${dateTimeLabel(x.createdAt)}</td><td>${esc(x.customerName||"—")}</td><td>${esc(x.unitCode||"—")}</td><td>${esc(x.cashierName||"—")}</td><td>${money(x.grossSales)}</td><td>${money(x.internetFee??1000)}</td><td>${money(x.electricityShare??100)}</td><td>${money(x.clientShare??Number(x.grossSales||0)*.3)}</td><td><b>${money(x.totalCustomerEarnings??Number(x.grossSales||0)*.3+100)}</b></td><td>${statusBadge(x.status||"PENDING ADMIN REVIEW")}</td><td><button class="action-btn" data-edit-cashier-sale="${esc(x.id)}">Edit / Review</button></td></tr>`).join(""):`<tr><td colspan="11">No cashier sales submitted yet.</td></tr>`;document.querySelectorAll("[data-edit-cashier-sale]").forEach(b=>b.onclick=()=>editCashierSale(b.dataset.editCashierSale));};
-  if(cashierSalesUnsub)cashierSalesUnsub();cashierSalesUnsub=onSnapshot(collection(db,"cashierTransactions"),snap=>paint(snap.docs.map(d=>({id:d.id,...d.data()}))),err=>{if(body)body.innerHTML=`<tr><td colspan="11">Could not load cashier sales: ${esc(err.message||"Check Firestore Rules")}</td></tr>`;});
-  $("#refreshCashierSales").onclick=async()=>{try{const snap=await getDocs(collection(db,"cashierTransactions"));paint(snap.docs.map(d=>({id:d.id,...d.data()})));}catch(e){toast(e.message||"Could not refresh sales.","error");}};
-}
-async function editCashierSale(id){
-  const x=cashierSales.find(r=>r.id===id);if(!x)return;
-  const grossInput=window.prompt("Correct Gross Sales (₱):",String(x.grossSales??0));if(grossInput===null)return;const gross=Number(grossInput);if(!(gross>0)){alert("Gross sales must be greater than zero.");return;}
-  const status=window.prompt("Set status (PENDING ADMIN REVIEW, APPROVED, or REJECTED):",String(x.status||"PENDING ADMIN REVIEW"));if(status===null)return;const normalized=status.trim().toUpperCase();if(!["PENDING ADMIN REVIEW","APPROVED","REJECTED"].includes(normalized)){alert("Invalid status.");return;}
-  const clientShare=gross*.30,electricity=100,totalCustomerEarnings=clientShare+electricity;
-  await updateDoc(doc(db,"cashierTransactions",id),{grossSales:gross,ownerShare:gross*.70,clientShare,internetFee:1000,electricityShare:electricity,totalCustomerEarnings,status:normalized,adminEditedBy:currentUser.uid,adminEditedAt:serverTimestamp(),cashierLocked:true});
-  await logActivity("Cashier Sale",`Admin corrected ${x.transactionId||id}; gross ${money(gross)}, status ${normalized}`);toast("Cashier sale updated by Admin.");
-}
-
 // CASHIER ACCOUNT MANAGEMENT — stays inside the Admin dashboard.
 let cashierAccounts=[];
 async function loadCashierAccounts(){
   const tableBody=$("#cashierAccountsBody");
-  if(tableBody)tableBody.innerHTML='<tr><td colspan="4">Loading cashier accounts…</td></tr>';
+  if(tableBody)tableBody.innerHTML='<tr><td colspan="5">Loading cashier accounts…</td></tr>';
   try{
     const snap=await getDocs(collection(db,"users"));
     cashierAccounts=snap.docs.map(d=>({id:d.id,...d.data()})).filter(u=>String(u.role||"").toLowerCase()==="cashier");
     const body=$("#cashierAccountsBody");
     if(!body)return;
-    body.innerHTML=cashierAccounts.length?cashierAccounts.map(c=>`<tr><td>${esc(c.name||"—")}</td><td>${esc(c.email||"—")}</td><td><span class="badge ${c.active===false?"inactive":"active"}">${c.active===false?"Inactive":"Active"}</span></td><td>${c.createdAt?.toDate?esc(c.createdAt.toDate().toLocaleDateString()):esc(c.createdAt||"—")}</td></tr>`).join(""):'<tr><td colspan="4">No cashier accounts yet. Use “Create Cashier Account” to add one.</td></tr>';
+    body.innerHTML=cashierAccounts.length?cashierAccounts.map(c=>`<tr><td>${esc(c.name||"—")}</td><td>${esc(c.email||"—")}</td><td><span class="badge ${c.active===false?"inactive":"active"}">${c.active===false?"Inactive":"Active"}</span></td><td>${c.createdAt?.toDate?esc(c.createdAt.toDate().toLocaleDateString()):esc(c.createdAt||"—")}</td><td><button type="button" class="danger-btn" data-delete-cashier="${esc(c.id)}" ${c.active===false?"disabled":""}>Deactivate / Remove</button></td></tr>`).join(""):'<tr><td colspan="5">No cashier accounts yet. Use “Create Cashier Account” to add one.</td></tr>';
+    body.querySelectorAll("[data-delete-cashier]").forEach(button=>button.addEventListener("click",()=>removeCashierAccount(button.dataset.deleteCashier)));
   }catch(error){
     console.error("Could not load cashier accounts",error);
     const body=$("#cashierAccountsBody");
@@ -645,11 +628,28 @@ async function loadCashierAccounts(){
   }
 }
 function renderCashierManagement(){
-  view.innerHTML=baseHead("Cashier Management","Create cashier login accounts here. Cashiers use their own separate portal.",'<button class="primary-btn" id="addAdminCashier">+ Create Cashier Account</button>')+
-    `<div class="panel"><div class="panel-head"><div><h3>Cashier Accounts</h3><p>Only Admin can create cashier accounts. This page remains inside the Admin dashboard.</p></div><button type="button" class="secondary-btn" id="refreshCashierAccounts">Refresh</button></div><div class="table-wrap"><table><thead><tr><th>Cashier Name</th><th>Email</th><th>Status</th><th>Created</th></tr></thead><tbody id="cashierAccountsBody"><tr><td colspan="4">Loading cashier accounts…</td></tr></tbody></table></div></div>`;
+  view.innerHTML=baseHead("Cashier Management","Create, review, or deactivate cashier login accounts. Deactivated cashiers cannot enter the portal.",'<button class="primary-btn" id="addAdminCashier">+ Create Cashier Account</button>')+
+    `<div class="panel"><div class="panel-head"><div><h3>Cashier Accounts</h3><p>Only Admin can create cashier accounts. This page remains inside the Admin dashboard.</p></div><button type="button" class="secondary-btn" id="refreshCashierAccounts">Refresh</button></div><div class="table-wrap"><table><thead><tr><th>Cashier Name</th><th>Email</th><th>Status</th><th>Created</th><th>Action</th></tr></thead><tbody id="cashierAccountsBody"><tr><td colspan="5">Loading cashier accounts…</td></tr></tbody></table></div></div>`;
   $("#addAdminCashier")?.addEventListener("click",openAdminCashierModal);
   $("#refreshCashierAccounts")?.addEventListener("click",loadCashierAccounts);
   loadCashierAccounts();
+}
+
+async function removeCashierAccount(id){
+  const cashier=cashierAccounts.find(c=>c.id===id);
+  if(!cashier)return notify("Cashier account was not found. Refresh and try again.","error");
+  if(cashier.id===currentUser?.uid)return notify("You cannot deactivate the account you are currently using.","error");
+  const label=`${cashier.name||"Cashier"} (${cashier.email||cashier.id})`;
+  if(!window.confirm(`Deactivate ${label} and block access to the Cashier portal?\n\nExisting sales/history will be kept. This does not delete the Firebase Authentication user itself.`))return;
+  try{
+    await updateDoc(doc(db,"users",id),{active:false,deactivatedAt:serverTimestamp(),deactivatedBy:currentUser.uid});
+    await logActivity("Cashier Management",`Deactivated cashier ${label}`,id);
+    notify("Cashier deactivated. Their history was preserved and portal access is blocked.","success");
+    await loadCashierAccounts();
+  }catch(error){
+    console.error("Could not deactivate cashier",error);
+    notify(error?.message||"Could not deactivate this cashier. Check Admin Firestore permissions.","error");
+  }
 }
 function openAdminCashierModal(){
   openModal("Create Cashier Account",`<div class="form-grid"><div class="field full"><label>Cashier Name *</label><input id="adminCashierName" required placeholder="Cashier full name" autocomplete="name"></div><div class="field full"><label>Cashier Email *</label><input id="adminCashierEmail" type="email" required placeholder="cashier@example.com" autocomplete="email"></div><div class="field full"><label>Temporary Password *</label><input id="adminCashierPassword" type="text" minlength="6" required placeholder="At least 6 characters" autocomplete="new-password"><small>The temporary password will be shown after creation and included in the HTML welcome email sent to this cashier.</small></div></div>`,"Create Account",async()=>{
