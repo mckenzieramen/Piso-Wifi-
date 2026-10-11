@@ -1,15 +1,16 @@
 // Cloudflare Pages Function. Configure RESEND_API_KEY and RECEIPT_FROM_EMAIL
 // as server-side environment variables in Cloudflare Pages before enabling email.
-// Also configure FIREBASE_WEB_API_KEY to validate the signed-in Firebase session.
+// FIREBASE_API_KEY is the existing project's Firebase Web API key secret.
 export async function onRequestPost({ request, env }) {
   const cors = { "Content-Type": "application/json", "Cache-Control": "no-store" };
   try {
     const bearer = request.headers.get("Authorization") || "";
     const token = bearer.startsWith("Bearer ") ? bearer.slice(7) : "";
-    if (!token || !env.FIREBASE_WEB_API_KEY) {
-      return new Response(JSON.stringify({ ok: false, error: "Authenticated cashier session required. Configure FIREBASE_WEB_API_KEY." }), { status: 401, headers: cors });
+    const apiKey = env.FIREBASE_WEB_API_KEY || env.FIREBASE_API_KEY;
+    if (!token || !apiKey) {
+      return new Response(JSON.stringify({ ok: false, error: "Authenticated cashier session required. Verify FIREBASE_API_KEY in Cloudflare Pages." }), { status: 401, headers: cors });
     }
-    const identityResponse = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=${encodeURIComponent(env.FIREBASE_WEB_API_KEY)}`, {
+    const identityResponse = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=${encodeURIComponent(apiKey)}`, {
       method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ idToken: token })
     });
     const identity = await identityResponse.json().catch(() => ({}));
@@ -25,7 +26,7 @@ export async function onRequestPost({ request, env }) {
       return new Response(JSON.stringify({ ok: false, error: "Invalid receipt email payload." }), { status: 400, headers: cors });
     }
     if (!env.RESEND_API_KEY || !env.RECEIPT_FROM_EMAIL) {
-      return new Response(JSON.stringify({ ok: false, error: "Email service is not configured yet. Add RESEND_API_KEY and RECEIPT_FROM_EMAIL in Cloudflare Pages environment variables." }), { status: 503, headers: cors });
+      return new Response(JSON.stringify({ ok: false, error: "Receipt email is not configured yet. Add RESEND_API_KEY and RECEIPT_FROM_EMAIL in Cloudflare Pages variables/secrets." }), { status: 503, headers: cors });
     }
     const resp = await fetch("https://api.resend.com/emails", {
       method: "POST",

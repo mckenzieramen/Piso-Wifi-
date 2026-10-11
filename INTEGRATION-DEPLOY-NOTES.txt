@@ -1,0 +1,52 @@
+PISO WIFI — INTEGRATED CASHIER SALES SYNC FIX
+================================================
+
+FILES TO REPLACE/ADD IN THE REPOSITORY
+- Replace js/cashier.js
+- Replace finance.js
+- Replace js/finance.js
+- Replace functions/api/send-receipt.js
+- Add functions/api/cashier-sync.js
+- Add admin/remittances.html and js/admin-remittances.js
+
+WHAT THIS CONNECTS
+- Cashier Enter Sale writes cashierTransactions, then calls /api/cashier-sync.
+- The Cloudflare function validates the signed-in cashier, checks the saved sale and Admin customer record, and idempotently adds the sale gross to monthlyRecords.
+- Admin dashboard already watches monthlyRecords; Customer Portal already watches monthlyRecords and payments. They should update automatically after Firestore sync.
+- When Send Payment is recorded, the same endpoint adds one idempotent payment record to payments, so the customer paid/balance figures update.
+- Sales History has Retry Dashboard Sync actions if a sync fails.
+- Customer display name now prefers units.name, matching the Admin customer directory.
+- Shared finance formula: shares are based on gross sales (70% Admin, 30% Customer); internet is reported separately; electricity adds ₱100 to customer earnings.
+- Receipt endpoint accepts existing FIREBASE_API_KEY as well as FIREBASE_WEB_API_KEY.
+
+CLOUDFLARE ENVIRONMENT
+Required for dashboard sync:
+- FIREBASE_PROJECT_ID
+- FIREBASE_API_KEY
+- FIREBASE_SERVICE_ACCOUNT_JSON (Secret, complete JSON, not just private_key)
+
+For actual email delivery, also configure:
+- RESEND_API_KEY (Secret)
+- RECEIPT_FROM_EMAIL (a sender verified by Resend)
+
+IMPORTANT DEPLOYMENT
+1. Keep the existing files as backups.
+2. Replace/add the files at the exact paths above.
+3. Commit the changes to GitHub and wait for Cloudflare Pages deployment to succeed.
+4. Hard refresh Admin, Customer, and Cashier pages.
+5. Test with one small test sale and confirm:
+   - one monthlyRecords record/aggregate is updated;
+   - Admin's monthly sales shows the added gross;
+   - Customer's own monthly totals show 30% of gross + ₱100;
+   - after Send Payment, Customer's paid amount updates;
+   - receipt email works only after the Resend environment is configured.
+
+ADMIN REMITTANCE APPROVAL
+- After deployment, Admin can open /admin/remittances.html to view, approve, or reject cashier remittance requests.
+- Approval marks the included cashier transactions as remitted. If Firestore rules deny the operation, update the existing remittances/cashierTransactions Admin rules before using this page.
+
+NOTES
+- Existing monthlyRecords are incremented rather than overwritten.
+- Sync is idempotent per cashier transaction ID to prevent accidental double counting on retry.
+- This package was syntax-checked locally but not deployed or live-tested against Firebase.
+- This change does not add a new Admin Remittance Approval screen. Remittance approval still needs a dedicated Admin UI/workflow if required.
