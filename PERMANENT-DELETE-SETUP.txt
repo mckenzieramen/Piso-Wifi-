@@ -1,0 +1,21 @@
+PISO WIFI — PERMANENT CASHIER DELETION
+This patch adds a server-side Cloudflare Pages Function because deleting a Firebase Authentication user cannot safely be done from browser code alone.
+
+Files to deploy in matching paths:
+- js/dashboard.js
+- admin/dashboard.html
+- functions/api/admin/delete-cashier.js
+
+Required Cloudflare Pages environment variables/secrets (Production and Preview as needed):
+1. FIREBASE_PROJECT_ID = piso-wifi-f2b5c
+2. FIREBASE_API_KEY = the existing Firebase Web API key from js/firebase-config.js
+3. FIREBASE_SERVICE_ACCOUNT_JSON = the full JSON contents of a dedicated Google service account key for this Firebase project. Add as a SECRET in Cloudflare Pages settings; never put it in source control or share it in chat.
+
+The service account must be authorized to delete Firebase Authentication users and delete/read the users Firestore documents (Identity Toolkit Admin permissions and appropriate Firestore IAM permissions). Use a dedicated least-privilege service account if possible.
+
+Important:
+- This code has not been deployed or tested against the live Firebase project.
+- Test first with a disposable Cashier account.
+- The UI permanently deletes the Firebase Auth account, then the users/{uid} profile. Existing sales/history collections are not deleted.
+- If Auth deletion succeeds but Firestore cleanup fails, the endpoint reports this partial result.
+- Never place the service-account JSON/private key in client-side JavaScript or a public repository.

@@ -619,7 +619,7 @@ async function loadCashierAccounts(){
     cashierAccounts=snap.docs.map(d=>({id:d.id,...d.data()})).filter(u=>String(u.role||"").toLowerCase()==="cashier");
     const body=$("#cashierAccountsBody");
     if(!body)return;
-    body.innerHTML=cashierAccounts.length?cashierAccounts.map(c=>`<tr><td>${esc(c.name||"—")}</td><td>${esc(c.email||"—")}</td><td><span class="badge ${c.active===false?"inactive":"active"}">${c.active===false?"Inactive":"Active"}</span></td><td>${c.createdAt?.toDate?esc(c.createdAt.toDate().toLocaleDateString()):esc(c.createdAt||"—")}</td><td><button type="button" class="danger-btn" data-delete-cashier="${esc(c.id)}" ${c.active===false?"disabled":""}>Deactivate / Remove</button></td></tr>`).join(""):'<tr><td colspan="5">No cashier accounts yet. Use “Create Cashier Account” to add one.</td></tr>';
+    body.innerHTML=cashierAccounts.length?cashierAccounts.map(c=>`<tr><td>${esc(c.name||"—")}</td><td>${esc(c.email||"—")}</td><td><span class="badge ${c.active===false?"inactive":"active"}">${c.active===false?"Inactive":"Active"}</span></td><td>${c.createdAt?.toDate?esc(c.createdAt.toDate().toLocaleDateString()):esc(c.createdAt||"—")}</td><td><button type="button" class="danger-btn" data-delete-cashier="${esc(c.id)}" ${c.active===false?"disabled":""}>Permanently Delete</button></td></tr>`).join(""):'<tr><td colspan="5">No cashier accounts yet. Use “Create Cashier Account” to add one.</td></tr>';
     body.querySelectorAll("[data-delete-cashier]").forEach(button=>button.addEventListener("click",()=>removeCashierAccount(button.dataset.deleteCashier)));
   }catch(error){
     console.error("Could not load cashier accounts",error);
@@ -628,7 +628,7 @@ async function loadCashierAccounts(){
   }
 }
 function renderCashierManagement(){
-  view.innerHTML=baseHead("Cashier Management","Create, review, or deactivate cashier login accounts. Deactivated cashiers cannot enter the portal.",'<button class="primary-btn" id="addAdminCashier">+ Create Cashier Account</button>')+
+  view.innerHTML=baseHead("Cashier Management","Create or permanently delete cashier login accounts. Deletion cannot be undone; sales/history are retained.",'<button class="primary-btn" id="addAdminCashier">+ Create Cashier Account</button>')+
     `<div class="panel"><div class="panel-head"><div><h3>Cashier Accounts</h3><p>Only Admin can create cashier accounts. This page remains inside the Admin dashboard.</p></div><button type="button" class="secondary-btn" id="refreshCashierAccounts">Refresh</button></div><div class="table-wrap"><table><thead><tr><th>Cashier Name</th><th>Email</th><th>Status</th><th>Created</th><th>Action</th></tr></thead><tbody id="cashierAccountsBody"><tr><td colspan="5">Loading cashier accounts…</td></tr></tbody></table></div></div>`;
   $("#addAdminCashier")?.addEventListener("click",openAdminCashierModal);
   $("#refreshCashierAccounts")?.addEventListener("click",loadCashierAccounts);
@@ -638,19 +638,35 @@ function renderCashierManagement(){
 async function removeCashierAccount(id){
   const cashier=cashierAccounts.find(c=>c.id===id);
   if(!cashier)return notify("Cashier account was not found. Refresh and try again.","error");
-  if(cashier.id===currentUser?.uid)return notify("You cannot deactivate the account you are currently using.","error");
+  if(cashier.id===currentUser?.uid)return notify("You cannot delete the Admin account you are currently using.","error");
   const label=`${cashier.name||"Cashier"} (${cashier.email||cashier.id})`;
-  if(!window.confirm(`Deactivate ${label} and block access to the Cashier portal?\n\nExisting sales/history will be kept. This does not delete the Firebase Authentication user itself.`))return;
+  const confirmed=window.confirm(
+    `PERMANENTLY DELETE ${label}?\n\nThis will permanently delete the Cashier's Firebase Authentication login and Admin user profile. Their existing sales/history will be kept.\n\nThis action cannot be undone.`
+  );
+  if(!confirmed)return;
+  const button=document.querySelector(`[data-delete-cashier="${CSS.escape(id)}"]`);
+  if(button){button.disabled=true;button.textContent="Deleting…";}
   try{
-    await updateDoc(doc(db,"users",id),{active:false,deactivatedAt:serverTimestamp(),deactivatedBy:currentUser.uid});
-    await logActivity("Cashier Management",`Deactivated cashier ${label}`,id);
-    notify("Cashier deactivated. Their history was preserved and portal access is blocked.","success");
+    const signedInUser=auth.currentUser;
+    if(!signedInUser)throw new Error("Your Admin session has expired. Sign in again.");
+    const idToken=await signedInUser.getIdToken(true);
+    const response=await fetch("/api/admin/delete-cashier",{
+      method:"POST",
+      headers:{"Content-Type":"application/json","Authorization":`Bearer ${idToken}`},
+      body:JSON.stringify({cashierUid:id})
+    });
+    const result=await response.json().catch(()=>({}));
+    if(!response.ok)throw new Error(result.error||`Delete failed (${response.status}).`);
+    await logActivity("Cashier Management",`Permanently deleted cashier ${label}; sales/history retained`,id);
+    notify("Cashier login and user profile permanently deleted. Existing sales/history were kept.","success");
     await loadCashierAccounts();
   }catch(error){
-    console.error("Could not deactivate cashier",error);
-    notify(error?.message||"Could not deactivate this cashier. Check Admin Firestore permissions.","error");
+    console.error("Could not permanently delete cashier",error);
+    notify(error?.message||"Could not permanently delete this cashier.","error");
+    if(button){button.disabled=false;button.textContent="Permanently Delete";}
   }
 }
+
 function openAdminCashierModal(){
   openModal("Create Cashier Account",`<div class="form-grid"><div class="field full"><label>Cashier Name *</label><input id="adminCashierName" required placeholder="Cashier full name" autocomplete="name"></div><div class="field full"><label>Cashier Email *</label><input id="adminCashierEmail" type="email" required placeholder="cashier@example.com" autocomplete="email"></div><div class="field full"><label>Temporary Password *</label><input id="adminCashierPassword" type="text" minlength="6" required placeholder="At least 6 characters" autocomplete="new-password"><small>The temporary password will be shown after creation and included in the HTML welcome email sent to this cashier.</small></div></div>`,"Create Account",async()=>{
     const name=$("#adminCashierName").value.trim();
