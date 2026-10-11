@@ -657,9 +657,17 @@ async function removeCashierAccount(id){
     });
     const result=await response.json().catch(()=>({}));
     if(!response.ok)throw new Error(result.error||`Delete failed (${response.status}).`);
-    await logActivity("Cashier Management",`Permanently deleted cashier ${label}; sales/history retained`,id);
-    notify("Cashier login and user profile permanently deleted. Existing sales/history were kept.","success");
-    await loadCashierAccounts();
+    // Remove the deleted cashier from the visible list immediately after the
+    // server confirms Auth + profile deletion. Do not wait on a follow-up list read.
+    cashierAccounts=cashierAccounts.filter(account=>account.id!==id);
+    const body=$("#cashierAccountsBody");
+    if(body){
+      body.innerHTML=cashierAccounts.length?cashierAccounts.map(c=>`<tr><td>${esc(c.name||"—")}</td><td>${esc(c.email||"—")}</td><td><span class="badge ${c.active===false?"inactive":"active"}">${c.active===false?"Inactive":"Active"}</span></td><td>${c.createdAt?.toDate?esc(c.createdAt.toDate().toLocaleDateString()):esc(c.createdAt||"—")}</td><td><button type="button" class="danger-btn" data-delete-cashier="${esc(c.id)}" ${c.active===false?"disabled":""}>Permanently Delete</button></td></tr>`).join(""):'<tr><td colspan="5">No cashier accounts yet. Use “Create Cashier Account” to add one.</td></tr>';
+      body.querySelectorAll("[data-delete-cashier]").forEach(button=>button.addEventListener("click",()=>removeCashierAccount(button.dataset.deleteCashier)));
+    }
+    notify("Cashier permanently deleted from Firebase. The account is removed from this dashboard; existing sales/history were kept.","success");
+    // Refresh in the background, without delaying the successful UI update.
+    loadCashierAccounts().catch(error=>console.warn("Background cashier list refresh failed",error));
   }catch(error){
     console.error("Could not permanently delete cashier",error);
     notify(error?.message||"Could not permanently delete this cashier.","error");
