@@ -3,7 +3,8 @@ import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut, updat
 import { getFirestore, collection, doc, getDoc, getDocs, addDoc, updateDoc, query, where, orderBy, onSnapshot, serverTimestamp, arrayUnion } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-firestore.js";
 import { getStorage, ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-storage.js";
 import { firebaseConfig } from "./firebase-config.js";
-console.info("[PISO WIFI CASHIER] BUILD 2026-10-11-CASHIER-LOADING-FIX");
+console.info("[PISO WIFI CASHIER] BUILD 2026-10-11-REFINED-LOGIN");
+const CASHIER_BUILD = "2026-10-11-REFINED-LOGIN";
 const CASHIER_AUTH_TIMEOUT_MS = 12000;
 function withCashierTimeout(promise, label){
   return Promise.race([
@@ -17,12 +18,47 @@ let user=null,profile=null,tab="dashboard",unsubs=[],customerUnsub=null,selected
 function msg(t,error=true){const el=$("#loginMsg");if(el){el.textContent=t;el.style.color=error?"#d9384a":"#168a52";}}
 async function audit(action,recordId,metadata={}){try{await addDoc(collection(db,"audit_logs"),{userId:user.uid,role:"cashier",action,recordId:String(recordId||""),metadata,createdAt:serverTimestamp()})}catch(e){console.warn("Audit log skipped",e)}}
 function login(){
-  const emailField=$("#email"), passwordField=$("#password");
-  // Never display or use the Admin account on the Cashier portal. Browsers may autofill a previously saved Admin login.
-  const clearAdminAutofill=()=>{if(emailField.value.trim().toLowerCase()==="pisonet@admin.com"){emailField.value="";passwordField.value="";msg("Please sign in with your Cashier account. Admin accounts cannot sign in here.");}};
-  emailField.setAttribute("autocomplete","off"); passwordField.setAttribute("autocomplete","new-password");
-  clearAdminAutofill(); emailField.addEventListener("input",clearAdminAutofill);
-  $("#loginForm").onsubmit=async e=>{e.preventDefault();const email=emailField.value.trim().toLowerCase();if(email==="pisonet@admin.com"){passwordField.value="";msg("Admin login is not available on the Cashier portal. Use your Cashier email and password.");return;}msg("Signing in…",false);try{await signInWithEmailAndPassword(auth,email,passwordField.value);}catch(error){
+  const form=$("#loginForm"), emailField=$("#email"), passwordField=$("#password");
+  const submitButton=form?.querySelector('button[type="submit"]');
+  const originalButtonText=submitButton?.textContent||"Sign in to Cashier";
+  const setPending=(pending)=>{
+    if(submitButton){submitButton.disabled=!!pending;submitButton.textContent=pending?"Checking account…":originalButtonText;}
+    if(emailField)emailField.disabled=!!pending;
+    if(passwordField)passwordField.disabled=!!pending;
+  };
+  const clearAdminAutofill=()=>{
+    if(emailField.value.trim().toLowerCase()==="pisonet@admin.com"){
+      emailField.value="";passwordField.value="";
+      msg("Please sign in with your Cashier account. Admin accounts cannot sign in here.");
+    }
+  };
+  emailField.setAttribute("autocomplete","username");
+  passwordField.setAttribute("autocomplete","current-password");
+  clearAdminAutofill();
+  emailField.addEventListener("input",clearAdminAutofill);
+  form.onsubmit=async e=>{
+    e.preventDefault();
+    if(submitButton?.disabled)return;
+    const email=emailField.value.trim().toLowerCase();
+    if(email==="pisonet@admin.com"){
+      passwordField.value="";
+      msg("Admin login is not available on the Cashier portal. Use your Cashier email and password.");
+      return;
+    }
+    if(!email||!passwordField.value){msg("Enter your Cashier email and password.");return;}
+    setPending(true);
+    msg("Signing in…",false);
+    try{
+      await signInWithEmailAndPassword(auth,email,passwordField.value);
+      msg("Login verified. Opening Cashier portal…",false);
+      // The auth-state handler completes profile verification and renders the portal.
+      setTimeout(()=>{
+        if(document.body.classList.contains("cashier-login-page") && auth.currentUser){
+          setPending(false);
+          msg("Your password was accepted, but the Cashier portal did not finish opening. Check the account profile and connection, then try again.");
+        }
+      },CASHIER_AUTH_TIMEOUT_MS+1000);
+    }catch(error){
       const code=String(error?.code||"");
       let message="Unable to sign in. Please try again.";
       if(["auth/invalid-credential","auth/wrong-password","auth/user-not-found","auth/invalid-email"].includes(code)){
@@ -33,13 +69,24 @@ function login(){
         message="Connection problem. Check your internet connection and try again.";
       }else if(code==="auth/user-disabled"){
         message="This Cashier account has been disabled. Please contact the Admin.";
+      }else if(code==="auth/operation-not-allowed"){
+        message="Email/password sign-in is disabled in Firebase Authentication. Enable it in Firebase Console.";
       }else{
         message=error?.message||message;
       }
       msg(message);
-    }};
+      setPending(false);
+    }
+  };
+  window.__pisoCashierSetLoginPending=setPending;
 }
-async function loadProfile(u){const snap=await withCashierTimeout(getDoc(doc(db,"users",u.uid)),"Cashier profile verification");if(!snap.exists()||snap.data().role!=="cashier"||snap.data().active===false)throw new Error("This account is not authorized as an active Cashier.");user=u;profile={id:snap.id,...snap.data()};document.body.className="cashier-app";document.body.innerHTML=`<aside class="cashier-sidebar"><div class="cashier-brand">PISO WIFI<small>Cashier Portal</small></div><nav class="cashier-nav"><button data-tab="sale">Enter Sale</button><button data-tab="service">Customer Service</button><button data-tab="receipt">Receipt</button><button data-tab="remit">Remit</button></nav><button id="logout" class="secondary cashier-logout">Logout</button></aside><main class="cashier-main"><header class="cashier-top"><div><h1 id="title">Cashier Portal</h1><p>Cashier: <b>${esc(profile.name||profile.email||"Cashier")}</b></p><small id="cashierBuildStamp" style="display:block;color:#64748b;margin-top:4px">Build 2026-10-11-CASHIER-LOADING-FIX</small></div><span class="cashier-status">ACTIVE</span></header><section id="view"></section></main>`;$("#logout").onclick=()=>signOut(auth).then(()=>location.reload());document.querySelectorAll("[data-tab]").forEach(b=>b.onclick=()=>{if(tab==="remit"&&b.dataset.tab!=="remit")remitUnlocked=false;tab=b.dataset.tab;render()});if(profile.forcePasswordChange!==false){renderForcePasswordChange();return;}startRealtime();render();}
+async function loadProfile(u){
+  const snap=await withCashierTimeout(getDoc(doc(db,"users",u.uid)),"Cashier profile verification");
+  if(!snap.exists())throw new Error("Your login is valid, but the Admin-created Cashier profile was not found. Ask Admin to check this account.");
+  const account=snap.data()||{};
+  if(String(account.role||"").toLowerCase()!=="cashier")throw new Error("This account is not registered with the Cashier role. Please use the correct Cashier account.");
+  if(account.active===false)throw new Error("This Cashier account is inactive. Please contact the Admin.");
+  user=u;profile={id:snap.id,...snap.data()};document.body.className="cashier-app";document.body.innerHTML=`<aside class="cashier-sidebar"><div class="cashier-brand">PISO WIFI<small>Cashier Portal</small></div><nav class="cashier-nav"><button data-tab="sale">Enter Sale</button><button data-tab="service">Customer Service</button><button data-tab="receipt">Receipt</button><button data-tab="remit">Remit</button></nav><button id="logout" class="secondary cashier-logout">Logout</button></aside><main class="cashier-main"><header class="cashier-top"><div><h1 id="title">Cashier Portal</h1><p>Cashier: <b>${esc(profile.name||profile.email||"Cashier")}</b></p><small id="cashierBuildStamp" style="display:block;color:#64748b;margin-top:4px">Build 2026-10-11-REFINED-LOGIN</small></div><span class="cashier-status">ACTIVE</span></header><section id="view"></section></main>`;$("#logout").onclick=()=>signOut(auth).then(()=>location.reload());document.querySelectorAll("[data-tab]").forEach(b=>b.onclick=()=>{if(tab==="remit"&&b.dataset.tab!=="remit")remitUnlocked=false;tab=b.dataset.tab;render()});if(profile.forcePasswordChange!==false){renderForcePasswordChange();return;}startRealtime();render();}
 function renderForcePasswordChange(){const host=$("#view");if(!host)return;host.innerHTML=`<section class="panel" style="max-width:560px;margin:32px auto;padding:24px"><h2>Set a New Password</h2><p>Your Admin-issued temporary password must be changed before you can use the Cashier Portal.</p><form id="cashierPasswordChange"><label>New password<input id="newCashierPassword" type="password" minlength="8" autocomplete="new-password" required></label><label style="display:block;margin-top:12px">Confirm new password<input id="confirmCashierPassword" type="password" minlength="8" autocomplete="new-password" required></label><p id="cashierPasswordMsg" class="message" role="status"></p><button class="primary" type="submit">Save New Password</button></form></section>`;$("#cashierPasswordChange").onsubmit=async e=>{e.preventDefault();const next=$("#newCashierPassword").value,confirmPassword=$("#confirmCashierPassword").value,msgEl=$("#cashierPasswordMsg");if(next.length<8){msgEl.textContent="Use at least 8 characters for your new password.";return;}if(next!==confirmPassword){msgEl.textContent="The passwords do not match.";return;}try{msgEl.textContent="Updating password…";await updatePassword(user,next);await updateDoc(doc(db,"users",user.uid),{forcePasswordChange:false,passwordChangedAt:serverTimestamp()});profile.forcePasswordChange=false;msgEl.textContent="Password updated.";startRealtime();render();}catch(error){msgEl.textContent=error?.message||"Could not update password. Sign in again and retry.";}};}
 function startRealtime(){unsubs.forEach(f=>f());unsubs=[];unsubs.push(onSnapshot(query(collection(db,"cashierTransactions"),where("cashierId","==",user.uid)),s=>{txns=s.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>String(b.createdAt||"").localeCompare(String(a.createdAt||"")));render()}));unsubs.push(onSnapshot(query(collection(db,"customerChats"),where("cashierId","==",user.uid)),s=>{chats=s.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>String(b.updatedAt||"").localeCompare(String(a.updatedAt||"")));render()}));unsubs.push(onSnapshot(query(collection(db,"remittances"),where("cashierId","==",user.uid)),s=>{remittances=s.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>String(b.createdAt||"").localeCompare(String(a.createdAt||"")));render()}));unsubs.push(onSnapshot(collection(db,"wifi_plans"),s=>{plans=s.docs.map(d=>({id:d.id,...d.data()})).filter(x=>x.status==="ACTIVE").sort((a,b)=>Number(a.sortOrder||0)-Number(b.sortOrder||0));render()}));loadRegisteredCustomers().catch(error=>{customerLoadStatus="error";customerLoadError=error?.message||"Could not start customer loading.";console.error("[Cashier] Could not start customer loader:",error);render()});}
 async function loadRegisteredCustomers(){
@@ -114,7 +161,7 @@ const cashierAuthTimer=setTimeout(()=>{
   }
 },CASHIER_AUTH_TIMEOUT_MS);
 onAuthStateChanged(auth,async u=>{
-  if(!u){clearTimeout(cashierAuthTimer);return;}
+  if(!u){clearTimeout(cashierAuthTimer);window.__pisoCashierSetLoginPending?.(false);return;}
   if(cashierAuthHandling)return;
   cashierAuthHandling=true;
   clearTimeout(cashierAuthTimer);
@@ -125,6 +172,7 @@ onAuthStateChanged(auth,async u=>{
     try{await signOut(auth)}catch{}
     const el=$("#loginMsg");
     if(el)msg(e?.message||"Could not open Cashier portal. Please reload and try again.");
+    window.__pisoCashierSetLoginPending?.(false);
     cashierAuthHandling=false;
   }
 });

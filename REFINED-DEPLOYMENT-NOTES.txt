@@ -1,0 +1,38 @@
+PISO WIFI — REFINED SOURCE PACKAGE
+Date: 2026-10-11
+Based on the full project ZIP supplied in this conversation. Existing files/features were preserved; this package makes targeted changes to the Cashier login flow and clarifies the permanent-delete endpoint configuration error.
+
+Changes:
+1. Cashier login
+- Both /cashier.html and /cashier/ entry pages now load the same cache-busted updated js/cashier.js.
+- Incorrect email/password shows a clear message.
+- The submit button shows progress and disables duplicate submits; it re-enables after login/profile errors.
+- Auth success with a missing users/{uid} profile, wrong role, inactive profile, network issue, or stalled profile read shows a specific message rather than silently staying at login.
+- Does NOT weaken role checks or Firebase security rules.
+
+2. Admin permanent delete
+- Keeps the server endpoint at functions/api/admin/delete-cashier.js.
+- The endpoint returns the exact names of missing Cloudflare secrets without exposing their values.
+- Permanent deletion requires server-side credentials. Browser JavaScript cannot securely delete another user's Firebase Authentication account.
+
+Deploy:
+- Deploy the full project to Cloudflare Pages preserving the directory structure. At minimum ensure these paths are deployed together:
+  cashier.html
+  cashier/index.html
+  js/cashier.js
+  admin/dashboard.html
+  js/dashboard.js
+  functions/api/admin/delete-cashier.js
+
+Cloudflare Pages variables/secrets:
+- FIREBASE_PROJECT_ID = piso-wifi-f2b5c
+- FIREBASE_API_KEY = existing Web API key from js/firebase-config.js
+- FIREBASE_SERVICE_ACCOUNT_JSON = full service-account JSON stored as a Secret, never in source code or chat.
+
+The service account must have the necessary permissions to delete Firebase Authentication users and read/delete the users/{uid} Firestore profile. Sales/transaction history is intentionally preserved.
+Do not loosen Firestore Rules just to make permanent deletion work; server-side IAM credentials are used for the deletion operation.
+
+Validation performed locally:
+- JavaScript syntax checks for changed scripts and function.
+- ZIP integrity check.
+Not deployed or live-tested from this environment. Test permanent deletion with a disposable Cashier account before deleting a real account.
