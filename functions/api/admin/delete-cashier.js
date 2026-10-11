@@ -13,33 +13,6 @@ function decodeJwtPart(value) {
   return JSON.parse(atob(padded));
 }
 
-function decodePrivateKeyPem(privateKey) {
-  if (typeof privateKey !== "string" || !privateKey.trim()) {
-    throw new Error("FIREBASE_SERVICE_ACCOUNT_JSON is missing the private_key field.");
-  }
-  // Google service-account JSON normally stores newlines as \n. JSON.parse
-  // converts those to real newlines, but normalize both forms for copied secrets.
-  const normalized = privateKey
-    .replace(/\\r\\n/g, "\n")
-    .replace(/\\n/g, "\n")
-    .replace(/\\r/g, "\n")
-    .trim();
-  const match = normalized.match(/-----BEGIN PRIVATE KEY-----([\s\S]*?)-----END PRIVATE KEY-----/);
-  if (!match) {
-    throw new Error("FIREBASE_SERVICE_ACCOUNT_JSON private_key must contain a complete BEGIN/END PRIVATE KEY PEM block. Re-add the original Google service-account JSON as a Cloudflare Secret.");
-  }
-  const base64 = match[1].replace(/\s/g, "");
-  if (!base64 || !/^[A-Za-z0-9+/]*={0,2}$/.test(base64) || base64.length % 4 === 1) {
-    throw new Error("The service-account private_key is not valid Base64. Replace FIREBASE_SERVICE_ACCOUNT_JSON with the original downloaded Google service-account JSON; do not manually edit the private key.");
-  }
-  const padded = base64 + "=".repeat((4 - base64.length % 4) % 4);
-  try {
-    return Uint8Array.from(atob(padded), c => c.charCodeAt(0));
-  } catch {
-    throw new Error("Could not decode the service-account private_key. Re-add the original Google service-account JSON to Cloudflare as FIREBASE_SERVICE_ACCOUNT_JSON.");
-  }
-}
-
 async function getGoogleAccessToken(serviceAccount) {
   const now = Math.floor(Date.now() / 1000);
   const header = { alg: "RS256", typ: "JWT" };
@@ -53,7 +26,31 @@ async function getGoogleAccessToken(serviceAccount) {
   const enc = (obj) => btoa(String.fromCharCode(...new TextEncoder().encode(JSON.stringify(obj))))
     .replace(/=/g, "").replace(/\+/g, "-").replace(/\//g, "_");
   const unsigned = `${enc(header)}.${enc(claims)}`;
-  const der = decodePrivateKeyPem(serviceAccount.private_key);
+  // Google service-account JSON normally contains PEM newlines as \n escapes.
+  // Normalize both real newlines and literal escaped newlines before parsing.
+  const rawPrivateKey = String(serviceAccount.private_key || "")
+    .replace(/\\r\\n/g, "\n")
+    .replace(/\\n/g, "\n")
+    .replace(/\r\n/g, "\n")
+    .trim();
+  if (!rawPrivateKey.startsWith("-----BEGIN PRIVATE KEY-----") ||
+      !rawPrivateKey.includes("-----END PRIVATE KEY-----")) {
+    throw new Error("FIREBASE_SERVICE_ACCOUNT_JSON private_key is incomplete. Paste the entire original Google service-account JSON file as the Cloudflare Secret.");
+  }
+  const pem = rawPrivateKey
+    .replace("-----BEGIN PRIVATE KEY-----", "")
+    .replace("-----END PRIVATE KEY-----", "")
+    .replace(/\s/g, "");
+  if (!pem || !/^[A-Za-z0-9+/=]+$/.test(pem) || pem.length % 4 === 1) {
+    throw new Error("FIREBASE_SERVICE_ACCOUNT_JSON private_key is not valid PEM/Base64 data. Replace the Secret with the complete downloaded JSON file.");
+  }
+  const paddedPem = pem + "=".repeat((4 - pem.length % 4) % 4);
+  let der;
+  try {
+    der = Uint8Array.from(atob(paddedPem), c => c.charCodeAt(0));
+  } catch {
+    throw new Error("FIREBASE_SERVICE_ACCOUNT_JSON private_key could not be decoded. Replace the Secret with the complete downloaded JSON file.");
+  }
   const key = await crypto.subtle.importKey(
     "pkcs8", der, { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" }, false, ["sign"]
   );
@@ -123,15 +120,7 @@ export async function onRequestPost({ request, env }) {
     if (!caller) return json({ error: "Admin session is invalid or expired. Sign in again." }, 401);
     if (caller.localId === targetUid) return json({ error: "You cannot delete your own account." }, 400);
 
-    let serviceAccount;
-    try {
-      serviceAccount = JSON.parse(env.FIREBASE_SERVICE_ACCOUNT_JSON);
-    } catch {
-      return json({ error: "FIREBASE_SERVICE_ACCOUNT_JSON is not valid JSON. Paste the complete original Google service-account JSON file into the Cloudflare Secret." }, 500);
-    }
-    if (!serviceAccount.client_email || !serviceAccount.private_key || !serviceAccount.token_uri) {
-      return json({ error: "FIREBASE_SERVICE_ACCOUNT_JSON is missing client_email, private_key, or token_uri. Use the complete original Google service-account JSON file." }, 500);
-    }
+    const serviceAccount = JSON.parse(env.FIREBASE_SERVICE_ACCOUNT_JSON);
     if (serviceAccount.project_id !== env.FIREBASE_PROJECT_ID) {
       return json({ error: "Firebase project ID does not match the configured service account." }, 500);
     }
