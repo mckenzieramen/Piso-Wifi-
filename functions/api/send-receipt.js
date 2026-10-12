@@ -2,7 +2,7 @@
 // to the existing Google Apps Script email service. Configure
 // APPS_SCRIPT_RECEIPT_SECRET as a Cloudflare Secret and set the same value in
 // Apps Script Project Settings > Script properties as PISO_WIFI_RECEIPT_SECRET.
-const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzJcIf9rpdunJ8-1kDvgePWTT1L-cQOFzZLQHFQMaqBYTlviovyxjz4JOX-FpvUrjFu/exec";
+const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbziRdnywiBqCJoBqJwXElHEGWdgyljApiYAhOvDJEyKJ_rzLWPP_GgYSmsfR1IE3_Fe/exec";
 
 export async function onRequestPost({ request, env }) {
   const headers = { "Content-Type": "application/json", "Cache-Control": "no-store" };
