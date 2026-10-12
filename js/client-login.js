@@ -128,6 +128,45 @@ async function getRole(user) {
     console.warn("[PISO WIFI CUSTOMER AUTH] UID-linked unit query failed.", e);
   }
 
+  // Legacy/recovered accounts may have a unit record with the customer's
+  // registered email but no authUserId link yet. Only accept an exact email
+  // match and only when the unit is not explicitly linked to another UID.
+  const authEmail = String(user.email || userProfile?.authEmail || userProfile?.email || "")
+    .trim().toLowerCase();
+  if (authEmail) {
+    for (const emailField of ["authEmail", "email"]) {
+      try {
+        const matches = await getDocs(query(
+          collection(db, "units"),
+          where(emailField, "==", authEmail)
+        ));
+        const match = matches.docs.find(d => {
+          const unit = d.data() || {};
+          const linkedUid = String(unit.authUserId || "").trim();
+          const unitEmail = String(unit.authEmail || unit.email || "").trim().toLowerCase();
+          return unit.active !== false && unitEmail === authEmail && (!linkedUid || linkedUid === user.uid);
+        });
+        if (match) {
+          const unit = match.data() || {};
+          return {
+            ...userProfile,
+            role: "client",
+            active: true,
+            clientUnitId: match.id,
+            unitId: match.id,
+            clientCode: unit.clientCode || userProfile?.clientCode || "",
+            username: unit.username || userProfile?.username || authEmail,
+            email: unit.email || authEmail,
+            authEmail: unit.authEmail || authEmail,
+            forcePasswordChange: unit.forcePasswordChange ?? userProfile?.forcePasswordChange
+          };
+        }
+      } catch (e) {
+        console.warn(`[PISO WIFI CUSTOMER AUTH] ${emailField} unit lookup failed.`, e);
+      }
+    }
+  }
+
   return userProfile;
 }
 
@@ -406,7 +445,7 @@ function openOtpModal(result){
     </section>`;
   document.body.appendChild(wrap);
   const input=wrap.querySelector("#otpCode");
-  input.addEventListener("input",()=>{input.value=input.value.replace(/\D/g,"").slice(0,6);});
+  input.addEventListener("input",()=>{input.value=input.value.replace(/\\D/g,"").slice(0,6);});
   wrap.querySelector("#otpClose").onclick=()=>wrap.remove();
   wrap.querySelector("#otpCancel").onclick=()=>wrap.remove();
   wrap.querySelector("#otpForm").onsubmit=verifyOtp;
@@ -415,18 +454,12 @@ function openOtpModal(result){
 
 async function verifyOtp(e){
   e.preventDefault();
-  const code=document.querySelector("#otpCode").value.replace(/\D/g,"");
+  const code=document.querySelector("#otpCode").value.replace(/\\D/g,"");
   const msgEl=document.querySelector("#otpMessage");const btn=document.querySelector("#otpVerify");
-  if(!/^\d{6}$/.test(code)){msgEl.textContent="Enter the 6-digit OTP.";msgEl.className="client-login-message error";return;}
+  if(!/^\\d{6}$/.test(code)){msgEl.textContent="Enter the 6-digit OTP.";msgEl.className="client-login-message error";return;}
   btn.disabled=true;btn.textContent="Verifying…";msgEl.textContent="Verifying your code…";msgEl.className="client-login-message";
   try{
-    const verification = await callRecovery({action:"verifyCode",clientId:recoveryClientId,email:recoveryEmail,code});
-    // The backend may issue the password-reset session only after OTP verification.
-    // Keep that returned token for the subsequent resetPassword request.
-    recoveryToken = verification.resetToken || verification.verificationToken || recoveryToken;
-    if (!recoveryToken) {
-      throw new Error("OTP verified, but the password-reset session token was not returned. Please request a new code.");
-    }
+    await callRecovery({action:"verifyCode",clientId:recoveryClientId,email:recoveryEmail,code});
     document.querySelector("#otpModal")?.remove();
     openNewPasswordModal();
   }catch(err){
@@ -480,7 +513,8 @@ async function saveNewPassword(e){
 
 function wrapSuccessAndReturn(){
   const wrap=document.querySelector("#newPasswordModal");const card=wrap?.querySelector(".client-reset-card");if(!card)return;
-  card.innerHTML=`<div class="client-reset-icon success" aria-hidden="true">✓</div><span class="eyebrow">PASSWORD UPDATED</span><h2>Password updated successfully</h2><p class="reset-intro">Your new password is active. This window will close automatically. You can now log in with your new password.</p>`;
-  setTimeout(()=>{if(document.querySelector("#newPasswordModal"))wrap.remove();},2500);
+  card.innerHTML=`<div class="client-reset-icon success" aria-hidden="true">✓</div><span class="eyebrow">PASSWORD UPDATED</span><h2>Password updated successfully</h2><p class="reset-intro">Your new password is now active. You can return to the Customer Account login.</p><div class="client-reset-actions" style="grid-template-columns:1fr"><button class="client-primary" type="button" id="recoveryDone">Return to Login</button></div>`;
+  card.querySelector("#recoveryDone").onclick=()=>wrap.remove();
+  setTimeout(()=>{if(document.querySelector("#newPasswordModal"))wrap.remove();},3500);
 }
 
