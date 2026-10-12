@@ -76,7 +76,11 @@ async function commit(access,project,writes,transaction) {
   if(transaction)body.transaction=transaction;
   const r=await fetch(`${base(project)}:commit`,{method:"POST",headers:{authorization:`Bearer ${access}`,"content-type":"application/json"},body:JSON.stringify(body)});
   const d=await r.json().catch(()=>({}));
-  if(!r.ok)throw new Error(`Could not commit dashboard sync (${r.status}).`);
+  if(!r.ok) {
+    const detail = d?.error?.message || d?.message || d?.error?.status || "";
+    console.error("[cashier-sync] Firestore commit rejected", {status:r.status, detail, response:d});
+    throw new Error(`Could not commit dashboard sync (${r.status})${detail ? `: ${detail}` : ""}.`);
+  }
   return d;
 }
 async function beginTransaction(access,project) {

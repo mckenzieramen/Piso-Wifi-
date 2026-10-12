@@ -26,7 +26,7 @@ export async function onRequestPost({ request, env }) {
       return new Response(JSON.stringify({ ok: false, error: "Invalid receipt email payload." }), { status: 400, headers: cors });
     }
     if (!env.RESEND_API_KEY || !env.RECEIPT_FROM_EMAIL) {
-      return new Response(JSON.stringify({ ok: false, error: "Receipt email is not configured yet. Add RESEND_API_KEY and RECEIPT_FROM_EMAIL in Cloudflare Pages variables/secrets." }), { status: 503, headers: cors });
+      return new Response(JSON.stringify({ ok: false, error: "Receipt email is not configured yet. In Cloudflare Pages > your project > Settings > Variables and Secrets, add RESEND_API_KEY as a secret and RECEIPT_FROM_EMAIL as a variable using a sender address verified in Resend, then redeploy. No email was sent." }), { status: 503, headers: cors });
     }
     const resp = await fetch("https://api.resend.com/emails", {
       method: "POST",
