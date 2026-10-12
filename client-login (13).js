@@ -266,7 +266,7 @@ function openOtpModal(result){
       <h2 id="otpTitle">Enter your 6-digit code</h2>
       <p class="reset-intro">We sent a verification code to <b>${esc(result.email||recoveryEmail)}</b>. The code expires in 10 minutes.</p>
       <form id="otpForm">
-        <label class="client-field"><span>6-Digit OTP</span><input id="otpCode" inputmode="numeric" autocomplete="one-time-code" maxlength="6" pattern="[0-9]{6}" placeholder="000000" required></label>
+        <label class="client-field"><span>6-Digit OTP</span><input id="otpCode" inputmode="numeric" autocomplete="one-time-code" maxlength="6" pattern="\\d{6}" placeholder="000000" required></label>
         <div id="otpMessage" class="client-login-message" role="status" aria-live="polite"></div>
         <div class="client-reset-actions"><button class="client-secondary" id="otpCancel" type="button">Cancel</button><button class="client-primary" id="otpVerify" type="submit">Verify OTP</button></div>
         <div class="client-reset-note">Never share your OTP with anyone. We will not ask for it by phone, email, or chat.</div>
@@ -274,7 +274,7 @@ function openOtpModal(result){
     </section>`;
   document.body.appendChild(wrap);
   const input=wrap.querySelector("#otpCode");
-  input.addEventListener("input",()=>{input.value=input.value.replace(/\D/g,"").slice(0,6);});
+  input.addEventListener("input",()=>{input.value=input.value.replace(/\\D/g,"").slice(0,6);});
   wrap.querySelector("#otpClose").onclick=()=>wrap.remove();
   wrap.querySelector("#otpCancel").onclick=()=>wrap.remove();
   wrap.querySelector("#otpForm").onsubmit=verifyOtp;
@@ -283,14 +283,12 @@ function openOtpModal(result){
 
 async function verifyOtp(e){
   e.preventDefault();
-  const code=document.querySelector("#otpCode").value.replace(/\D/g,"");
+  const code=document.querySelector("#otpCode").value.replace(/\\D/g,"");
   const msgEl=document.querySelector("#otpMessage");const btn=document.querySelector("#otpVerify");
-  if(!/^\d{6}$/.test(code)){msgEl.textContent="Enter the 6-digit OTP.";msgEl.className="client-login-message error";return;}
+  if(!/^\\d{6}$/.test(code)){msgEl.textContent="Enter the 6-digit OTP.";msgEl.className="client-login-message error";return;}
   btn.disabled=true;btn.textContent="Verifying…";msgEl.textContent="Verifying your code…";msgEl.className="client-login-message";
   try{
-    const verification = await callRecovery({action:"verifyCode",clientId:recoveryClientId,email:recoveryEmail,code});
-    recoveryToken = verification.resetToken || verification.verificationToken || "";
-    if (!recoveryToken) throw new Error("OTP verified, but the reset session token was not returned. Request a new code.");
+    await callRecovery({action:"verifyCode",clientId:recoveryClientId,email:recoveryEmail,code});
     document.querySelector("#otpModal")?.remove();
     openNewPasswordModal();
   }catch(err){
@@ -345,16 +343,7 @@ async function saveNewPassword(e){
 function wrapSuccessAndReturn(){
   const wrap=document.querySelector("#newPasswordModal");const card=wrap?.querySelector(".client-reset-card");if(!card)return;
   card.innerHTML=`<div class="client-reset-icon success" aria-hidden="true">✓</div><span class="eyebrow">PASSWORD UPDATED</span><h2>Password updated successfully</h2><p class="reset-intro">Your new password is now active. You can return to the Customer Account login.</p><div class="client-reset-actions" style="grid-template-columns:1fr"><button class="client-primary" type="button" id="recoveryDone">Return to Login</button></div>`;
-  const returnToLogin=()=>{
-    wrap.remove();
-    const emailInput=document.querySelector("#email, #loginEmail, input[type='email']");
-    if(emailInput){ emailInput.value=recoveryEmail||emailInput.value; }
-    const passwordInput=document.querySelector("#password, #loginPassword, input[autocomplete='current-password']");
-    if(passwordInput){ passwordInput.value=""; passwordInput.focus(); }
-    const messageEl=document.querySelector("#loginMessage, #loginError, .login-message");
-    if(messageEl){ messageEl.textContent="Password updated. Please log in with your new password."; messageEl.className="login-message success"; }
-  };
-  card.querySelector("#recoveryDone").onclick=returnToLogin;
-  setTimeout(()=>{if(document.querySelector("#newPasswordModal"))returnToLogin();},2500);
+  card.querySelector("#recoveryDone").onclick=()=>wrap.remove();
+  setTimeout(()=>{if(document.querySelector("#newPasswordModal"))wrap.remove();},3500);
 }
 
