@@ -106,10 +106,24 @@ async function loadProfile(u){
   const passwordMarker=`pisoWifi.cashier.passwordChanged.${u.uid}`;
   let locallyChanged=false;try{locallyChanged=localStorage.getItem(passwordMarker)==="true";}catch{}
   if(profile.forcePasswordChange!==false && locallyChanged){
-    try{await updateDoc(doc(db,"users",u.uid),{forcePasswordChange:false,passwordChangedAt:serverTimestamp()});profile.forcePasswordChange=false;}
-    catch(error){console.warn("[Cashier] Password was changed previously; Firestore flag repair will retry later.",error);profile.forcePasswordChange=false;}
+    // The local marker is written only after Firebase Authentication confirms
+    // updatePassword(). Never ask this same browser to change it a second time
+    // merely because the Firestore completion-flag write was denied/offline.
+    profile.forcePasswordChange=false;
+    try{
+      await updateDoc(doc(db,"users",u.uid),{forcePasswordChange:false,passwordChangedAt:serverTimestamp()});
+      const verified=await getDoc(doc(db,"users",u.uid));
+      if(verified.exists() && verified.data()?.forcePasswordChange===false){
+        profile={...profile,...verified.data(),forcePasswordChange:false};
+        try{localStorage.removeItem(passwordMarker)}catch{}
+      }else{
+        console.warn("[Cashier] Firestore has not confirmed the password-change flag; the local completion marker is retained for retry.");
+      }
+    }catch(error){
+      console.warn("[Cashier] Password was already changed on this browser; Firestore flag repair will retry on later logins.",error);
+    }
   }
-  tab="sale";document.body.className="cashier-app";document.body.innerHTML=`<aside class="cashier-sidebar"><div class="cashier-brand">PISO WIFI<small>Cashier Portal</small></div><nav class="cashier-nav"><button data-tab="sale">Enter Sale</button><button data-tab="service">Customer Service</button><button data-tab="receipt">Receipt</button><button data-tab="remit">Remit</button></nav><button id="logout" class="secondary cashier-logout">Logout</button></aside><main class="cashier-main"><header class="cashier-top"><div><h1 id="title">Cashier Portal</h1><p>Cashier: <b>${esc(profile.name||profile.email||"Cashier")}</b></p><small id="cashierBuildStamp" style="display:block;color:#64748b;margin-top:4px">Build 2026-10-12-NAV-CUSTOMER-FIX-2</small></div><span class="cashier-status">ACTIVE</span></header><section id="view"></section></main>`;$("#logout").onclick=()=>signOut(auth).then(()=>location.reload());document.querySelectorAll("[data-tab]").forEach(b=>b.addEventListener("click",()=>{if(tab==="remit"&&b.dataset.tab!=="remit")remitUnlocked=false;tab=b.dataset.tab;render()}));if(profile.forcePasswordChange!==false){renderForcePasswordChange();return;}startRealtime();render();}
+  tab="sale";document.body.className="cashier-app";document.body.innerHTML=`<aside class="cashier-sidebar"><div class="cashier-brand">PISO WIFI<small>Cashier Portal</small></div><nav class="cashier-nav"><button data-tab="sale">Enter Sale</button><button data-tab="service">Customer Service</button><button data-tab="receipt">Receipt</button><button data-tab="remit">Remit</button></nav><button id="logout" class="secondary cashier-logout">Logout</button></aside><main class="cashier-main"><header class="cashier-top"><div><h1 id="title">Cashier Portal</h1><p>Cashier: <b>${esc(profile.name||profile.email||"Cashier")}</b></p><small id="cashierBuildStamp" style="display:block;color:#64748b;margin-top:4px">Build 2026-10-12-CASHIER-PASSWORD-FIX-3</small></div><span class="cashier-status">ACTIVE</span></header><section id="view"></section></main>`;$("#logout").onclick=()=>signOut(auth).then(()=>location.reload());document.querySelectorAll("[data-tab]").forEach(b=>b.addEventListener("click",()=>{if(tab==="remit"&&b.dataset.tab!=="remit")remitUnlocked=false;tab=b.dataset.tab;render()}));if(profile.forcePasswordChange!==false){renderForcePasswordChange();return;}startRealtime();render();}
 function renderForcePasswordChange(){
   const host=$("#view");
   if(!host)return;
