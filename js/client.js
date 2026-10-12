@@ -229,7 +229,7 @@ let supportChatSending=false;
 let supportTypingTimer=null;
 let supportChatDocId="";
 let supportChatHistory=[];
-const supportChatId=()=>String(supportChatDocId||currentUser?.uid||"");
+const supportChatId=()=>String(supportChatDocId||"");
 const supportStatusValue=chat=>{const s=String(chat?.status||"Open").trim().toLowerCase(); if(s==="closed") return "Closed"; if(s==="solved") return "Solved"; return "Open";};
 const supportChatRef=()=>supportChatId()?doc(db,"supportChats",supportChatId()):null;
 function supportNow(){return new Date().toISOString();}
