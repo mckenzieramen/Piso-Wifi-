@@ -544,11 +544,22 @@ function renderSales(){
   $("#salesUnit").onchange=e=>{selectedUnitId=e.target.value;renderSales();};
 }
 function renderPayments(){
-  const list=ownPayments().filter(p=>selectedUnitId==="all"||p.unitId===selectedUnitId).sort((a,b)=>timeValue(b.paymentDate||b.date||b.createdAt)-timeValue(a.paymentDate||a.date||a.createdAt));
-  $("#view").innerHTML=pageTitle("Payment History","View your payments and remaining balance.",`<select id="paymentUnit" class="client-filter"><option value="all">All Units</option>${clientUnits.map(u=>`<option value="${u.id}" ${u.id===selectedUnitId?"selected":""}>${esc(u.unitCode)}</option>`).join("")}</select>`)+
-    `<section class="client-panel table-panel"><div class="table-scroll"><table class="client-table"><thead><tr><th>Date Paid</th><th>Unit</th><th>Amount Paid</th><th>Reference</th><th>Month Covered</th><th>Status</th></tr></thead><tbody>${
-      list.length?list.map(p=>{const u=clientUnits.find(x=>x.id===p.unitId);return `<tr><td>${dateLong(p.paymentDate||p.date||p.createdAt)}</td><td><b>${esc(u?.unitCode||"—")}</b></td><td class="strong-amount">${money(p.amount)}</td><td>${esc(p.reference||"—")}</td><td>${p.month?monthLabel(p.month):"—"}</td><td>${statusBadge(p.status||"Completed")}</td></tr>`}).join(""):`<tr><td colspan="6">${empty("No payments recorded.")}</td></tr>`
-    }</tbody></table></div></section>`;
+  const unitFilter=p=>selectedUnitId==="all"||p.unitId===selectedUnitId;
+  const pendingRows=ownRecords()
+    .filter(r=>selectedUnitId==="all"||r.unitId===selectedUnitId)
+    .map(r=>({r,u:clientUnits.find(x=>x.id===r.unitId),c:calc(r)}))
+    .filter(x=>x.c.balance>0)
+    .sort((a,b)=>String(b.r.month||"").localeCompare(String(a.r.month||"")));
+  const list=ownPayments().filter(unitFilter).sort((a,b)=>timeValue(b.paymentDate||b.date||b.createdAt)-timeValue(a.paymentDate||a.date||a.createdAt));
+  const pendingHtml=pendingRows.length
+    ? `<div class="table-scroll"><table class="client-table"><thead><tr><th>Month Due</th><th>Unit</th><th>Amount Due</th><th>Amount Paid</th><th>Remaining Balance</th><th>Status</th></tr></thead><tbody>${pendingRows.map(({r,u,c})=>`<tr><td>${monthLabel(r.month)}</td><td><b>${esc(u?.unitCode||"—")}</b></td><td class="strong-amount">${money(c.clientTotal)}</td><td>${money(c.paid)}</td><td class="strong-amount">${money(c.balance)}</td><td>${statusBadge(c.paid>0?"Partial":"Pending")}</td></tr>`).join("")}</tbody></table></div>`
+    : empty("No pending payments. All recorded monthly balances are paid.");
+  const historyHtml=list.length
+    ? `<div class="table-scroll"><table class="client-table"><thead><tr><th>Date Paid</th><th>Unit</th><th>Amount Paid</th><th>Reference</th><th>Month Covered</th><th>Status</th></tr></thead><tbody>${list.map(p=>{const u=clientUnits.find(x=>x.id===p.unitId);return `<tr><td>${dateLong(p.paymentDate||p.date||p.createdAt)}</td><td><b>${esc(u?.unitCode||"—")}</b></td><td class="strong-amount">${money(p.amount)}</td><td>${esc(p.reference||"—")}</td><td>${p.month?monthLabel(p.month):"—"}</td><td>${statusBadge(p.status||"Completed")}</td></tr>`}).join("")}</tbody></table></div>`
+    : empty("No payment transactions recorded yet.");
+  $("#view").innerHTML=pageTitle("Payment History","View pending balances and your payment transactions.",`<select id="paymentUnit" class="client-filter"><option value="all">All Units</option>${clientUnits.map(u=>`<option value="${u.id}" ${u.id===selectedUnitId?"selected":""}>${esc(u.unitCode)}</option>`).join("")}</select>`)+
+    `<section class="client-panel table-panel"><div class="client-panel-head"><div><h3>Pending Payments</h3><p>Monthly balances that have not been fully paid.</p></div><span>${statusBadge(pendingRows.length? "Pending":"Paid")}</span></div>${pendingHtml}</section>
+    <section class="client-panel table-panel"><div class="client-panel-head"><div><h3>Payment History</h3><p>Payments recorded by Admin.</p></div></div>${historyHtml}</section>`;
   $("#paymentUnit").onchange=e=>{selectedUnitId=e.target.value;renderPayments();};
 }
 function renderStatement(){
