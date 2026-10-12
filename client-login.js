@@ -214,6 +214,8 @@ function openForgotPasswordModal(){
   document.body.appendChild(wrap);
   wrap.querySelectorAll("[data-close-reset]").forEach(el=>el.onclick=closeRecovery);
   wrap.querySelector("#resetCancel").onclick=closeRecovery;
+  const clientIdInput = wrap.querySelector("#resetClientId");
+  clientIdInput.addEventListener("input", () => { clientIdInput.value = clientIdInput.value.replace(/\s+/g,"").toUpperCase(); });
   wrap.querySelector("#forgotPasswordForm").onsubmit=submitResetRequest;
   wrap.addEventListener("keydown",e=>{if(e.key==="Escape")closeRecovery();});
   wrap.querySelector("#resetClientId").focus();
@@ -229,11 +231,21 @@ async function callRecovery(payload){
 
 async function submitResetRequest(e){
   e.preventDefault();
-  const clientId=document.querySelector("#resetClientId").value.trim().toUpperCase();
+  const clientId=document.querySelector("#resetClientId").value.replace(/\s+/g,"").toUpperCase();
   const email=document.querySelector("#resetEmail").value.trim().toLowerCase();
   const msgEl=document.querySelector("#resetMessage");
   const btn=document.querySelector("#resetSubmit");
-  if(!/^CID-\d{3,}$/.test(clientId)||!email){msgEl.textContent="Enter a valid Client ID and registered Gmail.";msgEl.className="client-login-message error";return;}
+  document.querySelector("#resetClientId").value = clientId;
+  if(!/^CID-\d{3,}$/.test(clientId)){
+    msgEl.textContent="Enter your Client ID in the format CID-0005.";
+    msgEl.className="client-login-message error";
+    return;
+  }
+  if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)){
+    msgEl.textContent="Enter the registered Gmail address.";
+    msgEl.className="client-login-message error";
+    return;
+  }
   btn.disabled=true;btn.textContent="Sending OTP…";msgEl.textContent="Checking your account…";msgEl.className="client-login-message";
   try{
     const result=await callRecovery({action:"requestCode",clientId,email});
