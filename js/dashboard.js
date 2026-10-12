@@ -460,7 +460,7 @@ function salesChart(metric="Gross Sales"){
   const ms=sixMonths(), vals=ms.map(m=>metricTotal(m,metric)), max=Math.max(...vals,1);
   return `<div class="bars">${vals.map((v,i)=>`<div class="bar-col"><div class="bar-value">${money(v)}</div><div class="bar" style="height:${Math.max(8,(v/max)*150)}px"></div><small>${new Date(ms[i]+"-01").toLocaleString("en-US",{month:"short"})}</small></div>`).join("")}</div>`;
 }
-function topUnitsHtml(rows){ return rows.length?rows.map((x,i)=>`<div class="rank-row"><span class="rank-num">${i+1}</span><span><b>${esc(x.u.unitCode)}</b><small>${esc(x.u.name)}</small></span><strong>${money(x.c.gross)}</strong></div>`).join(""):empty("No sales recorded for this period."); }
+function topUnitsHtml(rows){ return rows.length?rows.map((x,i)=>`<div class="rank-row"><span class="rank-num">${i+1}</span><span><b>${esc(x.u.name||"Unnamed unit")}</b></span><strong>${money(x.c.gross)}</strong></div>`).join(""):empty("No sales recorded for this period."); }
 function renderTopUnits(period){
   const ms=period==="month"?[selectedMonth]:period==="last"?[shiftMonth(selectedMonth,-1)]:period==="3"?rangeMonths(3):yearMonths(selectedMonth);
   const map=units.map(u=>{const gross=records.filter(r=>r.unitId===u.id&&ms.includes(r.month)).reduce((s,r)=>s+Number(r.grossSales||0),0);return{u,c:{gross}}}).sort((a,b)=>b.c.gross-a.c.gross).slice(0,5);
