@@ -106,16 +106,8 @@ async function loadProfile(u){
   const passwordMarker=`pisoWifi.cashier.passwordChanged.${u.uid}`;
   let locallyChanged=false;try{locallyChanged=localStorage.getItem(passwordMarker)==="true";}catch{}
   if(profile.forcePasswordChange!==false && locallyChanged){
-    try{
-      await updateDoc(doc(db,"users",u.uid),{forcePasswordChange:false,passwordChangedAt:serverTimestamp()});
-      const verify=await getDoc(doc(db,"users",u.uid));
-      if(!verify.exists() || verify.data()?.forcePasswordChange!==false) throw new Error("Firestore did not confirm the password-change status.");
-      profile={...profile,...verify.data()};
-      try{localStorage.removeItem(passwordMarker)}catch{}
-    }catch(error){
-      console.error("[Cashier] Could not persist the completed password change; showing the save-status recovery screen.",error);
-      profile.forcePasswordChange=true;
-    }
+    try{await updateDoc(doc(db,"users",u.uid),{forcePasswordChange:false,passwordChangedAt:serverTimestamp()});profile.forcePasswordChange=false;}
+    catch(error){console.warn("[Cashier] Password was changed previously; Firestore flag repair will retry later.",error);profile.forcePasswordChange=false;}
   }
   tab="sale";document.body.className="cashier-app";document.body.innerHTML=`<aside class="cashier-sidebar"><div class="cashier-brand">PISO WIFI<small>Cashier Portal</small></div><nav class="cashier-nav"><button data-tab="sale">Enter Sale</button><button data-tab="service">Customer Service</button><button data-tab="receipt">Receipt</button><button data-tab="remit">Remit</button></nav><button id="logout" class="secondary cashier-logout">Logout</button></aside><main class="cashier-main"><header class="cashier-top"><div><h1 id="title">Cashier Portal</h1><p>Cashier: <b>${esc(profile.name||profile.email||"Cashier")}</b></p><small id="cashierBuildStamp" style="display:block;color:#64748b;margin-top:4px">Build 2026-10-12-NAV-CUSTOMER-FIX-2</small></div><span class="cashier-status">ACTIVE</span></header><section id="view"></section></main>`;$("#logout").onclick=()=>signOut(auth).then(()=>location.reload());document.querySelectorAll("[data-tab]").forEach(b=>b.addEventListener("click",()=>{if(tab==="remit"&&b.dataset.tab!=="remit")remitUnlocked=false;tab=b.dataset.tab;render()}));if(profile.forcePasswordChange!==false){renderForcePasswordChange();return;}startRealtime();render();}
 function renderForcePasswordChange(){
@@ -144,22 +136,15 @@ function renderForcePasswordChange(){
     if(!user?.email){msgEl.textContent="Your cashier session has expired. Please sign in again.";return;}
     try{
       button.disabled=true;
-      const passwordMarker=`pisoWifi.cashier.passwordChanged.${user.uid}`;
-      let authPasswordAlreadyChanged=false;try{authPasswordAlreadyChanged=localStorage.getItem(passwordMarker)==="true";}catch{}
-      if(!authPasswordAlreadyChanged){
-        msgEl.textContent="Verifying your current password…";
-        const credential=EmailAuthProvider.credential(user.email,current);
-        await reauthenticateWithCredential(user,credential);
-        msgEl.textContent="Saving your new password…";
-        await updatePassword(user,next);
-        try{localStorage.setItem(passwordMarker,"true");}catch{}
-      }
-      msgEl.textContent="Saving password-change status…";
-      await updateDoc(doc(db,"users",user.uid),{forcePasswordChange:false,passwordChangedAt:serverTimestamp()});
-      const verify=await getDoc(doc(db,"users",user.uid));
-      if(!verify.exists() || verify.data()?.forcePasswordChange!==false) throw new Error("Your password is changed, but Firebase did not confirm the account status. Please submit again to retry saving the status; your password will not be changed again.");
-      profile={...profile,...verify.data(),forcePasswordChange:false};
-      try{localStorage.removeItem(passwordMarker)}catch{}
+      msgEl.textContent="Verifying your current password…";
+      const credential=EmailAuthProvider.credential(user.email,current);
+      await reauthenticateWithCredential(user,credential);
+      msgEl.textContent="Saving your new password…";
+      await updatePassword(user,next);
+      try{localStorage.setItem(`pisoWifi.cashier.passwordChanged.${user.uid}`,"true");}catch{}
+      profile.forcePasswordChange=false;
+      try{await updateDoc(doc(db,"users",user.uid),{forcePasswordChange:false,passwordChangedAt:serverTimestamp()});}
+      catch(ruleError){console.error("[PISO WIFI CASHIER] Password changed but profile flag could not be saved; local one-time marker retained.",ruleError);}
       msgEl.textContent="Password updated. Opening Cashier Portal…";
       startRealtime();
       render();

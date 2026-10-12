@@ -698,20 +698,6 @@ function setupPasswordVisibilityToggles(){
 async function maybeShowFirstLoginPasswordSetup(){
   const unit=clientUnits[0];
   if(!unit || unit.forcePasswordChange!==true) return;
-  const passwordMarker=`pisoWifi.customer.passwordChanged.${currentUser?.uid}.${unit.id}`;
-  let authPasswordAlreadyChanged=false;try{authPasswordAlreadyChanged=localStorage.getItem(passwordMarker)==="true";}catch{}
-  if(authPasswordAlreadyChanged){
-    try{
-      await updateDoc(doc(db,"units",unit.id),{forcePasswordChange:false,passwordChangedAt:serverTimestamp(),updatedAt:serverTimestamp()});
-      const verify=await getDoc(doc(db,"units",unit.id));
-      if(!verify.exists() || verify.data()?.forcePasswordChange!==false) throw new Error("Firestore did not confirm the password-change status.");
-      unit.forcePasswordChange=false;
-      try{localStorage.removeItem(passwordMarker);sessionStorage.removeItem("pisoWifi.pendingCurrentPassword");}catch{}
-      return;
-    }catch(error){
-      console.error("[PISO WIFI CUSTOMER] Could not repair completed password-change status; showing recovery option.",error);
-    }
-  }
   const modal=$("#clientPasswordSetup");
   if(!modal) return;
   modal.classList.remove("hidden"); modal.setAttribute("aria-hidden","false");
@@ -724,22 +710,6 @@ async function maybeShowFirstLoginPasswordSetup(){
     if(a!==b){msg.textContent="Passwords do not match.";msg.className="client-login-message error";return;}
     const btn=form.querySelector("button"); btn.disabled=true; btn.textContent="Saving…";
     try{
-      const passwordMarker=`pisoWifi.customer.passwordChanged.${currentUser.uid}.${unit.id}`;
-      let authPasswordAlreadyChanged=false;try{authPasswordAlreadyChanged=localStorage.getItem(passwordMarker)==="true";}catch{}
-      if(authPasswordAlreadyChanged){
-        // Recovery path: Authentication password was already changed in a previous attempt;
-        // only retry saving and verifying the Firestore completion flag.
-        await updateDoc(doc(db,"units",unit.id),{forcePasswordChange:false,passwordChangedAt:serverTimestamp(),updatedAt:serverTimestamp()});
-        const verify=await getDoc(doc(db,"units",unit.id));
-        if(!verify.exists() || verify.data()?.forcePasswordChange!==false) throw new Error("Your password is already changed, but Firebase did not confirm the account status. Submit again to retry saving the status; your password will not be changed again.");
-        unit.forcePasswordChange=false;
-        try{localStorage.removeItem(passwordMarker);sessionStorage.removeItem("pisoWifi.pendingCurrentPassword");}catch{}
-        form.reset();
-        msg.className="client-login-message success";msg.textContent="Password status saved. You can now use your PISO WIFI portal.";
-        btn.disabled=true;btn.textContent="Password Saved";
-        setTimeout(()=>{modal.classList.add("hidden");modal.setAttribute("aria-hidden","true");toast("Password status saved successfully.");},1200);
-        return;
-      }
       // Firebase Auth can still reject updatePassword with auth/requires-recent-login
       // even immediately after reauthentication in this first-login flow. Use a
       // fresh password sign-in token and the official Identity Toolkit REST
@@ -770,11 +740,8 @@ async function maybeShowFirstLoginPasswordSetup(){
       // changing the customer's Firestore first-login flag.
       const updatedCred = await signInWithEmailAndPassword(auth,currentUser.email,a);
       await updatedCred.user.getIdToken(true);
-      try { localStorage.setItem(`pisoWifi.customer.passwordChanged.${currentUser.uid}.${unit.id}`,"true"); } catch {}
       await updateDoc(doc(db,"units",unit.id),{forcePasswordChange:false,passwordChangedAt:serverTimestamp(),updatedAt:serverTimestamp()});
-      const verify = await getDoc(doc(db,"units",unit.id));
-      if(!verify.exists() || verify.data()?.forcePasswordChange!==false) throw new Error("Your password is changed, but Firebase did not confirm the account status. Submit again to retry saving the status; your password will not be changed again.");
-      try { sessionStorage.removeItem("pisoWifi.pendingCurrentPassword"); localStorage.removeItem(`pisoWifi.customer.passwordChanged.${currentUser.uid}.${unit.id}`); } catch {}
+      try { sessionStorage.removeItem("pisoWifi.pendingCurrentPassword"); } catch {}
       unit.forcePasswordChange=false;
       form.reset();
       msg.className="client-login-message success";
