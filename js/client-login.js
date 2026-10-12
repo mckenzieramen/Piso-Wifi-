@@ -406,7 +406,7 @@ function openOtpModal(result){
     </section>`;
   document.body.appendChild(wrap);
   const input=wrap.querySelector("#otpCode");
-  input.addEventListener("input",()=>{input.value=input.value.replace(/\\D/g,"").slice(0,6);});
+  input.addEventListener("input",()=>{input.value=input.value.replace(/\D/g,"").slice(0,6);});
   wrap.querySelector("#otpClose").onclick=()=>wrap.remove();
   wrap.querySelector("#otpCancel").onclick=()=>wrap.remove();
   wrap.querySelector("#otpForm").onsubmit=verifyOtp;
@@ -415,9 +415,9 @@ function openOtpModal(result){
 
 async function verifyOtp(e){
   e.preventDefault();
-  const code=document.querySelector("#otpCode").value.replace(/\\D/g,"");
+  const code=document.querySelector("#otpCode").value.replace(/\D/g,"");
   const msgEl=document.querySelector("#otpMessage");const btn=document.querySelector("#otpVerify");
-  if(!/^\\d{6}$/.test(code)){msgEl.textContent="Enter the 6-digit OTP.";msgEl.className="client-login-message error";return;}
+  if(!/^\d{6}$/.test(code)){msgEl.textContent="Enter the 6-digit OTP.";msgEl.className="client-login-message error";return;}
   btn.disabled=true;btn.textContent="Verifying…";msgEl.textContent="Verifying your code…";msgEl.className="client-login-message";
   try{
     await callRecovery({action:"verifyCode",clientId:recoveryClientId,email:recoveryEmail,code});
