@@ -229,9 +229,9 @@ let supportChatSending=false;
 let supportTypingTimer=null;
 let supportChatDocId="";
 let supportChatHistory=[];
-const supportChatId=()=>String(supportChatDocId||currentUser?.uid||"");
+const supportChatId=()=>String(supportChatDocId||"");
 const supportStatusValue=chat=>{const s=String(chat?.status||"Open").trim().toLowerCase(); if(s==="closed") return "Closed"; if(s==="solved") return "Solved"; return "Open";};
-const supportChatRef=()=>supportChatId()?doc(db,"supportChats",supportChatId()):null;
+const supportChatRef=()=>{const id=supportChatId();return id?doc(db,"supportChats",id):null;};
 function supportNow(){return new Date().toISOString();}
 function supportMessageHtml(m){
   const type=m?.senderType==="customer"?"customer":m?.senderType==="admin"?"admin":"system";
@@ -338,7 +338,11 @@ async function createSupportChat(forceNew=false){
 }
 function subscribeSupportChat(){
   if(supportChatUnsub) supportChatUnsub();
-  const ref=supportChatRef(); if(!ref)return;
+  const ref=supportChatRef();
+  // Do not listen to supportChats/{uid} when no ticket exists. Firestore rules
+  // authorize customer reads by resource.data.authUserId, which cannot pass for
+  // a missing document. A listener starts once an existing/new ticket ID is known.
+  if(!ref)return;
   supportChatUnsub=onSnapshot(ref,snap=>{
     supportChat=snap.exists()?{id:snap.id,...snap.data()}:null;
     if(snap.exists()){
