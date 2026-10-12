@@ -17,7 +17,8 @@ const $=s=>document.querySelector(s);const money=n=>`₱${Number(n||0).toLocaleS
 const CUSTOMER_CACHE_KEY="pisoWifi.cashier.registeredCustomers.v1";
 function readCustomerCache(){try{const raw=localStorage.getItem(CUSTOMER_CACHE_KEY);const value=raw?JSON.parse(raw):[];return Array.isArray(value)?value:[]}catch{return []}}
 function rememberCustomers(list){try{localStorage.setItem(CUSTOMER_CACHE_KEY,JSON.stringify(list.map(c=>({id:c.id,...c}))));}catch(error){console.warn("[Cashier] Customer cache not available",error)}}
-const CASHIER_FINANCE_VIEW_PASSWORD="Admin@owner123";\nlet user=null,profile=null,tab="sale",unsubs=[],customerUnsub=null,selectedReceiptTxnId="",remitUnlocked=false,receiptUnlocked=false;let txns=[],chats=[],remittances=[],plans=[],customers=readCustomerCache(),customerLoadError="",customerLoadStatus=customers.length?"cached":"loading";
+const CASHIER_FINANCE_VIEW_PASSWORD="Admin@owner123";
+let user=null,profile=null,tab="sale",unsubs=[],customerUnsub=null,selectedReceiptTxnId="",remitUnlocked=false,receiptUnlocked=false;let txns=[],chats=[],remittances=[],plans=[],customers=readCustomerCache(),customerLoadError="",customerLoadStatus=customers.length?"cached":"loading";
 function msg(t,error=true){const el=$("#loginMsg");if(el){el.textContent=t;el.style.color=error?"#d9384a":"#168a52";}}
 async function syncCashierRecord(action,transactionDocId){
   const response=await fetch("/api/cashier-sync",{
