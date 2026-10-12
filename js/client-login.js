@@ -1,4 +1,4 @@
-console.info("[PISO WIFI] BUILD v86 — safe customer profile lookup");
+console.info("[PISO WIFI] BUILD v87 — customer profile email/UID link recovery");
 import { auth, db } from "./firebase.js";
 import {
   signInWithEmailAndPassword,
@@ -9,7 +9,7 @@ import {
 } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-auth.js";
 import { doc, getDoc, getDocs, setDoc, addDoc, collection, query, where, serverTimestamp } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-firestore.js";
 
-console.info("[PISO WIFI] BUILD v86 — no collection-wide customer lookup");
+console.info("[PISO WIFI] BUILD v87 — exact UID/email customer lookups only");
 
 const form = document.querySelector("#clientLoginForm");
 const msg = document.querySelector("#clientLoginMessage");
@@ -46,17 +46,19 @@ try {
 
 async function getRole(user) {
   let userProfile = null;
+  const authEmail = String(user?.email || "").trim().toLowerCase();
 
+  // First use the canonical profile keyed by Firebase UID.
   try {
     const snap = await getDoc(doc(db, "users", user.uid));
     if (snap.exists()) userProfile = snap.data() || null;
   } catch (e) {
-    console.warn("[PISO WIFI CUSTOMER AUTH] users profile lookup failed.", e);
+    console.warn("[PISO WIFI CUSTOMER AUTH] users/{uid} lookup failed.", e);
   }
 
   const role = String(userProfile?.role || "").trim().toLowerCase();
 
-  // Never turn an explicitly assigned staff/other role into a customer role.
+  // An explicitly assigned non-client role must never be converted to client.
   if (role) {
     if (role === "client" && userProfile?.active !== false) {
       return { ...userProfile, role: "client" };
@@ -64,8 +66,7 @@ async function getRole(user) {
     return { ...userProfile, role };
   }
 
-  // A missing role may be recovered only from the unit explicitly linked to
-  // this profile, and only when the unit does not belong to a different UID.
+  // Resolve a customer account through a unit explicitly linked by UID.
   const linkedUnitId = String(
     userProfile?.clientUnitId || userProfile?.unitId || ""
   ).trim();
@@ -77,23 +78,9 @@ async function getRole(user) {
         const unit = unitSnap.data() || {};
         const linkedUid = String(unit.authUserId || "").trim();
         const unitEmail = String(unit.authEmail || unit.email || "").trim().toLowerCase();
-        const authEmail = String(user.email || "").trim().toLowerCase();
-        const sameUid = linkedUid === user.uid;
-        const sameEmail = !linkedUid && !!authEmail && unitEmail === authEmail;
-
-        if (unit.active !== false && (sameUid || sameEmail)) {
-          return {
-            ...userProfile,
-            role: "client",
-            active: true,
-            clientUnitId: linkedUnitId,
-            unitId: linkedUnitId,
-            clientCode: unit.clientCode || userProfile?.clientCode || "",
-            username: unit.username || userProfile?.username || "",
-            email: unit.email || userProfile?.email || user.email || "",
-            authEmail: unit.authEmail || userProfile?.authEmail || user.email || "",
-            forcePasswordChange: unit.forcePasswordChange ?? userProfile?.forcePasswordChange
-          };
+        if (unit.active !== false &&
+            (linkedUid === user.uid || (!linkedUid && authEmail && unitEmail === authEmail))) {
+          return makeClientProfile(userProfile, unit, linkedUnitId, user, authEmail);
         }
       }
     } catch (e) {
@@ -101,71 +88,90 @@ async function getRole(user) {
     }
   }
 
-  // Query only units linked to this exact Firebase UID. Do not read the entire
-  // units collection; customer security rules commonly prohibit that operation.
+  // UID-indexed lookup avoids scanning the entire units collection.
   try {
     const byUid = await getDocs(query(
       collection(db, "units"),
       where("authUserId", "==", user.uid)
     ));
     const unitDoc = byUid.docs.find(d => d.data()?.active !== false);
-    if (unitDoc) {
-      const unit = unitDoc.data() || {};
-      return {
-        ...userProfile,
-        role: "client",
-        active: true,
-        clientUnitId: unitDoc.id,
-        unitId: unitDoc.id,
-        clientCode: unit.clientCode || userProfile?.clientCode || "",
-        username: unit.username || userProfile?.username || "",
-        email: unit.email || userProfile?.email || user.email || "",
-        authEmail: unit.authEmail || userProfile?.authEmail || user.email || "",
-        forcePasswordChange: unit.forcePasswordChange ?? userProfile?.forcePasswordChange
-      };
-    }
+    if (unitDoc) return makeClientProfile(userProfile, unitDoc.data() || {}, unitDoc.id, user, authEmail);
   } catch (e) {
     console.warn("[PISO WIFI CUSTOMER AUTH] UID-linked unit query failed.", e);
   }
 
-  // Legacy customer records may be linked by the authenticated email before
-  // authUserId was backfilled. Query only the exact authenticated email and
-  // accept the record only when active and not linked to another UID.
-  const authenticatedEmail = String(user.email || "").trim().toLowerCase();
-  if (authenticatedEmail) {
-    for (const emailField of ["authEmail", "email"]) {
+  // Legacy customer units may have the registered email but no authUserId.
+  // Only accept an exact email match when the unit is not linked to another UID.
+  if (authEmail) {
+    for (const field of ["authEmail", "email"]) {
       try {
         const matches = await getDocs(query(
           collection(db, "units"),
-          where(emailField, "==", authenticatedEmail)
+          where(field, "==", authEmail)
         ));
-        const matchingDoc = matches.docs.find(d => {
+        const match = matches.docs.find(d => {
           const unit = d.data() || {};
           const linkedUid = String(unit.authUserId || "").trim();
-          return unit.active !== false && (!linkedUid || linkedUid === user.uid);
+          const unitEmail = String(unit.authEmail || unit.email || "").trim().toLowerCase();
+          return unit.active !== false &&
+            unitEmail === authEmail &&
+            (!linkedUid || linkedUid === user.uid);
         });
-        if (matchingDoc) {
-          const unit = matchingDoc.data() || {};
-          return {
-            ...userProfile,
-            role: "client",
-            active: true,
-            clientUnitId: matchingDoc.id,
-            unitId: matchingDoc.id,
-            clientCode: unit.clientCode || userProfile?.clientCode || "",
-            username: unit.username || userProfile?.username || "",
-            email: unit.email || authenticatedEmail,
-            authEmail: unit.authEmail || authenticatedEmail,
-            forcePasswordChange: unit.forcePasswordChange ?? userProfile?.forcePasswordChange
-          };
+        if (match) {
+          const unit = match.data() || {};
+          const profile = makeClientProfile(userProfile, unit, match.id, user, authEmail);
+          // Best-effort repair of the missing profile/link; authorization to
+          // write these documents is not required for the login decision.
+          try {
+            await setDoc(doc(db, "users", user.uid), {
+              role: "client",
+              active: unit.active !== false,
+              email: authEmail,
+              authEmail,
+              clientUnitId: match.id,
+              unitId: match.id,
+              clientCode: unit.clientCode || "",
+              username: unit.username || "",
+              updatedAt: serverTimestamp()
+            }, { merge: true });
+          } catch (repairErr) {
+            console.warn("[PISO WIFI CUSTOMER AUTH] profile-link repair skipped.", repairErr);
+          }
+          try {
+            if (!String(unit.authUserId || "").trim()) {
+              await setDoc(doc(db, "units", match.id), {
+                authUserId: user.uid,
+                authEmail,
+                updatedAt: serverTimestamp()
+              }, { merge: true });
+            }
+          } catch (repairErr) {
+            console.warn("[PISO WIFI CUSTOMER AUTH] unit-link repair skipped.", repairErr);
+          }
+          return profile;
         }
       } catch (e) {
-        console.warn(`[PISO WIFI CUSTOMER AUTH] exact ${emailField} lookup failed.`, e);
+        console.warn(`[PISO WIFI CUSTOMER AUTH] ${field}-indexed unit lookup failed.`, e);
       }
     }
   }
 
   return userProfile;
+}
+
+function makeClientProfile(userProfile, unit, unitId, user, authEmail) {
+  return {
+    ...(userProfile || {}),
+    role: "client",
+    active: unit.active !== false,
+    clientUnitId: unitId,
+    unitId,
+    clientCode: unit.clientCode || userProfile?.clientCode || "",
+    username: unit.username || userProfile?.username || "",
+    email: unit.email || userProfile?.email || authEmail || "",
+    authEmail: unit.authEmail || userProfile?.authEmail || authEmail || "",
+    forcePasswordChange: unit.forcePasswordChange ?? userProfile?.forcePasswordChange
+  };
 }
 
 async function routeUser(user) {
@@ -435,7 +441,7 @@ function openOtpModal(result){
       <h2 id="otpTitle">Enter your 6-digit code</h2>
       <p class="reset-intro">We sent a verification code to <b>${esc(result.email||recoveryEmail)}</b>. The code expires in 10 minutes.</p>
       <form id="otpForm">
-        <label class="client-field"><span>6-Digit OTP</span><input id="otpCode" inputmode="numeric" autocomplete="one-time-code" maxlength="6" pattern="[0-9]{6}" placeholder="000000" required></label>
+        <label class="client-field"><span>6-Digit OTP</span><input id="otpCode" inputmode="numeric" autocomplete="one-time-code" maxlength="6" pattern="\\d{6}" placeholder="000000" required></label>
         <div id="otpMessage" class="client-login-message" role="status" aria-live="polite"></div>
         <div class="client-reset-actions"><button class="client-secondary" id="otpCancel" type="button">Cancel</button><button class="client-primary" id="otpVerify" type="submit">Verify OTP</button></div>
         <div class="client-reset-note">Never share your OTP with anyone. We will not ask for it by phone, email, or chat.</div>
@@ -457,9 +463,7 @@ async function verifyOtp(e){
   if(!/^\d{6}$/.test(code)){msgEl.textContent="Enter the 6-digit OTP.";msgEl.className="client-login-message error";return;}
   btn.disabled=true;btn.textContent="Verifying…";msgEl.textContent="Verifying your code…";msgEl.className="client-login-message";
   try{
-    const verification = await callRecovery({action:"verifyCode",clientId:recoveryClientId,email:recoveryEmail,code});
-    recoveryToken = verification.resetToken || verification.verificationToken || "";
-    if (!recoveryToken) throw new Error("OTP verified, but the reset session token was not returned. Request a new code.");
+    await callRecovery({action:"verifyCode",clientId:recoveryClientId,email:recoveryEmail,code});
     document.querySelector("#otpModal")?.remove();
     openNewPasswordModal();
   }catch(err){
@@ -514,16 +518,7 @@ async function saveNewPassword(e){
 function wrapSuccessAndReturn(){
   const wrap=document.querySelector("#newPasswordModal");const card=wrap?.querySelector(".client-reset-card");if(!card)return;
   card.innerHTML=`<div class="client-reset-icon success" aria-hidden="true">✓</div><span class="eyebrow">PASSWORD UPDATED</span><h2>Password updated successfully</h2><p class="reset-intro">Your new password is now active. You can return to the Customer Account login.</p><div class="client-reset-actions" style="grid-template-columns:1fr"><button class="client-primary" type="button" id="recoveryDone">Return to Login</button></div>`;
-  const returnToLogin=()=>{
-    wrap.remove();
-    const emailInput=document.querySelector("#email, #loginEmail, input[type='email']");
-    if(emailInput){ emailInput.value=recoveryEmail||emailInput.value; }
-    const passwordInput=document.querySelector("#password, #loginPassword, input[autocomplete='current-password']");
-    if(passwordInput){ passwordInput.value=""; passwordInput.focus(); }
-    const messageEl=document.querySelector("#loginMessage, #loginError, .login-message");
-    if(messageEl){ messageEl.textContent="Password updated. Please log in with your new password."; messageEl.className="login-message success"; }
-  };
-  card.querySelector("#recoveryDone").onclick=returnToLogin;
-  setTimeout(()=>{if(document.querySelector("#newPasswordModal"))returnToLogin();},2500);
+  card.querySelector("#recoveryDone").onclick=()=>wrap.remove();
+  setTimeout(()=>{if(document.querySelector("#newPasswordModal"))wrap.remove();},3500);
 }
 
