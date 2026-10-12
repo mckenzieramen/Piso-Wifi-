@@ -1,4 +1,4 @@
-console.info("[PISO WIFI] BUILD v87 — customer profile email/UID link recovery");
+console.info("[PISO WIFI] BUILD v88 — customer profile email/UID link recovery");
 import { auth, db } from "./firebase.js";
 import {
   signInWithEmailAndPassword,
@@ -9,7 +9,7 @@ import {
 } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-auth.js";
 import { doc, getDoc, getDocs, setDoc, addDoc, collection, query, where, serverTimestamp } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-firestore.js";
 
-console.info("[PISO WIFI] BUILD v87 — exact UID/email customer lookups only");
+console.info("[PISO WIFI] BUILD v88 — legacy customer role resolved through linked unit");
 
 const form = document.querySelector("#clientLoginForm");
 const msg = document.querySelector("#clientLoginMessage");
@@ -58,12 +58,21 @@ async function getRole(user) {
 
   const role = String(userProfile?.role || "").trim().toLowerCase();
 
-  // An explicitly assigned non-client role must never be converted to client.
-  if (role) {
-    if (role === "client" && userProfile?.active !== false) {
-      return { ...userProfile, role: "client" };
-    }
-    return { ...userProfile, role };
+  // Explicit privileged roles must never enter the Customer portal.
+  // Older customer profiles may contain a stale/legacy role value; for those,
+  // continue to the authoritative units lookup below and require a matching
+  // unit linked to this Firebase UID or this registered email.
+  const privilegedRoles = new Set([
+    "admin", "administrator", "owner", "superadmin",
+    "cashier", "staff", "employee", "manager"
+  ]);
+
+  if (privilegedRoles.has(role)) {
+    return { ...(userProfile || {}), role };
+  }
+
+  if (role === "client" && userProfile?.active !== false) {
+    return { ...userProfile, role: "client" };
   }
 
   // Resolve a customer account through a unit explicitly linked by UID.
