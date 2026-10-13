@@ -112,9 +112,6 @@ async function syncSale(access,project,transactionDocId,callerUid) {
   const docs=await runQuery(access,project,"monthlyRecords",[["unitId",String(sale.unitId)],["month",month]],transaction);
   const prior=docs[0];
   const priorFields=docFields(prior);
-  // Firestore REST can return a fully-qualified URL for document names in some
-  // query responses. Commit writes require the canonical resource name only.
-  const canonicalResourceName = value => String(value || "").replace(/^https:\/\/firestore\.googleapis\.com\/v1\//, "");
   const already=Array.isArray(priorFields.cashierTransactionIds)?priorFields.cashierTransactionIds:[];
   if(prior && already.includes(transactionDocId)) {
     await setSyncStatus(access,project,transactionDocId,"dashboardSalesSyncStatus");
@@ -124,7 +121,7 @@ async function syncSale(access,project,transactionDocId,callerUid) {
   const now=new Date().toISOString();
   if(prior) {
     const gross=Number(priorFields.grossSales||0)+Number(sale.grossSales||0);
-    await commit(access,project,[{update:{name:canonicalResourceName(prior.name),fields:{
+    await commit(access,project,[{update:{name:prior.name,fields:{
       grossSales:num(gross),cashierTransactionIds:{arrayValue:{values:ids.map(str)}},updatedAt:stamp(now)
     }},updateMask:{fieldPaths:["grossSales","cashierTransactionIds","updatedAt"]}}],transaction);
   } else {
