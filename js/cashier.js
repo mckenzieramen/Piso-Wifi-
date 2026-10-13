@@ -164,7 +164,21 @@ function renderForcePasswordChange(){
     }
   };
 }
-function startRealtime(){unsubs.forEach(f=>f());unsubs=[];unsubs.push(onSnapshot(query(collection(db,"cashierTransactions"),where("cashierId","==",user.uid)),s=>{txns=s.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>String(b.createdAt||"").localeCompare(String(a.createdAt||"")));render()}));unsubs.push(onSnapshot(query(collection(db,"customerChats"),where("cashierId","==",user.uid)),s=>{chats=s.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>String(b.updatedAt||"").localeCompare(String(a.updatedAt||"")));render()}));unsubs.push(onSnapshot(query(collection(db,"remittances"),where("cashierId","==",user.uid)),s=>{remittances=s.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>String(b.createdAt||"").localeCompare(String(a.createdAt||"")));render()}));unsubs.push(onSnapshot(collection(db,"wifi_plans"),s=>{plans=s.docs.map(d=>({id:d.id,...d.data()})).filter(x=>x.status==="ACTIVE").sort((a,b)=>Number(a.sortOrder||0)-Number(b.sortOrder||0));render()}));loadRegisteredCustomers().catch(error=>{customerLoadStatus="error";customerLoadError=error?.message||"Could not start customer loading.";console.error("[Cashier] Could not start customer loader:",error);render()});}
+function startRealtime(){
+  unsubs.forEach(f=>f());unsubs=[];
+  const listenerError=(name,error)=>{
+    console.error(`[Cashier] ${name} realtime listener failed:`,error);
+    if(error?.code==="permission-denied"){
+      console.error(`[Cashier] Firestore rules denied access to ${name}. The feature remains enabled; its collection needs the correct signed-in cashier permissions in Firebase Rules.`);
+    }
+  };
+  unsubs.push(onSnapshot(query(collection(db,"cashierTransactions"),where("cashierId","==",user.uid)),s=>{txns=s.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>String(b.createdAt||"").localeCompare(String(a.createdAt||"")));render()},e=>listenerError("cashierTransactions",e)));
+  unsubs.push(onSnapshot(query(collection(db,"customerChats"),where("cashierId","==",user.uid)),s=>{chats=s.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>String(b.updatedAt||"").localeCompare(String(a.updatedAt||"")));render()},e=>listenerError("customerChats",e)));
+  unsubs.push(onSnapshot(query(collection(db,"remittances"),where("cashierId","==",user.uid)),s=>{remittances=s.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>String(b.createdAt||"").localeCompare(String(a.createdAt||"")));render()},e=>listenerError("remittances",e)));
+  // Preserve the existing Wi-Fi plan listener; it may support existing cashier features.
+  unsubs.push(onSnapshot(collection(db,"wifi_plans"),s=>{plans=s.docs.map(d=>({id:d.id,...d.data()})).filter(x=>x.status==="ACTIVE").sort((a,b)=>Number(a.sortOrder||0)-Number(b.sortOrder||0));render()},e=>listenerError("wifi_plans",e)));
+  loadRegisteredCustomers().catch(error=>{customerLoadStatus="error";customerLoadError=error?.message||"Could not start customer loading.";console.error("[Cashier] Could not start customer loader:",error);render()});
+}
 async function loadRegisteredCustomers(){
   if(customerUnsub){customerUnsub();customerUnsub=null;}
   customerLoadStatus=customers.length?"cached":"loading";customerLoadError="";render();
