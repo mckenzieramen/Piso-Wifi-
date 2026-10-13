@@ -86,7 +86,7 @@ const esc = (v) => String(v ?? "").replace(/[&<>"']/g, m => ({"&":"&amp;","<":"&
 const uid = () => `${Date.now()}-${Math.random().toString(36).slice(2,8)}`;
 
 let currentUser = null;
-let units = [], records = [], payments = [], notifications = [], activities = [], supportChats = [];
+let units = [], records = [], payments = [], cashierTransactions = [], notifications = [], activities = [], supportChats = [];
 let supportUnsub=null, selectedSupportChatId="";
 let coreRealtimeUnsubs=[];
 let dashboardRealtimeTimer=null;
@@ -251,11 +251,12 @@ async function loadData(){
   // Core financial collections are required for the dashboard.
   // Notifications and Activity Log are optional during rollout so a missing
   // Firestore rule for those newer collections cannot blank the whole app.
-  const [u,r,p,s] = await Promise.all([
+  const [u,r,p,s,ct] = await Promise.all([
     getDocs(collection(db,"units")),
     getDocs(collection(db,"monthlyRecords")),
     getDocs(collection(db,"payments")),
-    getDoc(doc(db,"settings","business"))
+    getDoc(doc(db,"settings","business")),
+    getDocs(collection(db,"cashierTransactions")).catch(error=>{console.warn("Cashier transactions are not readable; publish the required Firestore read rules.",error);return {docs:[]};})
   ]);
 
   units=u.docs.map(d=>({id:d.id,...d.data()}));
@@ -268,6 +269,7 @@ async function loadData(){
   }
   records=r.docs.map(d=>({id:d.id,...d.data()}));
   payments=p.docs.map(d=>({id:d.id,...d.data()}));
+  cashierTransactions=ct.docs.map(d=>({id:d.id,...d.data()}));
   if(s.exists()) settings={...settings,...s.data()};
 
   try {
@@ -486,7 +488,10 @@ function exportUnitsCsv(rows){ downloadCsv(`piso-wifi-units-${selectedMonth}.csv
 
 function renderReports(){
   const rows=normalizeRows(), t=totals(rows);
+  const cashierMonth=cashierTransactions.filter(x=>String(x.saleDate||x.createdAt?.toDate?.().toISOString?.()||x.createdAt||"").slice(0,7)===selectedMonth && String(x.status||"").toUpperCase()!=="REJECTED");
+  const cashierGross=cashierMonth.reduce((sum,x)=>sum+Math.max(0,Number(x.grossSales||0)),0);
   view.innerHTML=baseHead("Monthly Reports","View and export monthly summaries.",`<div class="tools"><button class="secondary-btn" id="downloadReport">Download</button><button class="primary-btn" id="printReport">Print</button></div>`)+`<div class="report-cards">${reportCard("Total Units",units.length)}${reportCard("Total Gross Sales",money(t.gross))}${reportCard("Total Internet Cost",money(t.internet))}${reportCard("Total Owner Earn",money(Math.max(0,t.owner-t.elec)),"green")}${reportCard("Customer Earnings",money(t.due),"customer-earnings")}${reportCard("Client Net",money(t.due),"customer-net")}${reportCard("Total Electricity",money(t.elec))}${reportCard("Total Amount Due",money(t.due))}${reportCard("Customer Accumulated Earnings",money(t.paid),"green")}${reportCard("Outstanding",money(t.balance),"red")}</div><div class="panel"><div class="panel-head"><div><h3>${monthLabel(selectedMonth)} Detail</h3><p>All calculations use the current business settings.</p></div><span class="report-rule">Internet ${money(settings.internetCost)} separate · Owner ${settings.ownerPercent}% · Client ${settings.clientPercent}% · Electricity +${money(settings.electricity)}</span></div><div class="table-wrap"><table><thead><tr><th>Unit</th><th>Client</th><th>Gross Sales</th><th>Internet</th><th>Net Sales</th><th>Owner Share</th><th>Customer Earnings</th><th>Electricity</th><th>Client Net</th><th>Amount Due</th><th>Paid</th><th>Balance</th><th>Status</th></tr></thead><tbody>${rows.length?rows.map(x=>`<tr><td>${esc(x.u.unitCode)}</td><td>${esc(x.u.name)}</td><td>${money(x.c.gross)}</td><td>${money(x.c.internet)}</td><td>${money(x.c.net)}</td><td>${money(x.c.owner)}</td><td>${money(x.c.clientTotal)}</td><td>${money(x.c.elec)}</td><td>${money(x.c.clientTotal)}</td><td>${money(x.c.clientTotal)}</td><td>${money(x.c.paid)}</td><td class="amount">${money(x.c.balance)}</td><td>${statusBadge(x.c.status)}</td></tr>`).join(""):emptyRow(13,"No sales recorded for this month.")}</tbody></table></div></div>`;
+  view.innerHTML += `<div class="panel"><div class="panel-head"><div><h3>Cashier Recorded Sales — ${monthLabel(selectedMonth)}</h3><p>Live records from cashierTransactions. Rejected transactions are excluded. Kept separate from monthlyRecords to prevent double-counting.</p></div><strong>${money(cashierGross)}</strong></div><div class="table-wrap"><table><thead><tr><th>Transaction</th><th>Date</th><th>Customer</th><th>Unit</th><th>Cashier</th><th>Gross Sales</th><th>Status</th></tr></thead><tbody>${cashierMonth.length?cashierMonth.slice().sort((a,b)=>String(b.saleDate||b.recordedAt||"").localeCompare(String(a.saleDate||a.recordedAt||""))).map(x=>`<tr><td>${esc(x.transactionId||x.id)}</td><td>${esc(x.saleDate||"—")}</td><td>${esc(x.customerName||x.customerId||"—")}</td><td>${esc(x.unitCode||"—")}</td><td>${esc(x.cashierName||"—")}</td><td>${money(x.grossSales)}</td><td>${esc(x.status||"—")}</td></tr>`).join(""):emptyRow(7,"No cashier sales recorded for this month.")}</tbody></table></div></div>`;
   $("#downloadReport").onclick=()=>downloadReportHtml(t,rows); $("#printReport").onclick=()=>printReport(t,rows);
 }
 function reportCard(label,value,cls=""){return `<article class="report-card ${cls}"><span>${label}</span><strong>${value}</strong></article>`;}
@@ -1029,14 +1034,15 @@ function openPrintWindow(html){const w=window.open("","_blank","width=1200,heigh
 
 function stopCoreRealtime(){coreRealtimeUnsubs.forEach(fn=>{try{fn()}catch(e){}});coreRealtimeUnsubs=[];}
 function scheduleDashboardRealtime(){
-  if(route!=="dashboard")return;
+  if(route!=="dashboard" && route!=="reports")return;
   clearTimeout(dashboardRealtimeTimer);
   const scrollY=window.scrollY;
   const active=document.activeElement;
   const activeId=active?.id||"";
   const activeValue=active && "value" in active ? active.value : "";
   dashboardRealtimeTimer=setTimeout(()=>{
-    if(route!=="dashboard")return;
+    if(route!=="dashboard" && route!=="reports")return;
+    if(route==="reports"){renderReports();return;}
     renderDashboard();
     window.scrollTo(0,scrollY);
     if(activeId){const next=document.getElementById(activeId);if(next){next.focus({preventScroll:true});if("value" in next)next.value=activeValue;}}
@@ -1051,6 +1057,7 @@ function startCoreRealtime(){
   bind("units",rows=>{units=rows;});
   bind("monthlyRecords",rows=>{records=rows;});
   bind("payments",rows=>{payments=rows;});
+  bind("cashierTransactions",rows=>{cashierTransactions=rows;});
   coreRealtimeUnsubs.push(onSnapshot(doc(db,"settings","business"),snap=>{if(snap.exists())settings={...settings,...snap.data()};scheduleDashboardRealtime();},err=>console.warn("PISO WIFI realtime settings unavailable",err)));
   coreRealtimeUnsubs.push(onSnapshot(collection(db,"activities"),snap=>{activities=snap.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>timeValue(b.createdAt)-timeValue(a.createdAt));scheduleDashboardRealtime();},err=>console.warn("PISO WIFI realtime activities unavailable",err)));
 }
