@@ -1,4 +1,4 @@
-console.info("[PISO WIFI] BUILD v88 — customer profile email/UID link recovery");
+console.info("[PISO WIFI] BUILD v87 — customer profile email/UID link recovery");
 import { auth, db } from "./firebase.js";
 import {
   signInWithEmailAndPassword,
@@ -9,7 +9,7 @@ import {
 } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-auth.js";
 import { doc, getDoc, getDocs, setDoc, addDoc, collection, query, where, serverTimestamp } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-firestore.js";
 
-console.info("[PISO WIFI] BUILD v88 — legacy customer role resolved through linked unit");
+console.info("[PISO WIFI] BUILD v87 — exact UID/email customer lookups only");
 
 const form = document.querySelector("#clientLoginForm");
 const msg = document.querySelector("#clientLoginMessage");
@@ -58,21 +58,12 @@ async function getRole(user) {
 
   const role = String(userProfile?.role || "").trim().toLowerCase();
 
-  // Explicit privileged roles must never enter the Customer portal.
-  // Older customer profiles may contain a stale/legacy role value; for those,
-  // continue to the authoritative units lookup below and require a matching
-  // unit linked to this Firebase UID or this registered email.
-  const privilegedRoles = new Set([
-    "admin", "administrator", "owner", "superadmin",
-    "cashier", "staff", "employee", "manager"
-  ]);
-
-  if (privilegedRoles.has(role)) {
-    return { ...(userProfile || {}), role };
-  }
-
-  if (role === "client" && userProfile?.active !== false) {
-    return { ...userProfile, role: "client" };
+  // An explicitly assigned non-client role must never be converted to client.
+  if (role) {
+    if (role === "client" && userProfile?.active !== false) {
+      return { ...userProfile, role: "client" };
+    }
+    return { ...userProfile, role };
   }
 
   // Resolve a customer account through a unit explicitly linked by UID.
@@ -452,6 +443,7 @@ function openOtpModal(result){
       <form id="otpForm">
         <label class="client-field"><span>6-Digit OTP</span><input id="otpCode" inputmode="numeric" autocomplete="one-time-code" maxlength="6" pattern="\\d{6}" placeholder="000000" required></label>
         <div id="otpMessage" class="client-login-message" role="status" aria-live="polite"></div>
+        <p style="margin:10px 0 14px;text-align:center;font-size:13px;color:#64748b;">Didn't receive the code? <button type="button" id="otpResend" class="client-link-button" style="border:0;background:none;color:#0875e1;font-weight:700;cursor:pointer;padding:0;" disabled>Resend OTP in 30s</button></p>
         <div class="client-reset-actions"><button class="client-secondary" id="otpCancel" type="button">Cancel</button><button class="client-primary" id="otpVerify" type="submit">Verify OTP</button></div>
         <div class="client-reset-note">Never share your OTP with anyone. We will not ask for it by phone, email, or chat.</div>
       </form>
@@ -462,6 +454,54 @@ function openOtpModal(result){
   wrap.querySelector("#otpClose").onclick=()=>wrap.remove();
   wrap.querySelector("#otpCancel").onclick=()=>wrap.remove();
   wrap.querySelector("#otpForm").onsubmit=verifyOtp;
+
+  const resendBtn=wrap.querySelector("#otpResend");
+  let seconds=30;
+  resendBtn.disabled=true;
+  resendBtn.textContent=`Resend OTP in ${seconds}s`;
+  const resendTimer=setInterval(()=>{
+    if(!document.body.contains(wrap)){clearInterval(resendTimer);return;}
+    seconds--;
+    if(seconds<=0){clearInterval(resendTimer);resendBtn.disabled=false;resendBtn.textContent="Resend OTP";}
+    else resendBtn.textContent=`Resend OTP in ${seconds}s`;
+  },1000);
+  resendBtn.addEventListener("click",async()=>{
+    if(resendBtn.disabled)return;
+    resendBtn.disabled=true;
+    resendBtn.textContent="Sending OTP…";
+    const msg=wrap.querySelector("#otpMessage");
+    msg.textContent="Requesting a new verification code…";
+    msg.className="client-login-message";
+    try{
+      const result=await callRecovery({action:"requestCode",clientId:recoveryClientId,email:recoveryEmail});
+      recoveryToken=result.resetToken||result.verificationToken||result.recoveryToken||result.sessionToken||"";
+      recoveryEmail=result.email||recoveryEmail;
+      if(!recoveryToken) throw new Error("A new code was requested, but the recovery token was not returned. Please try again.");
+      input.value="";
+      wrap.querySelector(".reset-intro").innerHTML=`We sent a new verification code to <b>${esc(recoveryEmail)}</b>. The code expires in 10 minutes.`;
+      msg.textContent="A new OTP was sent. Use the latest code from your email.";
+      msg.className="client-login-message success";
+      seconds=30;
+      resendBtn.textContent=`Resend OTP in ${seconds}s`;
+      const startCooldown=()=>{
+        if(!document.body.contains(wrap))return;
+        resendBtn.disabled=true;
+        resendBtn.textContent=`Resend OTP in ${seconds}s`;
+        const tick=setInterval(()=>{
+          if(!document.body.contains(wrap)){clearInterval(tick);return;}
+          seconds--;
+          if(seconds<=0){clearInterval(tick);resendBtn.disabled=false;resendBtn.textContent="Resend OTP";}
+          else resendBtn.textContent=`Resend OTP in ${seconds}s`;
+        },1000);
+      };
+      startCooldown();
+    }catch(err){
+      msg.textContent=err.message||"Unable to resend OTP. Please try again.";
+      msg.className="client-login-message error";
+      resendBtn.disabled=false;
+      resendBtn.textContent="Resend OTP";
+    }
+  });
   input.focus();
 }
 
