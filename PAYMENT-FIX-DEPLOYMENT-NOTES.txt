@@ -1,0 +1,23 @@
+PISO WIFI PAYMENT ACKNOWLEDGMENT RULE FIX
+========================================
+
+Root cause identified in the provided Firestore Rules:
+The Cashier payment handler updates these fields on cashierTransactions:
+- customerEarningsAcknowledgedBy
+- customerEarningsAcknowledgedAt
+
+But the cashierTransactions allow-update rule did not include those two fields in affectedKeys(). Firestore therefore rejects the update with permission-denied.
+
+Change included:
+- Added only customerEarningsAcknowledgedBy and customerEarningsAcknowledgedAt to the existing allowlist.
+- Kept the existing cashier ownership, active cashier, status-transition, and paid-by checks.
+- Did not add allow read/write true or weaken access to all documents.
+
+DEPLOYMENT
+1. In Firebase Console > Firestore Database > Rules, replace the rules with the included firestore.rules file and Publish.
+2. Deploy the ZIP to the existing GitHub/Cloudflare Pages project using the same deployment method as before.
+3. Test with a non-production/low-value transaction first.
+4. Confirm payment modal, Firestore transaction status, receipts collection, Admin Payments/Monthly Reports, Customer Account, and email delivery.
+5. If Admin/Customer totals still do not update, check /api/cashier-sync response and Cloudflare Pages Functions secrets:
+   FIREBASE_PROJECT_ID, FIREBASE_API_KEY, FIREBASE_SERVICE_ACCOUNT_JSON.
+Note: This rules fix addresses the exact acknowledgment-field permission mismatch. It does not by itself prove that email delivery or all dashboard aggregation paths are working; test each step.
