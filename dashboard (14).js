@@ -12,7 +12,7 @@ import {
 console.info("[PISO WIFI] BUILD v61 — navigation/auth syntax fixed");
 
 const $ = (s) => document.querySelector(s);
-const APPS_SCRIPT_SHEET_SYNC_URL = "https://script.google.com/macros/s/AKfycbziRdnywiBqCJoBqJwXElHEGWdgyljApiYAhOvDJEyKJ_rzLWPP_GgYSmsfR1IE3_Fe/exec";
+const APPS_SCRIPT_SHEET_SYNC_URL = "https://script.google.com/macros/s/AKfycbzJcIf9rpdunJ8-1kDvgePWTT1L-cQOFzZLQHFQMaqBYTlviovyxjz4JOX-FpvUrjFu/exec";
 async function postSheetSyncPayload(payload){
   const form=document.createElement("form");
   form.method="POST";

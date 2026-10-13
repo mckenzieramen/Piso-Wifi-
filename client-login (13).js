@@ -179,7 +179,7 @@ document.querySelector("#clientForgotPassword").onclick = () => {
   openForgotPasswordModal();
 };
 
-const APPS_SCRIPT_OTP_URL = "https://script.google.com/macros/s/AKfycbziRdnywiBqCJoBqJwXElHEGWdgyljApiYAhOvDJEyKJ_rzLWPP_GgYSmsfR1IE3_Fe/exec";
+const APPS_SCRIPT_OTP_URL = "https://script.google.com/macros/s/AKfycbzJcIf9rpdunJ8-1kDvgePWTT1L-cQOFzZLQHFQMaqBYTlviovyxjz4JOX-FpvUrjFu/exec";
 let recoveryToken = "";
 let recoveryEmail = "";
 let recoveryClientId = "";
@@ -231,13 +231,11 @@ async function callRecovery(payload){
 
 async function submitResetRequest(e){
   e.preventDefault();
-  const clientId=document.querySelector("#resetClientId").value.replace(/\s+/g,"").toUpperCase();
+  const clientId=document.querySelector("#resetClientId").value.trim().toUpperCase();
   const email=document.querySelector("#resetEmail").value.trim().toLowerCase();
-  document.querySelector("#resetClientId").value = clientId;
   const msgEl=document.querySelector("#resetMessage");
   const btn=document.querySelector("#resetSubmit");
-  if(!/^CID-\d{3,}$/.test(clientId)){msgEl.textContent="Enter your Client ID in the format CID-0005.";msgEl.className="client-login-message error";return;}
-  if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)){msgEl.textContent="Enter the registered Gmail address.";msgEl.className="client-login-message error";return;}
+  if(!/^CID-\d{3,}$/.test(clientId)||!email){msgEl.textContent="Enter a valid Client ID and registered Gmail.";msgEl.className="client-login-message error";return;}
   btn.disabled=true;btn.textContent="Sending OTP…";msgEl.textContent="Checking your account…";msgEl.className="client-login-message";
   try{
     const result=await callRecovery({action:"requestCode",clientId,email});
