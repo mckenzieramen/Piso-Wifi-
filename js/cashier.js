@@ -229,21 +229,50 @@ async function payCustomerEarnings(id){
   const t=txns.find(x=>x.id===id);
   if(!t||t.status==="CUSTOMER EARNINGS PAID")return;
   const signatureName=await confirmEarningsPayment(t);if(!signatureName)return;
+  const button=document.querySelector(`[data-pay-earning="${CSS.escape(id)}"]`);
+  if(button){button.disabled=true;button.textContent="Saving payment…";}
   const receiptId=`REC-${Date.now()}`;
   const receipt={receiptId,transactionId:t.transactionId,customerName:t.customerName,customerId:t.customerId||"",unitCode:t.unitCode,amount:Number(t.totalCustomerEarnings||0),grossSales:Number(t.grossSales||0),status:"PAID",paidAt:new Date().toISOString(),cashierId:user.uid,cashierName:profile.name||profile.email};
-  await updateDoc(doc(db,"cashierTransactions",id),{status:"CUSTOMER EARNINGS PAID",customerEarningsPaid:true,customerEarningsPaidAt:serverTimestamp(),customerEarningsPaidBy:user.uid,customerEarningsAcknowledgedBy:signatureName,customerEarningsAcknowledgedAt:serverTimestamp(),receiptId,receiptSummary:receipt});
-  await addDoc(collection(db,"receipts"),{...receipt,createdAt:serverTimestamp(),receiptType:"CUSTOMER_EARNINGS",visibility:"SUMMARY_ONLY"});
-  await audit("CUSTOMER_EARNINGS_PAID",id,{amount:receipt.amount,receiptId});
-  const receiptTxn={...t,id,receiptId,receiptSummary:receipt,status:"CUSTOMER EARNINGS PAID"};
-  let dashboardSyncError=null;
-  try{await syncCashierRecord("payment",id);}catch(error){dashboardSyncError=error;console.error("[PISO WIFI CASHIER] Customer payment dashboard sync failed",error);}
   try{
-    await sendReceiptEmailForTransaction(receiptTxn);
-    alert(`Payment recorded. Receipt ${receiptId} generated and emailed to ${receiptTxn.customerEmail}.${dashboardSyncError?" However, Customer/Admin payment totals did not sync: "+dashboardSyncError.message+" Use Retry Dashboard Sync in Sales History.":""}`);
+    // Persist the transaction first. If Firestore rejects it, do not show a success message.
+    await updateDoc(doc(db,"cashierTransactions",id),{
+      status:"CUSTOMER EARNINGS PAID",
+      customerEarningsPaid:true,
+      customerEarningsPaidAt:serverTimestamp(),
+      customerEarningsPaidBy:user.uid,
+      customerEarningsAcknowledgedBy:signatureName,
+      customerEarningsAcknowledgedAt:serverTimestamp(),
+      receiptId,
+      receiptSummary:receipt
+    });
+    try{
+      await addDoc(collection(db,"receipts"),{...receipt,createdAt:serverTimestamp(),receiptType:"CUSTOMER_EARNINGS",visibility:"SUMMARY_ONLY"});
+    }catch(receiptError){
+      console.error("[PISO WIFI CASHIER] Payment saved but receipt document creation failed",receiptError);
+      alert("Payment status was saved, but the receipt record could not be created: "+(receiptError?.message||receiptError));
+    }
+    await audit("CUSTOMER_EARNINGS_PAID",id,{amount:receipt.amount,receiptId});
+    const receiptTxn={...t,id,receiptId,receiptSummary:receipt,status:"CUSTOMER EARNINGS PAID"};
+    let dashboardSyncError=null;
+    try{await syncCashierRecord("payment",id);}catch(error){dashboardSyncError=error;console.error("[PISO WIFI CASHIER] Customer payment dashboard sync failed",error);}
+    let emailError=null;
+    try{await sendReceiptEmailForTransaction(receiptTxn);}catch(error){emailError=error;console.error("[PISO WIFI CASHIER] Receipt email failed",error);}
+    let message=`Payment status saved for ${t.customerName}. Receipt: ${receiptId}.`;
+    if(!emailError)message+=` Email sent to ${receiptTxn.customerEmail}.`;
+    else message+=` EMAIL NOT SENT: ${emailError.message}`;
+    if(dashboardSyncError)message+=` ADMIN/CUSTOMER SYNC FAILED: ${dashboardSyncError.message}`;
+    else message+=" Admin payment sync completed.";
+    alert(message);
+    render();
   }catch(error){
-    alert(`Payment recorded and receipt ${receiptId} generated, but email was not sent: ${error.message}${dashboardSyncError?" Dashboard sync also failed: "+dashboardSyncError.message:""} You can retry the receipt email and dashboard sync from their respective actions.`);
+    console.error("[PISO WIFI CASHIER] Could not save customer earnings payment",error);
+    const code=String(error?.code||"");
+    let detail=error?.message||String(error);
+    if(code==="permission-denied")detail="Firebase rejected the payment update (permission-denied). Confirm that the updated firestore.rules is published to the same Firebase project and that this Cashier account is active and owns this sale.";
+    alert("PAYMENT WAS NOT CONFIRMED. "+detail);
+  }finally{
+    if(button){button.disabled=false;button.textContent="Send Payment";}
   }
-  render();
 }
 function openReceiptTab(id){selectedReceiptTxnId=id;tab="receipt";render();}
 function receiptHtml(t){const r=t.receiptSummary||{};return `<!doctype html><html><body style="margin:0;background:#f2f5fa;font-family:Arial,sans-serif;color:#18243a;padding:24px"><div style="max-width:560px;margin:auto;background:#fff;border-radius:16px;overflow:hidden;border:1px solid #dce4ef"><div style="background:#0b2345;color:#fff;padding:24px"><h1 style="margin:0;font-size:22px">PISO WIFI</h1><p style="margin:6px 0 0;color:#c8dcfa">Payment Receipt</p></div><div style="padding:24px"><p>Hello ${esc(t.customerName||"Customer")},</p><p>Your customer earnings payment has been recorded. Please keep this receipt for your records.</p><table style="width:100%;border-collapse:collapse"><tr><td style="padding:10px;border-bottom:1px solid #eee">Receipt No.</td><td style="padding:10px;border-bottom:1px solid #eee;text-align:right"><b>${esc(r.receiptId||t.receiptId||"")}</b></td></tr><tr><td style="padding:10px;border-bottom:1px solid #eee">Customer</td><td style="padding:10px;border-bottom:1px solid #eee;text-align:right">${esc(t.customerName||"")}</td></tr><tr><td style="padding:10px;border-bottom:1px solid #eee">Customer ID</td><td style="padding:10px;border-bottom:1px solid #eee;text-align:right">${esc(t.customerId||"")}</td></tr><tr><td style="padding:10px;border-bottom:1px solid #eee">Amount Paid</td><td style="padding:10px;border-bottom:1px solid #eee;text-align:right"><b>${money(r.amount)}</b></td></tr><tr><td style="padding:10px;border-bottom:1px solid #eee">Payment Date</td><td style="padding:10px;border-bottom:1px solid #eee;text-align:right">${esc(dateTime(r.paidAt||t.customerEarningsPaidAt))}</td></tr><tr><td style="padding:10px">Status</td><td style="padding:10px;text-align:right;color:#168a52"><b>PAID</b></td></tr></table><p style="margin-top:24px">Thank you,<br><b>PISO WIFI Team</b></p></div></div></body></html>`}
