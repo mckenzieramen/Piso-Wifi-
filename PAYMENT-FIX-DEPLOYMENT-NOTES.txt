@@ -21,3 +21,12 @@ DEPLOYMENT
 5. If Admin/Customer totals still do not update, check /api/cashier-sync response and Cloudflare Pages Functions secrets:
    FIREBASE_PROJECT_ID, FIREBASE_API_KEY, FIREBASE_SERVICE_ACCOUNT_JSON.
 Note: This rules fix addresses the exact acknowledgment-field permission mismatch. It does not by itself prove that email delivery or all dashboard aggregation paths are working; test each step.
+
+ADDITIONAL CASHIER PAYMENT ERROR HANDLING
+-----------------------------------------
+The Send Payment handler now:
+- disables the button while saving to prevent accidental double-clicks;
+- catches and displays the actual Firestore write error instead of failing silently;
+- distinguishes transaction-save failure from receipt creation, dashboard sync, and email failure;
+- reports payment status as saved only after the cashierTransactions update succeeds.
+This does not bypass Firestore security. If permission-denied appears, publish the included rules to the same Firebase project used by this deployed site.
