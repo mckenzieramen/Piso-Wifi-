@@ -232,7 +232,6 @@ if(tab==="receipt"){
 if(tab==="service"){v.innerHTML=`<div class="chat"><div class="panel chat-list"><h3>Customer Service</h3>${chats.length?chats.map(c=>`<div class="chat-item ${c.id===window.selectedChat?"active":""}" data-chat="${c.id}"><b>${esc(c.customerName||"Customer")}</b><small>${esc(c.status||"OPEN")}</small><div>${esc(c.lastMessage||"")}</div></div>`).join(""):"<div class=empty>No conversations yet.</div>"}</div><div class="panel">${renderChat()}</div></div>`;document.querySelectorAll("[data-chat]").forEach(b=>b.onclick=()=>{window.selectedChat=b.dataset.chat;render()});$("#chatSend")?.addEventListener("click",sendChat);$("#transferChat")?.addEventListener("click",transferChat);return;}
 if(tab==="remit"){
   const eligible=txns.filter(t=>!t.remittanceId&&!remittances.some(r=>(r.transactionIds||[]).includes(t.id)&&["PENDING ADMIN AUTHORIZATION","PENDING"].includes(String(r.status||"").toUpperCase())));
-  const customerEarnings=eligible.reduce((sum,t)=>sum+Number(t.totalCustomerEarnings||0),0);
   const grossCollected=eligible.reduce((sum,t)=>sum+Number(t.grossSales||0),0);
   const customerCount=new Set(eligible.map(t=>t.customerId||t.unitId||t.customerName).filter(Boolean)).size;
   const totalInternetShare=customerCount*1000;
