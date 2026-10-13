@@ -48,6 +48,7 @@ const num = v => ({doubleValue:Number(v || 0)});
 const stamp = v => ({timestampValue:new Date(v).toISOString()});
 function docFields(doc) { return Object.fromEntries(Object.keys(doc?.fields||{}).map(k=>[k,field(doc,k)])); }
 function base(project) { return `https://firestore.googleapis.com/v1/projects/${encodeURIComponent(project)}/databases/(default)/documents`; }
+function resourceName(project, path) { return `projects/${project}/databases/(default)/documents/${path}`; }
 async function getDoc(access, project, path) {
   const r=await fetch(`${base(project)}/${path}`,{headers:{authorization:`Bearer ${access}`}});
   if(r.status===404)return null;
@@ -76,11 +77,7 @@ async function commit(access,project,writes,transaction) {
   if(transaction)body.transaction=transaction;
   const r=await fetch(`${base(project)}:commit`,{method:"POST",headers:{authorization:`Bearer ${access}`,"content-type":"application/json"},body:JSON.stringify(body)});
   const d=await r.json().catch(()=>({}));
-  if(!r.ok) {
-    const detail = d?.error?.message || d?.message || d?.error?.status || "";
-    console.error("[cashier-sync] Firestore commit rejected", {status:r.status, detail, response:d});
-    throw new Error(`Could not commit dashboard sync (${r.status})${detail ? `: ${detail}` : ""}.`);
-  }
+  if(!r.ok)throw new Error(`Could not commit dashboard sync (${r.status}).`);
   return d;
 }
 async function beginTransaction(access,project) {
@@ -129,7 +126,7 @@ async function syncSale(access,project,transactionDocId,callerUid) {
     }},updateMask:{fieldPaths:["grossSales","cashierTransactionIds","updatedAt"]}}],transaction);
   } else {
     const id=`cashier_${String(sale.unitId).replace(/[^A-Za-z0-9_-]/g,"_")}_${month}`;
-    const name=`${base(project)}/monthlyRecords/${id}`;
+    const name=resourceName(project,`monthlyRecords/${id}`);
     await commit(access,project,[{update:{name,fields:{
       unitId:str(sale.unitId),month:str(month),grossSales:num(sale.grossSales),miscellaneousFee:num(0),
       cashierTransactionIds:{arrayValue:{values:[str(transactionDocId)]}},createdAt:stamp(now),updatedAt:stamp(now)
@@ -157,7 +154,7 @@ async function syncPayment(access,project,transactionDocId,callerUid) {
   const amount=Number(sale.totalCustomerEarnings||0);
   if(!(amount>0))throw new Error("Customer earnings amount is invalid.");
   const now=new Date().toISOString();
-  const write={update:{name:`${base(project)}/${paymentPath}`,fields:{
+  const write={update:{name:resourceName(project,paymentPath),fields:{
     unitId:str(sale.unitId),month:str(month),amount:num(amount),paymentDate:str(now.slice(0,10)),
     method:str("Cashier customer earnings payment"),reference:str(sale.receiptId||sale.transactionId||transactionDocId),
     sourceTransactionId:str(transactionDocId),createdAt:stamp(now)

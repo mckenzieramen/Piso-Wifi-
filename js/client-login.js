@@ -1,4 +1,4 @@
-console.info("[PISO WIFI] BUILD v87 — customer profile email/UID link recovery");
+console.info("[PISO WIFI] BUILD v81 — safe customer profile lookup");
 import { auth, db } from "./firebase.js";
 import {
   signInWithEmailAndPassword,
@@ -9,7 +9,7 @@ import {
 } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-auth.js";
 import { doc, getDoc, getDocs, setDoc, addDoc, collection, query, where, serverTimestamp } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-firestore.js";
 
-console.info("[PISO WIFI] BUILD v87 — exact UID/email customer lookups only");
+console.info("[PISO WIFI] BUILD v81 — no collection-wide customer lookup");
 
 const form = document.querySelector("#clientLoginForm");
 const msg = document.querySelector("#clientLoginMessage");
@@ -46,19 +46,17 @@ try {
 
 async function getRole(user) {
   let userProfile = null;
-  const authEmail = String(user?.email || "").trim().toLowerCase();
 
-  // First use the canonical profile keyed by Firebase UID.
   try {
     const snap = await getDoc(doc(db, "users", user.uid));
     if (snap.exists()) userProfile = snap.data() || null;
   } catch (e) {
-    console.warn("[PISO WIFI CUSTOMER AUTH] users/{uid} lookup failed.", e);
+    console.warn("[PISO WIFI CUSTOMER AUTH] users profile lookup failed.", e);
   }
 
   const role = String(userProfile?.role || "").trim().toLowerCase();
 
-  // An explicitly assigned non-client role must never be converted to client.
+  // Never turn an explicitly assigned staff/other role into a customer role.
   if (role) {
     if (role === "client" && userProfile?.active !== false) {
       return { ...userProfile, role: "client" };
@@ -66,7 +64,8 @@ async function getRole(user) {
     return { ...userProfile, role };
   }
 
-  // Resolve a customer account through a unit explicitly linked by UID.
+  // A missing role may be recovered only from the unit explicitly linked to
+  // this profile, and only when the unit does not belong to a different UID.
   const linkedUnitId = String(
     userProfile?.clientUnitId || userProfile?.unitId || ""
   ).trim();
@@ -78,9 +77,23 @@ async function getRole(user) {
         const unit = unitSnap.data() || {};
         const linkedUid = String(unit.authUserId || "").trim();
         const unitEmail = String(unit.authEmail || unit.email || "").trim().toLowerCase();
-        if (unit.active !== false &&
-            (linkedUid === user.uid || (!linkedUid && authEmail && unitEmail === authEmail))) {
-          return makeClientProfile(userProfile, unit, linkedUnitId, user, authEmail);
+        const authEmail = String(user.email || "").trim().toLowerCase();
+        const sameUid = linkedUid === user.uid;
+        const sameEmail = !linkedUid && !!authEmail && unitEmail === authEmail;
+
+        if (unit.active !== false && (sameUid || sameEmail)) {
+          return {
+            ...userProfile,
+            role: "client",
+            active: true,
+            clientUnitId: linkedUnitId,
+            unitId: linkedUnitId,
+            clientCode: unit.clientCode || userProfile?.clientCode || "",
+            username: unit.username || userProfile?.username || "",
+            email: unit.email || userProfile?.email || user.email || "",
+            authEmail: unit.authEmail || userProfile?.authEmail || user.email || "",
+            forcePasswordChange: unit.forcePasswordChange ?? userProfile?.forcePasswordChange
+          };
         }
       }
     } catch (e) {
@@ -88,90 +101,34 @@ async function getRole(user) {
     }
   }
 
-  // UID-indexed lookup avoids scanning the entire units collection.
+  // Query only units linked to this exact Firebase UID. Do not read the entire
+  // units collection; customer security rules commonly prohibit that operation.
   try {
     const byUid = await getDocs(query(
       collection(db, "units"),
       where("authUserId", "==", user.uid)
     ));
     const unitDoc = byUid.docs.find(d => d.data()?.active !== false);
-    if (unitDoc) return makeClientProfile(userProfile, unitDoc.data() || {}, unitDoc.id, user, authEmail);
+    if (unitDoc) {
+      const unit = unitDoc.data() || {};
+      return {
+        ...userProfile,
+        role: "client",
+        active: true,
+        clientUnitId: unitDoc.id,
+        unitId: unitDoc.id,
+        clientCode: unit.clientCode || userProfile?.clientCode || "",
+        username: unit.username || userProfile?.username || "",
+        email: unit.email || userProfile?.email || user.email || "",
+        authEmail: unit.authEmail || userProfile?.authEmail || user.email || "",
+        forcePasswordChange: unit.forcePasswordChange ?? userProfile?.forcePasswordChange
+      };
+    }
   } catch (e) {
     console.warn("[PISO WIFI CUSTOMER AUTH] UID-linked unit query failed.", e);
   }
 
-  // Legacy customer units may have the registered email but no authUserId.
-  // Only accept an exact email match when the unit is not linked to another UID.
-  if (authEmail) {
-    for (const field of ["authEmail", "email"]) {
-      try {
-        const matches = await getDocs(query(
-          collection(db, "units"),
-          where(field, "==", authEmail)
-        ));
-        const match = matches.docs.find(d => {
-          const unit = d.data() || {};
-          const linkedUid = String(unit.authUserId || "").trim();
-          const unitEmail = String(unit.authEmail || unit.email || "").trim().toLowerCase();
-          return unit.active !== false &&
-            unitEmail === authEmail &&
-            (!linkedUid || linkedUid === user.uid);
-        });
-        if (match) {
-          const unit = match.data() || {};
-          const profile = makeClientProfile(userProfile, unit, match.id, user, authEmail);
-          // Best-effort repair of the missing profile/link; authorization to
-          // write these documents is not required for the login decision.
-          try {
-            await setDoc(doc(db, "users", user.uid), {
-              role: "client",
-              active: unit.active !== false,
-              email: authEmail,
-              authEmail,
-              clientUnitId: match.id,
-              unitId: match.id,
-              clientCode: unit.clientCode || "",
-              username: unit.username || "",
-              updatedAt: serverTimestamp()
-            }, { merge: true });
-          } catch (repairErr) {
-            console.warn("[PISO WIFI CUSTOMER AUTH] profile-link repair skipped.", repairErr);
-          }
-          try {
-            if (!String(unit.authUserId || "").trim()) {
-              await setDoc(doc(db, "units", match.id), {
-                authUserId: user.uid,
-                authEmail,
-                updatedAt: serverTimestamp()
-              }, { merge: true });
-            }
-          } catch (repairErr) {
-            console.warn("[PISO WIFI CUSTOMER AUTH] unit-link repair skipped.", repairErr);
-          }
-          return profile;
-        }
-      } catch (e) {
-        console.warn(`[PISO WIFI CUSTOMER AUTH] ${field}-indexed unit lookup failed.`, e);
-      }
-    }
-  }
-
   return userProfile;
-}
-
-function makeClientProfile(userProfile, unit, unitId, user, authEmail) {
-  return {
-    ...(userProfile || {}),
-    role: "client",
-    active: unit.active !== false,
-    clientUnitId: unitId,
-    unitId,
-    clientCode: unit.clientCode || userProfile?.clientCode || "",
-    username: unit.username || userProfile?.username || "",
-    email: unit.email || userProfile?.email || authEmail || "",
-    authEmail: unit.authEmail || userProfile?.authEmail || authEmail || "",
-    forcePasswordChange: unit.forcePasswordChange ?? userProfile?.forcePasswordChange
-  };
 }
 
 async function routeUser(user) {
@@ -354,7 +311,7 @@ document.querySelector("#clientForgotPassword").onclick = () => {
   openForgotPasswordModal();
 };
 
-const APPS_SCRIPT_OTP_URL = "https://script.google.com/macros/s/AKfycbziRdnywiBqCJoBqJwXElHEGWdgyljApiYAhOvDJEyKJ_rzLWPP_GgYSmsfR1IE3_Fe/exec";
+const APPS_SCRIPT_OTP_URL = "https://script.google.com/macros/s/AKfycbzJcIf9rpdunJ8-1kDvgePWTT1L-cQOFzZLQHFQMaqBYTlviovyxjz4JOX-FpvUrjFu/exec";
 let recoveryToken = "";
 let recoveryEmail = "";
 let recoveryClientId = "";
@@ -406,13 +363,11 @@ async function callRecovery(payload){
 
 async function submitResetRequest(e){
   e.preventDefault();
-  const clientId=document.querySelector("#resetClientId").value.replace(/\s+/g,"").toUpperCase();
+  const clientId=document.querySelector("#resetClientId").value.trim().toUpperCase();
   const email=document.querySelector("#resetEmail").value.trim().toLowerCase();
-  document.querySelector("#resetClientId").value = clientId;
   const msgEl=document.querySelector("#resetMessage");
   const btn=document.querySelector("#resetSubmit");
-  if(!/^CID-\d{3,}$/.test(clientId)){msgEl.textContent="Enter your Client ID in the format CID-0005.";msgEl.className="client-login-message error";return;}
-  if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)){msgEl.textContent="Enter the registered Gmail address.";msgEl.className="client-login-message error";return;}
+  if(!/^CID-\d{3,}$/.test(clientId)||!email){msgEl.textContent="Enter a valid Client ID and registered Gmail.";msgEl.className="client-login-message error";return;}
   btn.disabled=true;btn.textContent="Sending OTP…";msgEl.textContent="Checking your account…";msgEl.className="client-login-message";
   try{
     const result=await callRecovery({action:"requestCode",clientId,email});
@@ -443,83 +398,27 @@ function openOtpModal(result){
       <form id="otpForm">
         <label class="client-field"><span>6-Digit OTP</span><input id="otpCode" inputmode="numeric" autocomplete="one-time-code" maxlength="6" pattern="\\d{6}" placeholder="000000" required></label>
         <div id="otpMessage" class="client-login-message" role="status" aria-live="polite"></div>
-        <p style="margin:10px 0 14px;text-align:center;font-size:13px;color:#64748b;">Didn't receive the code? <button type="button" id="otpResend" class="client-link-button" style="border:0;background:none;color:#0875e1;font-weight:700;cursor:pointer;padding:0;" disabled>Resend OTP in 30s</button></p>
         <div class="client-reset-actions"><button class="client-secondary" id="otpCancel" type="button">Cancel</button><button class="client-primary" id="otpVerify" type="submit">Verify OTP</button></div>
         <div class="client-reset-note">Never share your OTP with anyone. We will not ask for it by phone, email, or chat.</div>
       </form>
     </section>`;
   document.body.appendChild(wrap);
   const input=wrap.querySelector("#otpCode");
-  input.addEventListener("input",()=>{input.value=input.value.replace(/\D/g,"").slice(0,6);});
+  input.addEventListener("input",()=>{input.value=input.value.replace(/\\D/g,"").slice(0,6);});
   wrap.querySelector("#otpClose").onclick=()=>wrap.remove();
   wrap.querySelector("#otpCancel").onclick=()=>wrap.remove();
   wrap.querySelector("#otpForm").onsubmit=verifyOtp;
-
-  const resendBtn=wrap.querySelector("#otpResend");
-  let seconds=30;
-  resendBtn.disabled=true;
-  resendBtn.textContent=`Resend OTP in ${seconds}s`;
-  const resendTimer=setInterval(()=>{
-    if(!document.body.contains(wrap)){clearInterval(resendTimer);return;}
-    seconds--;
-    if(seconds<=0){clearInterval(resendTimer);resendBtn.disabled=false;resendBtn.textContent="Resend OTP";}
-    else resendBtn.textContent=`Resend OTP in ${seconds}s`;
-  },1000);
-  resendBtn.addEventListener("click",async()=>{
-    if(resendBtn.disabled)return;
-    resendBtn.disabled=true;
-    resendBtn.textContent="Sending OTP…";
-    const msg=wrap.querySelector("#otpMessage");
-    msg.textContent="Requesting a new verification code…";
-    msg.className="client-login-message";
-    try{
-      const result=await callRecovery({action:"requestCode",clientId:recoveryClientId,email:recoveryEmail});
-      recoveryToken=result.resetToken||result.verificationToken||result.recoveryToken||result.sessionToken||"";
-      recoveryEmail=result.email||recoveryEmail;
-      if(!recoveryToken) throw new Error("A new code was requested, but the recovery token was not returned. Please try again.");
-      input.value="";
-      wrap.querySelector(".reset-intro").innerHTML=`We sent a new verification code to <b>${esc(recoveryEmail)}</b>. The code expires in 10 minutes.`;
-      msg.textContent="A new OTP was sent. Use the latest code from your email.";
-      msg.className="client-login-message success";
-      seconds=30;
-      resendBtn.textContent=`Resend OTP in ${seconds}s`;
-      const startCooldown=()=>{
-        if(!document.body.contains(wrap))return;
-        resendBtn.disabled=true;
-        resendBtn.textContent=`Resend OTP in ${seconds}s`;
-        const tick=setInterval(()=>{
-          if(!document.body.contains(wrap)){clearInterval(tick);return;}
-          seconds--;
-          if(seconds<=0){clearInterval(tick);resendBtn.disabled=false;resendBtn.textContent="Resend OTP";}
-          else resendBtn.textContent=`Resend OTP in ${seconds}s`;
-        },1000);
-      };
-      startCooldown();
-    }catch(err){
-      msg.textContent=err.message||"Unable to resend OTP. Please try again.";
-      msg.className="client-login-message error";
-      resendBtn.disabled=false;
-      resendBtn.textContent="Resend OTP";
-    }
-  });
   input.focus();
 }
 
 async function verifyOtp(e){
   e.preventDefault();
-  const code=document.querySelector("#otpCode").value.replace(/\D/g,"");
+  const code=document.querySelector("#otpCode").value.replace(/\\D/g,"");
   const msgEl=document.querySelector("#otpMessage");const btn=document.querySelector("#otpVerify");
-  if(!/^\d{6}$/.test(code)){msgEl.textContent="Enter the 6-digit OTP.";msgEl.className="client-login-message error";return;}
+  if(!/^\\d{6}$/.test(code)){msgEl.textContent="Enter the 6-digit OTP.";msgEl.className="client-login-message error";return;}
   btn.disabled=true;btn.textContent="Verifying…";msgEl.textContent="Verifying your code…";msgEl.className="client-login-message";
   try{
-    const verified = await callRecovery({action:"verifyCode",clientId:recoveryClientId,email:recoveryEmail,code});
-    // The server may issue the one-time reset session only after OTP verification.
-    // Keep that verified token for the following resetPassword request.
-    const verifiedToken = verified && (verified.resetToken || verified.verificationToken || verified.recoveryToken || verified.sessionToken);
-    if (verifiedToken) recoveryToken = verifiedToken;
-    if (!recoveryToken) {
-      throw new Error("OTP verified, but the password-reset session was not returned. Please request a new code.");
-    }
+    await callRecovery({action:"verifyCode",clientId:recoveryClientId,email:recoveryEmail,code});
     document.querySelector("#otpModal")?.remove();
     openNewPasswordModal();
   }catch(err){

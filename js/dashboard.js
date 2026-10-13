@@ -12,7 +12,7 @@ import {
 console.info("[PISO WIFI] BUILD 2026-10-11 — cashier management deactivate action");
 
 const $ = (s) => document.querySelector(s);
-const APPS_SCRIPT_SHEET_SYNC_URL = "https://script.google.com/macros/s/AKfycbziRdnywiBqCJoBqJwXElHEGWdgyljApiYAhOvDJEyKJ_rzLWPP_GgYSmsfR1IE3_Fe/exec";
+const APPS_SCRIPT_SHEET_SYNC_URL = "https://script.google.com/macros/s/AKfycbzJcIf9rpdunJ8-1kDvgePWTT1L-cQOFzZLQHFQMaqBYTlviovyxjz4JOX-FpvUrjFu/exec";
 async function postSheetSyncPayload(payload){
   const form=document.createElement("form");
   form.method="POST";
@@ -460,7 +460,7 @@ function salesChart(metric="Gross Sales"){
   const ms=sixMonths(), vals=ms.map(m=>metricTotal(m,metric)), max=Math.max(...vals,1);
   return `<div class="bars">${vals.map((v,i)=>`<div class="bar-col"><div class="bar-value">${money(v)}</div><div class="bar" style="height:${Math.max(8,(v/max)*150)}px"></div><small>${new Date(ms[i]+"-01").toLocaleString("en-US",{month:"short"})}</small></div>`).join("")}</div>`;
 }
-function topUnitsHtml(rows){ return rows.length?rows.map((x,i)=>`<div class="rank-row"><span class="rank-num">${i+1}</span><span><b>${esc(x.u.name||"Unnamed unit")}</b></span><strong>${money(x.c.gross)}</strong></div>`).join(""):empty("No sales recorded for this period."); }
+function topUnitsHtml(rows){ return rows.length?rows.map((x,i)=>`<div class="rank-row"><span class="rank-num">${i+1}</span><span><b>${esc(x.u.unitCode)}</b><small>${esc(x.u.name)}</small></span><strong>${money(x.c.gross)}</strong></div>`).join(""):empty("No sales recorded for this period."); }
 function renderTopUnits(period){
   const ms=period==="month"?[selectedMonth]:period==="last"?[shiftMonth(selectedMonth,-1)]:period==="3"?rangeMonths(3):yearMonths(selectedMonth);
   const map=units.map(u=>{const gross=records.filter(r=>r.unitId===u.id&&ms.includes(r.month)).reduce((s,r)=>s+Number(r.grossSales||0),0);return{u,c:{gross}}}).sort((a,b)=>b.c.gross-a.c.gross).slice(0,5);
@@ -676,19 +676,29 @@ async function removeCashierAccount(id){
 }
 
 function openAdminCashierModal(){
-  openModal("Create Cashier Account",`<div class="form-grid"><div class="field full"><label>Cashier Name *</label><input id="adminCashierName" required placeholder="Cashier full name" autocomplete="name"></div><div class="field full"><label>Cashier Email *</label><input id="adminCashierEmail" type="email" required placeholder="cashier@example.com" autocomplete="email"></div><div class="field full"><label>Temporary Password *</label><input id="adminCashierPassword" type="text" minlength="6" required placeholder="At least 6 characters" autocomplete="new-password"><small>The cashier will use this temporary password to sign in and change it on first login.</small></div></div>`,"Create Account",async()=>{
+  openModal("Create Cashier Account",`<div class="form-grid"><div class="field full"><label>Cashier Name *</label><input id="adminCashierName" required placeholder="Cashier full name" autocomplete="name"></div><div class="field full"><label>Cashier Email *</label><input id="adminCashierEmail" type="email" required placeholder="cashier@example.com" autocomplete="email"></div><div class="field full"><label>Temporary Password *</label><input id="adminCashierPassword" type="text" minlength="6" required placeholder="At least 6 characters" autocomplete="new-password"><small>The temporary password will be shown after creation and included in the HTML welcome email sent to this cashier.</small></div></div>`,"Create Account",async()=>{
     const name=$("#adminCashierName").value.trim();
     const email=$("#adminCashierEmail").value.trim().toLowerCase();
     const password=$("#adminCashierPassword").value;
     if(!name||!email||! /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)||password.length<6)throw new Error("Enter the cashier name, a valid email address, and a temporary password of at least 6 characters.");
-    let credential=null,profileSaved=false;
+    let credential=null,profileSaved=false,emailSent=false,emailError="";
     try{
       credential=await createUserWithEmailAndPassword(clientProvisionerAuth,email,password);
       await setDoc(doc(db,"users",credential.user.uid),{role:"cashier",name,email,active:true,forcePasswordChange:true,createdAt:serverTimestamp(),createdBy:currentUser.uid});
       profileSaved=true;
       await provisionerSignOut(clientProvisionerAuth);
+      try{
+        const idToken=await currentUser.getIdToken(true);
+        const response=await fetch("/api/password-recovery",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({action:"sendCashierWelcome",idToken,name,email,temporaryPassword:password,cashierPortalUrl:"https://piso-wifi.pages.dev/cashier/"})});
+        const result=await response.json().catch(()=>({ok:false,error:"Email service returned an unreadable response."}));
+        if(!response.ok||result.ok!==true)throw new Error(result.error||"The email service could not send the welcome email.");
+        emailSent=true;
+      }catch(mailError){emailError=mailError?.message||"Email service is not configured yet.";console.error("Cashier created, welcome email failed:",mailError);}
       await loadCashierAccounts();
-      window.alert("Cashier Account Created Successfully!");
+      const message=emailSent
+        ? `Cashier account created and HTML welcome email sent.\n\nName: ${name}\nEmail: ${email}\nTemporary password: ${password}\n\nPortal: https://piso-wifi.pages.dev/cashier/\n\nThe cashier should sign in and change this temporary password.`
+        : `Cashier account was created, but the welcome email was NOT sent.\n\nName: ${name}\nEmail: ${email}\nTemporary password: ${password}\n\nEmail error: ${emailError}\n\nDeploy the updated Google Apps Script email handler, then try again. Keep this password private.`;
+      window.alert(message);
     }catch(error){
       try{if(clientProvisionerAuth.currentUser)await provisionerSignOut(clientProvisionerAuth);}catch(_e){}
       if(credential && !profileSaved)console.error("Cashier account profile save failed",error);
