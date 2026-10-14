@@ -239,7 +239,7 @@ let supportChatSending=false;
 let supportTypingTimer=null;
 let supportChatDocId="";
 let supportChatHistory=[];
-const supportChatId=()=>String(supportChatDocId||currentUser?.uid||"");
+const supportChatId=()=>String(supportChatDocId||"");
 const supportStatusValue=chat=>{const s=String(chat?.status||"Open").trim().toLowerCase(); if(s==="closed") return "Closed"; if(s==="solved") return "Solved"; return "Open";};
 const supportChatRef=()=>supportChatId()?doc(db,"supportChats",supportChatId()):null;
 function supportNow(){return new Date().toISOString();}
@@ -347,8 +347,12 @@ async function createSupportChat(forceNew=false){
   return supportChat;
 }
 function subscribeSupportChat(){
-  if(supportChatUnsub) supportChatUnsub();
-  const ref=supportChatRef(); if(!ref)return;
+  if(supportChatUnsub){try{supportChatUnsub();}catch(e){} supportChatUnsub=null;}
+  // Do not listen to /supportChats/{customerUid} when the customer has no ticket.
+  // Support chat documents use their own generated IDs; an empty ticket ID must
+  // not fall back to the user's UID and trigger a denied Firestore listener.
+  const ref=supportChatRef();
+  if(!ref)return;
   supportChatUnsub=onSnapshot(ref,snap=>{
     supportChat=snap.exists()?{id:snap.id,...snap.data()}:null;
     if(snap.exists()){
@@ -443,7 +447,7 @@ async function openSupportModal(){
     console.warn("Unable to restore PISO WIFI support conversation",e);
     window.pisoDebug?.capture(e?.message||e,{type:"firebase.support.load",source:`client.js → getDoc(supportChats/${currentUser?.uid||"uid"})`,stack:e?.stack});
     // Keep the lobby usable so Start Chat remains available even while Firebase rules are being debugged.
-    supportChat=null; supportChatDocId=currentUser?.uid||""; renderSupportLobby();
+    supportChat=null; supportChatDocId=""; renderSupportLobby();
   }
   bindSupportTyping();
 }
