@@ -1,0 +1,12 @@
+PISO WIFI REMITTANCE BATCH FIX — 2026-10-14
+
+Targeted changes in js/cashier.js only:
+- Remit tab unlock accepts the agreed Remit password: Admin@owner123 (not the Cashier account login password).
+- Internet share (₱1,000/customer) and electricity share (₱100/customer) are calculated once per distinct customer in the current remittance batch, not per sale or per day.
+- A batch stays open after Cashier submits it. While the same Cashier has a remittance in PENDING ADMIN AUTHORIZATION/PENDING, another remittance cannot be submitted.
+- The batch is treated as closed only when Admin approval marks its transactions remitted/approved. New sales after approval belong to the next batch.
+- Remittance History shows only Date & Time, Remitted To, and Short / Over. Short is red, Over is blue, Balanced is gray.
+- Existing project files and unrelated features are preserved.
+
+Validation performed: JavaScript syntax check (`node --check js/cashier.js`).
+Not verified: live Firebase/Firestore permissions, deployed Cloudflare Pages behavior, and end-to-end Admin approval across devices. Deploy and test with a non-production/test batch before relying on live financial records.
