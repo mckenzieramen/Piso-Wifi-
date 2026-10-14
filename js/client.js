@@ -3,7 +3,7 @@ import {
   onAuthStateChanged, signOut, signInWithEmailAndPassword
 } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-auth.js";
 import {
-  collection, doc, getDoc, getDocs, query, where, updateDoc, setDoc, arrayUnion,
+  collection, doc, getDoc, getDocs, query, where, updateDoc, setDoc, onSnapshot, arrayUnion,
   serverTimestamp, writeBatch
 } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-firestore.js";
 import { calculateFinancialRecord } from "./finance.js";
@@ -69,9 +69,17 @@ let selectedMonth=localStorage.getItem("pisoClientMonth") || todayMonth();
 let selectedYear=String(new Date().getFullYear());
 let selectedUnitId="all";
 let route="dashboard";
-let clientRefreshTimer=null;
-let clientRefreshBusy=false;
-let supportChatPollTimer=null;
+let clientRealtimeUnsubs=[];
+let clientRecordUnsubs=[];
+let clientPaymentUnsubs=[];
+let clientNotificationUnsubs=[];
+let clientSettingsUnsub=null;
+// Keep the first profile read as a live listener. A transient getDoc() as the
+// first Firestore operation can trigger the SDK ca9/b815 watch teardown bug.
+let clientProfileUnsub=null;
+let clientProfileListenerUid="";
+let clientProfileSnapshotPromise=null;
+let clientRealtimeUnitIdsKey="";
 
 function toast(message,type="success"){
   const el=$("#clientToast"); if(!el)return;
@@ -153,25 +161,11 @@ async function loadClientData(){
     notifications.sort((a,b)=>timeValue(b.createdAt)-timeValue(a.createdAt));
   }catch(e){notifications=[];}
 }
-function startClientPolling(){
-  if(clientRefreshTimer) clearInterval(clientRefreshTimer);
-  const refresh=async()=>{
-    if(clientRefreshBusy || !currentUser?.uid || document.visibilityState === "hidden") return;
-    clientRefreshBusy=true;
-    try{
-      await loadClientData();
-      setupShell();
-      clientRealtimeRender();
-      syncProfileMenu();
-      if(!$("#clientSupportModal")?.classList.contains("hidden")){
-        await refreshSupportHistory();
-      }
-    }catch(e){
-      console.warn("PISO WIFI customer refresh failed; keeping last successfully loaded data.",e);
-    }finally{clientRefreshBusy=false;}
-  };
-  clientRefreshTimer=setInterval(refresh,15000);
-  
+function clearClientRealtimeSubscriptions(){
+  [...clientRealtimeUnsubs,...clientRecordUnsubs,...clientPaymentUnsubs,...clientNotificationUnsubs].forEach(fn=>{try{fn?.();}catch(e){}});
+  clientRealtimeUnsubs=[];clientRecordUnsubs=[];clientPaymentUnsubs=[];clientNotificationUnsubs=[];
+  try{clientSettingsUnsub?.();}catch(e){}
+  clientSettingsUnsub=null;
 }
 function clientRealtimeRender(){
   if(!currentUser)return;
@@ -181,11 +175,29 @@ function clientRealtimeRender(){
   if(document.querySelector("#clientApp")?.classList.contains("hidden"))return;
   render();
 }
+function startClientRealtime(){
+  // Customer-only polling fallback: avoids Firestore watch-stream listeners
+  // implicated in the ca9/b815 assertion while preserving automatic refresh.
+  clearClientRealtimeSubscriptions();
+  if(!currentUser?.uid)return;
+  let refreshing=false;
+  const refresh=async()=>{
+    if(refreshing||document.hidden||!currentUser?.uid)return;
+    refreshing=true;
+    try{await loadClientData();clientRealtimeRender();}
+    catch(error){console.warn("PISO WIFI customer data refresh failed",error);}
+    finally{refreshing=false;}
+  };
+  const timer=setInterval(refresh,15000);
+  clientRealtimeUnsubs.push(()=>clearInterval(timer));
+}
+
 function timeValue(v){if(!v)return 0;if(v.toMillis)return v.toMillis();const n=new Date(v).getTime();return Number.isNaN(n)?0:n;}
 function unread(){return notifications.filter(n=>n.read!==true).length;}
 
 
 let supportChatUnsub=null;
+let supportChatPollingKey="";
 let supportChat=null;
 let supportChatOpen=false;
 let supportChatSending=false;
@@ -248,7 +260,7 @@ function renderSupportLobby(){
     const found=supportChatHistory.find(chat=>chat.id===id);
     if(!found)return;
     supportChatDocId=id; supportChat=found;
-    supportChatOpen=true; subscribeSupportChat(); renderSupportChat();
+    subscribeSupportChat(); supportChatOpen=true; renderSupportChat();
     try{await updateDoc(supportChatRef(),{unreadForCustomer:false,updatedAt:supportNow()});}catch(e){}
   });
   const start=$("#startSupportChat");
@@ -300,36 +312,44 @@ async function createSupportChat(forceNew=false){
   return supportChat;
 }
 function subscribeSupportChat(){
-  if(supportChatUnsub){supportChatUnsub();supportChatUnsub=null;}
-  const ref=supportChatRef(); if(!ref || !supportChatOpen)return;
-  let busy=false;
-  const poll=async()=>{
-    if(busy || document.visibilityState === "hidden" || !supportChatOpen)return;
-    busy=true;
+  const ref=supportChatRef(),key=supportChatId();
+  if(!ref||!key)return;
+  if(supportChatUnsub&&supportChatPollingKey===key)return;
+  try{supportChatUnsub?.();}catch(e){}
+  supportChatPollingKey=key;
+  let fetching=false;
+  const refresh=async()=>{
+    if(fetching||!currentUser?.uid||supportChatPollingKey!==key)return;
+    fetching=true;
     try{
       const snap=await getDoc(ref);
+      if(supportChatPollingKey!==key)return;
       supportChat=snap.exists()?{id:snap.id,...snap.data()}:null;
       if(snap.exists()){
         supportChatDocId=snap.id;
         const idx=supportChatHistory.findIndex(c=>c.id===snap.id);
-        if(idx>=0)supportChatHistory[idx]=supportChat; else supportChatHistory=[supportChat,...supportChatHistory];
+        if(idx>=0)supportChatHistory[idx]=supportChat;else supportChatHistory=[supportChat,...supportChatHistory];
       }
       updateSupportBadge();
-      if(supportChatOpen && !$("#supportConversationView")?.classList.contains("hidden")){
-        $("#supportStatus").textContent=String(supportChat?.status||"Open");
-        renderSupportConversation();
-        const closed=["Solved","Closed"].includes(supportStatusValue(supportChat));
-        const input=$("#supportChatInput"),send=$("#supportSend");
-        if(input){input.disabled=closed;input.placeholder=closed?"Ticket was closed.":"Type your concern…";}
-        if(send)send.disabled=closed;
+      if(supportChatOpen){
+        if($("#supportConversationView")?.classList.contains("hidden"))renderSupportLobby();
+        else{
+          const status=$("#supportStatus");if(status)status.textContent=String(supportChat?.status||"Open");
+          renderSupportConversation();
+          const closed=["Solved","Closed"].includes(supportStatusValue(supportChat));
+          const input=$("#supportChatInput"),send=$("#supportSend");
+          if(input){input.disabled=closed;input.placeholder=closed?"Ticket was closed.":"Type your concern…";}
+          if(send)send.disabled=closed;
+        }
       }
     }catch(err){console.warn("PISO WIFI support chat refresh failed",err);}
-    finally{busy=false;}
+    finally{fetching=false;}
   };
-  poll();
-  supportChatPollTimer=setInterval(poll,2500);
-  supportChatUnsub=()=>{if(supportChatPollTimer)clearInterval(supportChatPollTimer);supportChatPollTimer=null;};
+  refresh();
+  const timer=setInterval(refresh,2500);
+  supportChatUnsub=()=>clearInterval(timer);
 }
+
 async function openSupportConversation(){
   try{
     const currentStatus=supportStatusValue(supportChat);
@@ -339,13 +359,13 @@ async function openSupportConversation(){
     }else{
       await createSupportChat(false);
     }
-    supportChatOpen=true;
     subscribeSupportChat();
+    supportChatOpen=true;
     renderSupportChat();
     await updateDoc(supportChatRef(),{unreadForCustomer:false,updatedAt:supportNow()});
   }catch(e){toast(e?.message||"Unable to open a new support chat. Please contact Admin if this continues.","error");}
 }
-function closeSupportChat(){supportChatOpen=false;if(supportChatUnsub){supportChatUnsub();supportChatUnsub=null;}$("#supportConversationView")?.classList.add("hidden");$("#supportLobby")?.classList.remove("hidden");}
+function closeSupportChat(){supportChatOpen=false;$("#supportConversationView")?.classList.add("hidden");$("#supportLobby")?.classList.remove("hidden");}
 async function sendSupportMessage(){
   if(supportChatSending)return; const input=$("#supportChatInput");const text=String(input?.value||"").trim();if(!text)return;
   if(["Closed","Solved"].includes(supportStatusValue(supportChat))){toast("This support conversation is closed. Please start a new chat for a new concern.","error");return;}
@@ -390,6 +410,7 @@ async function openSupportModal(){
   const modal=$("#clientSupportModal");if(!modal)return;modal.classList.remove("hidden");modal.setAttribute("aria-hidden","false");supportChatOpen=false;renderSupportLobby();
   try{
     await loadExistingSupportChat();
+    subscribeSupportChat();
     renderSupportLobby();
   }catch(e){
     console.warn("Unable to restore PISO WIFI support conversation",e);
@@ -413,6 +434,7 @@ function setupShell(){
   renderNotificationsPopover();
   updateBell();
   syncProfileMenu?.();
+  subscribeSupportChat();
   updateSupportBadge();
 }
 function renderMonthSelectors(){
@@ -749,18 +771,21 @@ async function withTimeout(promise,ms,label){
   ]);
 }
 
-async function readClientProfile(uid){
+async function watchClientProfile(uid){
   return await getDoc(doc(db,"users",uid));
 }
+
 async function bootstrap(user){
   if(!user){
     bootstrapFinished=true; clearTimeout(bootTimer);
+    try{clientProfileUnsub?.();}catch(e){}
+    clientProfileUnsub=null;clientProfileListenerUid="";clientProfileSnapshotPromise=null;
     location.replace("/client-login.html");
     return;
   }
   currentUser=user;
   try{
-    const userSnap=await withTimeout(readClientProfile(user.uid),8000,"Firebase user profile request timed out.");
+    const userSnap=await withTimeout(watchClientProfile(user.uid),8000,"Firebase user profile request timed out.");
     if(userSnap.exists() && userSnap.data().role==="admin"){
       bootstrapFinished=true; clearTimeout(bootTimer);
       location.replace("/admin/dashboard.html");
@@ -770,7 +795,7 @@ async function bootstrap(user){
     $("#clientAuthLoading").classList.add("hidden");
     $("#clientApp").classList.remove("hidden");
     setupShell();
-    startClientPolling();
+    startClientRealtime();
     route=parseRoute();render();
     bootstrapFinished=true; clearTimeout(bootTimer);
     await maybeShowFirstLoginPasswordSetup();
@@ -789,7 +814,6 @@ async function logoutClient(){
     sessionStorage.setItem("pisoWifi.justLoggedOut","1");
     sessionStorage.removeItem("pisoWifi.pendingCurrentPassword");
     if(supportChatUnsub){supportChatUnsub();supportChatUnsub=null;}
-    if(clientRefreshTimer){clearInterval(clientRefreshTimer);clientRefreshTimer=null;}
     supportChatOpen=false;
     await signOut(auth);
   }catch(e){
