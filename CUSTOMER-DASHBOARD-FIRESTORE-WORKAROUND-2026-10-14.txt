@@ -1,0 +1,11 @@
+CUSTOMER DASHBOARD FIRESTORE WATCH-STREAM WORKAROUND
+
+Scope: Customer Dashboard only (client/index.html and js/client.js).
+
+The Customer Dashboard previously opened several Firestore onSnapshot listeners. The browser screenshot showed Firestore SDK internal assertion ca9/b815 inside WatchChangeAggregator/PersistentListenStream. This patch removes onSnapshot usage from the customer dashboard and replaces it with one-shot reads on a 15-second visible-page refresh; the support conversation is polled every 2.5 seconds only while a conversation is open. This avoids the Firestore watch stream in the Customer Dashboard rather than hiding its error popup.
+
+Other pages and admin/cashier files are unchanged. Financial calculations, page rendering, login/role check, sales, payments, statements, and profile features are retained. The trade-off is updates are periodic rather than instantaneous.
+
+Deploy the contents inside Piso-Wifi--main as the Cloudflare Pages project root (do not upload the outer folder as an extra nested directory). Then use Ctrl+Shift+R on /client/. Check DevTools Network to confirm /js/client.js?v=20261014-polling-workaround-1 loads.
+
+Static validation passed; live Firebase cannot be tested from this package build.
