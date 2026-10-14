@@ -1,0 +1,21 @@
+PISO WiFi Customer Service Chat — targeted permissions repair
+Date: 2026-10-14
+
+Workflow retained:
+- New customer support tickets start assignedRole="cashier" with assignedCashierId="".
+- Cashier inbox listens for unassigned tickets and tickets assigned to the signed-in cashier.
+- Cashier can claim, reply, and transfer the same ticket to Admin.
+- Admin can read and take over transferred tickets.
+- Customer-facing chat header is PISO NET Support.
+- Cashier portal has a single Customer Service menu routed to supportChats.
+
+Changed files:
+- firestore.rules: adds narrowly scoped cashier read/update access to supportChats; customer ownership and admin access remain scoped.
+- js/client.js: fixes the customer-facing chat header label.
+- client/index.html and cashier/index.html: cache-bust versions updated.
+
+Checks: JavaScript syntax and ZIP integrity.
+Not checked: live Firebase rules deployment or two-account end-to-end test.
+
+IMPORTANT DEPLOYMENT NOTE:
+The Firestore rules in this project must be published in Firebase Console (Firestore Database > Rules) for cashier chat permissions to take effect. Review the complete rules before publishing; do not replace production rules with an unrelated rules file. After publishing, deploy the website files. Test with one customer and one cashier account.

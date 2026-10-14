@@ -179,38 +179,35 @@ service cloud.firestore {
         );
     }
 
-    // SUPPORT CHATS
+    // SUPPORT CHATS — customer starts the ticket; cashier handles first; admin takes over after transfer.
     match /supportChats/{chatId} {
+      // Customers can only read their own tickets. Cashiers can read unassigned
+      // cashier tickets and tickets assigned to their own UID. Admin can read all.
       allow read: if isAdmin()
-        || (
-          isSignedIn()
-          && resource.data.authUserId == request.auth.uid
-        )
-        || (
-          isCashier()
+        || (isSignedIn() && resource.data.authUserId == request.auth.uid)
+        || (isCashier()
           && resource.data.assignedRole == "cashier"
-          && (
-            resource.data.assignedCashierId == ""
-            || resource.data.assignedCashierId == request.auth.uid
-          )
-        );
+          && (resource.data.assignedCashierId == ""
+            || resource.data.assignedCashierId == request.auth.uid));
 
+      // A customer can create a ticket only for their own authenticated UID.
       allow create: if isAdmin()
-        || (
-          isSignedIn()
+        || (isSignedIn()
           && request.resource.data.authUserId == request.auth.uid
           && request.resource.data.status is string
           && request.resource.data.messages is list
-        );
+          && request.resource.data.assignedRole == "cashier"
+          && request.resource.data.assignedCashierId == "");
 
+      // Cashier may claim/reply to an unassigned ticket or their own ticket.
+      // They may transfer that same ticket to Admin, but cannot change ownership
+      // to another cashier or edit customer identity fields.
       allow update: if isAdmin()
-        || (
-          isCashier()
+        || (isCashier()
           && resource.data.assignedRole == "cashier"
-          && (
-            resource.data.assignedCashierId == ""
-            || resource.data.assignedCashierId == request.auth.uid
-          )
+          && (resource.data.assignedCashierId == ""
+            || resource.data.assignedCashierId == request.auth.uid)
+          && request.resource.data.authUserId == resource.data.authUserId
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
             "messages", "updatedAt", "typingBy", "unreadForCashier",
             "unreadForCustomer", "lastMessage", "lastMessageSender", "lastMessageAt",
@@ -219,25 +216,21 @@ service cloud.firestore {
             "unreadForAdmin"
           ])
           && (
-            request.resource.data.assignedRole == "cashier"
-            || (
-              request.resource.data.assignedRole == "admin"
+            (request.resource.data.assignedRole == "cashier"
+              && request.resource.data.assignedCashierId == request.auth.uid)
+            || (request.resource.data.assignedRole == "admin"
               && request.resource.data.transferredToAdmin == true
-              && request.resource.data.transferredBy == request.auth.uid
-            )
-          )
-        )
-        || (
-          isSignedIn()
+              && request.resource.data.transferredBy == request.auth.uid)
+          ))
+        // Customer may append messages and update customer-facing read/typing state only.
+        || (isSignedIn()
           && resource.data.authUserId == request.auth.uid
           && request.resource.data.authUserId == resource.data.authUserId
-          && request.resource.data.diff(resource.data).affectedKeys()
-            .hasOnly([
-              "messages", "updatedAt", "typingBy", "unreadForAdmin",
-              "unreadForCashier", "unreadForCustomer", "lastMessage",
-              "lastMessageSender", "lastMessageAt", "status", "reopenedAt"
-            ])
-        );
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            "messages", "updatedAt", "typingBy", "unreadForAdmin",
+            "unreadForCashier", "unreadForCustomer", "lastMessage",
+            "lastMessageSender", "lastMessageAt", "status", "reopenedAt"
+          ]));
 
       allow delete: if isAdmin();
     }
