@@ -156,7 +156,7 @@ form.addEventListener("submit", async e => {
       });
     }
     message(
-      "Login failed. Please check the temporary error popup for the exact Firebase error.",
+      "Login failed. Open your browser DevTools with F12 and check the Console for the exact Firebase error.",
       "error"
     );
     submit.disabled = false;
