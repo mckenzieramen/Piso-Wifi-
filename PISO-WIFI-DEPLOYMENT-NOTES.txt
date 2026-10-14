@@ -25,3 +25,10 @@ REMIT UNLOCK FIX
 ----------------
 Remit unlock reauthentication now uses the currently authenticated Firebase Auth user and that user's email. It displays a specific error for wrong Cashier password, expired/recent-login session, too many attempts, network failure, or other Firebase errors.
 Important: The Remit unlock asks for the password of the currently signed-in Cashier account, not the Admin password and not a separate Remittance password. This update does not bypass Firebase Authentication or hardcode a password.
+
+CUSTOMER LOGIN ROUTE FIX
+------------------------
+The Cloudflare Pages _redirects file did not include the /client-login route even though client-login.html exists at the site root. Added explicit mappings:
+  /client-login -> /client-login.html
+  /client-login/ -> /client-login.html
+The rest of the existing redirects were preserved. Deploy the full project folder to Cloudflare Pages, then test /client-login and /client-login.html. This route change does not modify Firebase customer data.

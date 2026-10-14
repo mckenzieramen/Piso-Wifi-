@@ -9,3 +9,6 @@
 /admin/cashiers /admin/cashiers/index.html 200
 /admin/cashiers/ /admin/cashiers/index.html 200
 /admin/cashiers.html /admin/cashiers/index.html 200
+/client-login /client-login.html 200
+/client-login/ /client-login.html 200
+/client-login.html /client-login.html 200
