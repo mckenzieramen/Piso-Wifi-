@@ -74,6 +74,9 @@ let clientRecordUnsubs=[];
 let clientPaymentUnsubs=[];
 let clientNotificationUnsubs=[];
 let clientSettingsUnsub=null;
+// Avoid tearing down and recreating every Firestore listener when the units
+// listener emits an update that does not change this customer's unit IDs.
+let clientRealtimeUnitSignature="";
 
 function toast(message,type="success"){
   if(type==="error") window.pisoDebug?.capture(message,{type:"client.toast"});
@@ -161,6 +164,7 @@ function clearClientRealtimeSubscriptions(){
   clientRealtimeUnsubs=[];clientRecordUnsubs=[];clientPaymentUnsubs=[];clientNotificationUnsubs=[];
   try{clientSettingsUnsub?.();}catch(e){}
   clientSettingsUnsub=null;
+  clientRealtimeUnitSignature="";
 }
 function clientRealtimeRender(){
   if(!currentUser)return;
@@ -196,13 +200,19 @@ function startClientRealtime(){
   const unitQuery=query(collection(db,"units"),where("authUserId","==",currentUser.uid));
   const unitUnsub=onSnapshot(unitQuery,snap=>{
     clientUnits=snap.docs.map(d=>({id:d.id,...d.data()}));
-    const ids=clientUnits.map(u=>u.id);
-    clientRecordUnsubs.forEach(fn=>{try{fn?.();}catch(e){}});clientRecordUnsubs=[];
-    clientPaymentUnsubs.forEach(fn=>{try{fn?.();}catch(e){}});clientPaymentUnsubs=[];
-    clientNotificationUnsubs.forEach(fn=>{try{fn?.();}catch(e){}});clientNotificationUnsubs=[];
-    subscribeClientCollectionChunks("monthlyRecords","unitId",ids,v=>{records=v;},clientRecordUnsubs);
-    subscribeClientCollectionChunks("payments","unitId",ids,v=>{payments=v;},clientPaymentUnsubs);
-    subscribeClientCollectionChunks("notifications","relatedId",ids,v=>{notifications=v.sort((a,b)=>timeValue(b.createdAt)-timeValue(a.createdAt));},clientNotificationUnsubs);
+    const ids=clientUnits.map(u=>u.id).sort();
+    const signature=ids.join("|");
+    // Unit documents can update for profile edits or metadata changes. Keep
+    // existing data listeners unless the actual set of unit IDs changed.
+    if(signature!==clientRealtimeUnitSignature){
+      clientRealtimeUnitSignature=signature;
+      clientRecordUnsubs.forEach(fn=>{try{fn?.();}catch(e){}});clientRecordUnsubs=[];
+      clientPaymentUnsubs.forEach(fn=>{try{fn?.();}catch(e){}});clientPaymentUnsubs=[];
+      clientNotificationUnsubs.forEach(fn=>{try{fn?.();}catch(e){}});clientNotificationUnsubs=[];
+      subscribeClientCollectionChunks("monthlyRecords","unitId",ids,v=>{records=v;},clientRecordUnsubs);
+      subscribeClientCollectionChunks("payments","unitId",ids,v=>{payments=v;},clientPaymentUnsubs);
+      subscribeClientCollectionChunks("notifications","relatedId",ids,v=>{notifications=v.sort((a,b)=>timeValue(b.createdAt)-timeValue(a.createdAt));},clientNotificationUnsubs);
+    }
     clientRealtimeRender();
   },err=>{
     console.warn("PISO WIFI realtime units error",err);
@@ -234,8 +244,8 @@ const supportStatusValue=chat=>{const s=String(chat?.status||"Open").trim().toLo
 const supportChatRef=()=>supportChatId()?doc(db,"supportChats",supportChatId()):null;
 function supportNow(){return new Date().toISOString();}
 function supportMessageHtml(m){
-  const type=m?.senderType==="customer"?"customer":m?.senderType==="cashier"?"cashier":m?.senderType==="admin"?"admin":"system";
-  const who=type==="customer"?clientName():m?.senderType==="cashier"?(m?.senderName||supportChat?.assignedCashierName||"Cashier"):m?.senderType==="admin"?"PISO NETY Admin":"PISO NETY Customer Service";
+  const type=m?.senderType==="customer"?"customer":(m?.senderType==="admin"||m?.senderType==="cashier")?"admin":"system";
+  const who=type==="customer"?clientName():m?.senderType==="cashier"?(m?.senderName||supportChat?.assignedCashierName||"PISO NETY Customer Service"):m?.senderType==="admin"?"PISO NETY Admin":"PISO NETY Customer Service";
   return `<div class="piso-chat-message ${type}"><div class="piso-chat-bubble">${esc(m?.text||"")}</div><div class="piso-chat-meta">${esc(who)} · ${esc(dateTime(m?.createdAt||""))}</div></div>`;
 }
 function renderSupportConversation(){
@@ -246,7 +256,7 @@ function renderSupportConversation(){
   const hadContent=host.children.length>0;
   const wasAtBottom=!hadContent || previousHeight-previousTop-clientHeight<32;
   const msgs=Array.isArray(supportChat?.messages)?supportChat.messages:[];
-  host.innerHTML=msgs.length?msgs.map(supportMessageHtml).join(""):`<div class="piso-chat-empty"><div class="support-icon">${icons.mail}</div><b>Start a conversation</b><span>Tell us what you need help with. Our cashier support team will assist first, and can transfer the conversation to Admin when needed.</span></div>`;
+  host.innerHTML=msgs.length?msgs.map(supportMessageHtml).join(""):`<div class="piso-chat-empty"><div class="support-icon">${icons.mail}</div><b>Start a conversation</b><span>Tell us what you need help with and our Admin can reply here.</span></div>`;
   const typing=$("#supportTyping");
   if(typing){const staffTyping=!!supportChat?.typingBy?.admin||!!supportChat?.typingBy?.cashier;typing.classList.toggle("show",staffTyping);typing.textContent=staffTyping?"PISO NETY Customer Service is typing…":"";}
   requestAnimationFrame(()=>{
@@ -296,7 +306,7 @@ function renderSupportChat(){
   lobby.classList.add("hidden"); convo.classList.remove("hidden");
   const status=supportStatusValue(supportChat);
   $("#supportStatus").textContent=status;
-  $("#supportChatCustomer").textContent="PISO NET Support";
+  $("#supportChatCustomer").textContent=clientName();
   renderSupportConversation();
   const closed=["Solved","Closed"].includes(status);
   const input=$("#supportChatInput"), send=$("#supportSend");
