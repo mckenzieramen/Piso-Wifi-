@@ -74,6 +74,12 @@ let clientRecordUnsubs=[];
 let clientPaymentUnsubs=[];
 let clientNotificationUnsubs=[];
 let clientSettingsUnsub=null;
+// Keep the first profile read as a live listener. A transient getDoc() as the
+// first Firestore operation can trigger the SDK ca9/b815 watch teardown bug.
+let clientProfileUnsub=null;
+let clientProfileListenerUid="";
+let clientProfileSnapshotPromise=null;
+let clientRealtimeUnitIdsKey="";
 
 function toast(message,type="success"){
   if(type==="error") window.pisoDebug?.capture(message,{type:"client.toast"});
@@ -193,16 +199,23 @@ function subscribeClientCollectionChunks(collectionName,field,ids,assign,unsubSt
 function startClientRealtime(){
   clearClientRealtimeSubscriptions();
   if(!currentUser?.uid)return;
+  clientRealtimeUnitIdsKey="";
   const unitQuery=query(collection(db,"units"),where("authUserId","==",currentUser.uid));
   const unitUnsub=onSnapshot(unitQuery,snap=>{
     clientUnits=snap.docs.map(d=>({id:d.id,...d.data()}));
     const ids=clientUnits.map(u=>u.id);
-    clientRecordUnsubs.forEach(fn=>{try{fn?.();}catch(e){}});clientRecordUnsubs=[];
-    clientPaymentUnsubs.forEach(fn=>{try{fn?.();}catch(e){}});clientPaymentUnsubs=[];
-    clientNotificationUnsubs.forEach(fn=>{try{fn?.();}catch(e){}});clientNotificationUnsubs=[];
-    subscribeClientCollectionChunks("monthlyRecords","unitId",ids,v=>{records=v;},clientRecordUnsubs);
-    subscribeClientCollectionChunks("payments","unitId",ids,v=>{payments=v;},clientPaymentUnsubs);
-    subscribeClientCollectionChunks("notifications","relatedId",ids,v=>{notifications=v.sort((a,b)=>timeValue(b.createdAt)-timeValue(a.createdAt));},clientNotificationUnsubs);
+    const idsKey=[...ids].sort().join("|");
+    // Do not tear down and recreate all child listeners when the units query
+    // emits metadata/field changes but the assigned unit set is unchanged.
+    if(idsKey!==clientRealtimeUnitIdsKey){
+      clientRealtimeUnitIdsKey=idsKey;
+      clientRecordUnsubs.forEach(fn=>{try{fn?.();}catch(e){}});clientRecordUnsubs=[];
+      clientPaymentUnsubs.forEach(fn=>{try{fn?.();}catch(e){}});clientPaymentUnsubs=[];
+      clientNotificationUnsubs.forEach(fn=>{try{fn?.();}catch(e){}});clientNotificationUnsubs=[];
+      subscribeClientCollectionChunks("monthlyRecords","unitId",ids,v=>{records=v;},clientRecordUnsubs);
+      subscribeClientCollectionChunks("payments","unitId",ids,v=>{payments=v;},clientPaymentUnsubs);
+      subscribeClientCollectionChunks("notifications","relatedId",ids,v=>{notifications=v.sort((a,b)=>timeValue(b.createdAt)-timeValue(a.createdAt));},clientNotificationUnsubs);
+    }
     clientRealtimeRender();
   },err=>{
     console.warn("PISO WIFI realtime units error",err);
@@ -789,15 +802,34 @@ async function withTimeout(promise,ms,label){
   ]);
 }
 
+function watchClientProfile(uid){
+  if(clientProfileListenerUid===uid && clientProfileSnapshotPromise)return clientProfileSnapshotPromise;
+  try{clientProfileUnsub?.();}catch(e){}
+  clientProfileListenerUid=uid;
+  clientProfileSnapshotPromise=new Promise((resolve,reject)=>{
+    let firstSnapshot=true;
+    clientProfileUnsub=onSnapshot(doc(db,"users",uid),snap=>{
+      if(firstSnapshot){firstSnapshot=false;resolve(snap);}
+    },err=>{
+      console.error("PISO WIFI user profile listener error:",err);
+      if(firstSnapshot){firstSnapshot=false;reject(err);}
+    });
+  });
+  return clientProfileSnapshotPromise;
+}
 async function bootstrap(user){
   if(!user){
     bootstrapFinished=true; clearTimeout(bootTimer);
+    try{clientProfileUnsub?.();}catch(e){}
+    clientProfileUnsub=null;clientProfileListenerUid="";clientProfileSnapshotPromise=null;
     location.replace("/client-login.html");
     return;
   }
   currentUser=user;
   try{
-    const userSnap=await withTimeout(getDoc(doc(db,"users",user.uid)),8000,"Firebase user profile request timed out.");
+    // Start with a persistent listener instead of a one-shot getDoc. This
+    // avoids the known Firestore ca9 -> b815 failure on cold-listen teardown.
+    const userSnap=await withTimeout(watchClientProfile(user.uid),8000,"Firebase user profile request timed out.");
     if(userSnap.exists() && userSnap.data().role==="admin"){
       bootstrapFinished=true; clearTimeout(bootTimer);
       location.replace("/admin/dashboard.html");
