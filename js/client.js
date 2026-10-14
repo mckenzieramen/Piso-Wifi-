@@ -807,11 +807,22 @@ async function bootstrap(user){
   }
   currentUser=user;
   try{
-    const userSnap=await withTimeout(getDoc(doc(db,"users",user.uid)),8000,"Firebase user profile request timed out.");
-    if(userSnap.exists() && userSnap.data().role==="admin"){
-      bootstrapFinished=true; clearTimeout(bootTimer);
-      location.replace("/admin/dashboard.html");
-      return;
+    // The user profile is used only to redirect an admin account from the customer portal.
+    // If reading this optional profile is denied, do not block a customer from loading;
+    // the actual data access remains enforced by Firestore rules in loadClientData().
+    try{
+      const userSnap=await withTimeout(getDoc(doc(db,"users",user.uid)),8000,"Firebase user profile request timed out.");
+      if(userSnap.exists() && userSnap.data().role==="admin"){
+        bootstrapFinished=true; clearTimeout(bootTimer);
+        location.replace("/admin/dashboard.html");
+        return;
+      }
+    }catch(profileError){
+      const profileMessage=String(profileError?.message||"").toLowerCase();
+      const permissionDenied=profileError?.code==="permission-denied" || profileMessage.includes("missing or insufficient permissions");
+      if(!permissionDenied) throw profileError;
+      console.warn("Customer bootstrap: optional /users profile read was denied; continuing with normal client data access.",profileError);
+      window.pisoDebug?.capture(profileError?.message||profileError,{type:"firebase.profile.optional-read",source:"client.js → bootstrap /users/{uid}; continuing as customer",stack:profileError?.stack});
     }
     await withTimeout(loadClientData(),8000,"Client records request timed out. Please check Firebase rules and your connection.");
     $("#clientAuthLoading").classList.add("hidden");
