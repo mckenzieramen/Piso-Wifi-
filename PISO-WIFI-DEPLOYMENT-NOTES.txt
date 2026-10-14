@@ -20,3 +20,8 @@ DEPLOY
 - Confirm the deployed site uses the same Firebase project.
 - Test with a new low-value test sale: confirm it appears in Admin current-month dashboard, then send payment, confirm it disappears from pending Sales History, appears in Receipt History, updates Admin payment totals, and sends email.
 - The ZIP is a code update, not a live-system verification. Email delivery depends on the secrets and verified sender above.
+
+REMIT UNLOCK FIX
+----------------
+Remit unlock reauthentication now uses the currently authenticated Firebase Auth user and that user's email. It displays a specific error for wrong Cashier password, expired/recent-login session, too many attempts, network failure, or other Firebase errors.
+Important: The Remit unlock asks for the password of the currently signed-in Cashier account, not the Admin password and not a separate Remittance password. This update does not bypass Firebase Authentication or hardcode a password.
