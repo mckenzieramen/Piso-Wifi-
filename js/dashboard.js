@@ -927,11 +927,20 @@ function subscribeSelectedSupport(id){
       if(solveBtn)solveBtn.disabled=status!=="Open";
       if(closeBtn)closeBtn.disabled=status==="Closed";
     }
+  },error=>{
+    console.error("PISO WIFI selected support conversation listener failed",error);
+    notify(error?.message||"Live support updates failed. Refresh the page and try again.","error");
   });
 }
 let adminSupportTypingTimer=null;
 function bindAdminChatEvents(chat){if(!chat)return;const input=$("#adminSupportInput"),send=$("#adminSupportSend");if(send)send.onclick=()=>sendAdminSupportMessage(chat.id);if(input){input.oninput=()=>{clearTimeout(adminSupportTypingTimer);setAdminSupportTyping(chat.id,true);adminSupportTypingTimer=setTimeout(()=>setAdminSupportTyping(chat.id,false),1200);};input.onkeydown=e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();sendAdminSupportMessage(chat.id);}};}$("#supportOpenBtn")?.addEventListener("click",()=>setSupportStatus(chat.id,"Open"));$("#supportSolveBtn")?.addEventListener("click",()=>setSupportStatus(chat.id,"Solved"));$("#supportCloseBtn")?.addEventListener("click",()=>setSupportStatus(chat.id,"Closed"));}
-async function setAdminSupportTyping(id,on){try{await updateDoc(doc(db,"supportChats",id),{"typingBy.admin":!!on,updatedAt:new Date().toISOString()});}catch(e){}}
+async function setAdminSupportTyping(id,on){
+  const typ=$("#adminSupportTyping");
+  if(typ){
+    typ.textContent=on?"You are typing…":"";
+    typ.classList.toggle("show",!!on);
+  }
+}
 async function sendAdminSupportMessage(id){const input=$("#adminSupportInput");const text=String(input?.value||"").trim();if(!text)return;try{await updateDoc(doc(db,"supportChats",id),{messages:arrayUnion({senderType:"admin",text,createdAt:new Date().toISOString()}),lastMessage:text,lastMessageSender:"admin",lastMessageAt:new Date().toISOString(),updatedAt:new Date().toISOString(),unreadForAdmin:false,unreadForCustomer:true,"typingBy.admin":false,status:"Open"});input.value="";}catch(e){notify(e?.message||"Unable to send support reply.","error");}}
 async function setSupportStatus(id,status){try{
   const patch={status,updatedAt:new Date().toISOString(),unreadForAdmin:false};

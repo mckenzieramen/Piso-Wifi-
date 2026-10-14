@@ -411,8 +411,15 @@ async function sendSupportMessage(){
   }
   finally{supportChatSending=false;}
 }
+// Keep typing state local. Writing to the same Firestore document on every
+// keystroke creates unnecessary writes while this document is actively watched.
+// Message delivery and ticket status remain Firestore-backed and real-time.
 async function setSupportTyping(isTyping){
-  try{if(!supportChatRef())return;await updateDoc(supportChatRef(),{"typingBy.customer":!!isTyping,updatedAt:supportNow()});}catch(e){/* typing is non-blocking */}
+  const typing=$("#supportTyping");
+  if(typing){
+    typing.textContent=isTyping?"You are typing…":"";
+    typing.classList.toggle("show",!!isTyping);
+  }
 }
 function bindSupportTyping(){const input=$("#supportChatInput");if(!input)return;input.oninput=()=>{clearTimeout(supportTypingTimer);setSupportTyping(true);supportTypingTimer=setTimeout(()=>setSupportTyping(false),1200);};input.onkeydown=e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();sendSupportMessage();}};}
 async function openSupportModal(){
