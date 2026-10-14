@@ -1,0 +1,27 @@
+PISO WiFi Customer Dashboard — targeted Firestore listener repair
+Date: 2026-10-14
+
+Changed only: js/client.js
+
+Change:
+- The units realtime listener now compares the set of unit IDs before rebuilding
+  the monthlyRecords, payments, and notifications listeners.
+- Profile/metadata updates to an existing unit no longer automatically tear down
+  and recreate all three sets of listeners.
+- Existing collections, Firestore rules, SDK version, data, and UI were not changed.
+
+Why:
+The browser logs show Firestore 12.2.1 internal assertions (ca9/b815), and an
+earlier diagnostic log also showed a permissions error. Repeated listener
+teardown/recreation is one avoidable source of listener churn, so this patch
+reduces that churn. It is a targeted mitigation, not proof that the Firebase
+permission issue or SDK assertion is fully resolved.
+
+Checks performed:
+- JavaScript syntax check
+- ZIP integrity check
+
+Not performed:
+- No live Firebase/Firestore access or production deployment test was available.
+- If the errors persist, inspect the exact denied query in Firestore Rules/Logs
+  before changing security rules. Do not loosen rules blindly.
