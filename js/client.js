@@ -74,14 +74,9 @@ let clientRecordUnsubs=[];
 let clientPaymentUnsubs=[];
 let clientNotificationUnsubs=[];
 let clientSettingsUnsub=null;
-// Keep the first profile read as a live listener. A transient getDoc() as the
-// first Firestore operation can trigger the SDK ca9/b815 watch teardown bug.
-let clientProfileUnsub=null;
-let clientProfileListenerUid="";
-let clientProfileSnapshotPromise=null;
-let clientRealtimeUnitIdsKey="";
 
 function toast(message,type="success"){
+  if(type==="error") window.pisoDebug?.capture(message,{type:"client.toast"});
   const el=$("#clientToast"); if(!el)return;
   el.textContent=message; el.className=`client-toast show ${type}`;
   clearTimeout(window.__clientToast); window.__clientToast=setTimeout(()=>el.classList.remove("show"),2800);
@@ -175,29 +170,59 @@ function clientRealtimeRender(){
   if(document.querySelector("#clientApp")?.classList.contains("hidden"))return;
   render();
 }
+function subscribeClientCollectionChunks(collectionName,field,ids,assign,unsubStore){
+  const chunks=[];
+  for(let i=0;i<ids.length;i+=30)chunks.push(ids.slice(i,i+30));
+  if(!chunks.length){assign([]);return;}
+  const merged=new Map();
+  chunks.forEach(chunk=>{
+    const q=query(collection(db,collectionName),where(field,"in",chunk));
+    const unsub=onSnapshot(q,snap=>{
+      snap.docs.forEach(d=>merged.set(d.id,{id:d.id,...d.data()}));
+      const activeIds=new Set(chunks.flat());
+      [...merged.keys()].forEach(id=>{const row=merged.get(id);if(row&&!activeIds.has(row[field]))merged.delete(id);});
+      assign([...merged.values()]);
+      clientRealtimeRender();
+    },err=>{
+      console.warn(`PISO WIFI realtime ${collectionName} error`,err);
+      window.pisoDebug?.capture(err?.message||err,{type:"firebase.realtime",source:`client.js → ${collectionName} realtime (${field} in [...])`,stack:err?.stack});
+    });
+    unsubStore.push(unsub);
+  });
+}
 function startClientRealtime(){
-  // Customer-only polling fallback: avoids Firestore watch-stream listeners
-  // implicated in the ca9/b815 assertion while preserving automatic refresh.
   clearClientRealtimeSubscriptions();
   if(!currentUser?.uid)return;
-  let refreshing=false;
-  const refresh=async()=>{
-    if(refreshing||document.hidden||!currentUser?.uid)return;
-    refreshing=true;
-    try{await loadClientData();clientRealtimeRender();}
-    catch(error){console.warn("PISO WIFI customer data refresh failed",error);}
-    finally{refreshing=false;}
-  };
-  const timer=setInterval(refresh,15000);
-  clientRealtimeUnsubs.push(()=>clearInterval(timer));
+  const unitQuery=query(collection(db,"units"),where("authUserId","==",currentUser.uid));
+  const unitUnsub=onSnapshot(unitQuery,snap=>{
+    clientUnits=snap.docs.map(d=>({id:d.id,...d.data()}));
+    const ids=clientUnits.map(u=>u.id);
+    clientRecordUnsubs.forEach(fn=>{try{fn?.();}catch(e){}});clientRecordUnsubs=[];
+    clientPaymentUnsubs.forEach(fn=>{try{fn?.();}catch(e){}});clientPaymentUnsubs=[];
+    clientNotificationUnsubs.forEach(fn=>{try{fn?.();}catch(e){}});clientNotificationUnsubs=[];
+    subscribeClientCollectionChunks("monthlyRecords","unitId",ids,v=>{records=v;},clientRecordUnsubs);
+    subscribeClientCollectionChunks("payments","unitId",ids,v=>{payments=v;},clientPaymentUnsubs);
+    subscribeClientCollectionChunks("notifications","relatedId",ids,v=>{notifications=v.sort((a,b)=>timeValue(b.createdAt)-timeValue(a.createdAt));},clientNotificationUnsubs);
+    clientRealtimeRender();
+  },err=>{
+    console.warn("PISO WIFI realtime units error",err);
+    window.pisoDebug?.capture(err?.message||err,{type:"firebase.realtime",source:"client.js → units realtime (authUserId == currentUser.uid)",stack:err?.stack});
+  });
+  clientRealtimeUnsubs.push(unitUnsub);
+  clientSettingsUnsub=onSnapshot(doc(db,"settings","business"),snap=>{
+    if(snap.exists())settings={...settings,...snap.data()};
+    clientRealtimeRender();
+  },err=>{
+    console.warn("PISO WIFI realtime settings error",err);
+    window.pisoDebug?.capture(err?.message||err,{type:"firebase.realtime",source:"client.js → settings/business realtime",stack:err?.stack});
+  });
+  clientRealtimeUnsubs.push(clientSettingsUnsub);
 }
-
 function timeValue(v){if(!v)return 0;if(v.toMillis)return v.toMillis();const n=new Date(v).getTime();return Number.isNaN(n)?0:n;}
 function unread(){return notifications.filter(n=>n.read!==true).length;}
 
 
 let supportChatUnsub=null;
-let supportChatPollingKey="";
 let supportChat=null;
 let supportChatOpen=false;
 let supportChatSending=false;
@@ -209,8 +234,8 @@ const supportStatusValue=chat=>{const s=String(chat?.status||"Open").trim().toLo
 const supportChatRef=()=>supportChatId()?doc(db,"supportChats",supportChatId()):null;
 function supportNow(){return new Date().toISOString();}
 function supportMessageHtml(m){
-  const type=m?.senderType==="customer"?"customer":(m?.senderType==="admin"||m?.senderType==="cashier")?"admin":"system";
-  const who=type==="customer"?clientName():m?.senderType==="cashier"?(m?.senderName||supportChat?.assignedCashierName||"PISO NETY Customer Service"):m?.senderType==="admin"?"PISO NETY Admin":"PISO NETY Customer Service";
+  const type=m?.senderType==="customer"?"customer":m?.senderType==="cashier"?"cashier":m?.senderType==="admin"?"admin":"system";
+  const who=type==="customer"?clientName():m?.senderType==="cashier"?(m?.senderName||supportChat?.assignedCashierName||"Cashier"):m?.senderType==="admin"?"PISO NETY Admin":"PISO NETY Customer Service";
   return `<div class="piso-chat-message ${type}"><div class="piso-chat-bubble">${esc(m?.text||"")}</div><div class="piso-chat-meta">${esc(who)} · ${esc(dateTime(m?.createdAt||""))}</div></div>`;
 }
 function renderSupportConversation(){
@@ -221,7 +246,7 @@ function renderSupportConversation(){
   const hadContent=host.children.length>0;
   const wasAtBottom=!hadContent || previousHeight-previousTop-clientHeight<32;
   const msgs=Array.isArray(supportChat?.messages)?supportChat.messages:[];
-  host.innerHTML=msgs.length?msgs.map(supportMessageHtml).join(""):`<div class="piso-chat-empty"><div class="support-icon">${icons.mail}</div><b>Start a conversation</b><span>Tell us what you need help with and our Admin can reply here.</span></div>`;
+  host.innerHTML=msgs.length?msgs.map(supportMessageHtml).join(""):`<div class="piso-chat-empty"><div class="support-icon">${icons.mail}</div><b>Start a conversation</b><span>Tell us what you need help with. Our cashier support team will assist first, and can transfer the conversation to Admin when needed.</span></div>`;
   const typing=$("#supportTyping");
   if(typing){const staffTyping=!!supportChat?.typingBy?.admin||!!supportChat?.typingBy?.cashier;typing.classList.toggle("show",staffTyping);typing.textContent=staffTyping?"PISO NETY Customer Service is typing…":"";}
   requestAnimationFrame(()=>{
@@ -271,7 +296,7 @@ function renderSupportChat(){
   lobby.classList.add("hidden"); convo.classList.remove("hidden");
   const status=supportStatusValue(supportChat);
   $("#supportStatus").textContent=status;
-  $("#supportChatCustomer").textContent=clientName();
+  $("#supportChatCustomer").textContent="PISO NET Support";
   renderSupportConversation();
   const closed=["Solved","Closed"].includes(status);
   const input=$("#supportChatInput"), send=$("#supportSend");
@@ -312,44 +337,35 @@ async function createSupportChat(forceNew=false){
   return supportChat;
 }
 function subscribeSupportChat(){
-  const ref=supportChatRef(),key=supportChatId();
-  if(!ref||!key)return;
-  if(supportChatUnsub&&supportChatPollingKey===key)return;
-  try{supportChatUnsub?.();}catch(e){}
-  supportChatPollingKey=key;
-  let fetching=false;
-  const refresh=async()=>{
-    if(fetching||!currentUser?.uid||supportChatPollingKey!==key)return;
-    fetching=true;
-    try{
-      const snap=await getDoc(ref);
-      if(supportChatPollingKey!==key)return;
-      supportChat=snap.exists()?{id:snap.id,...snap.data()}:null;
-      if(snap.exists()){
-        supportChatDocId=snap.id;
-        const idx=supportChatHistory.findIndex(c=>c.id===snap.id);
-        if(idx>=0)supportChatHistory[idx]=supportChat;else supportChatHistory=[supportChat,...supportChatHistory];
+  if(supportChatUnsub) supportChatUnsub();
+  const ref=supportChatRef(); if(!ref)return;
+  supportChatUnsub=onSnapshot(ref,snap=>{
+    supportChat=snap.exists()?{id:snap.id,...snap.data()}:null;
+    if(snap.exists()){
+      supportChatDocId=snap.id;
+      const idx=supportChatHistory.findIndex(c=>c.id===snap.id);
+      if(idx>=0)supportChatHistory[idx]=supportChat; else supportChatHistory=[supportChat,...supportChatHistory];
+    }
+    updateSupportBadge();
+    if(supportChatOpen){
+      if($("#supportConversationView")?.classList.contains("hidden")){
+        renderSupportLobby();
+      }else{
+        // Update only the live conversation/status. Do not rebuild the
+        // entire modal, so the input keeps focus and the scroll position.
+        $("#supportStatus").textContent=String(supportChat?.status||"Open");
+        renderSupportConversation();
+        const closed=["Solved","Closed"].includes(supportStatusValue(supportChat));
+        const input=$("#supportChatInput"),send=$("#supportSend");
+        if(input){input.disabled=closed;input.placeholder=closed?"Ticket was closed.":"Type your concern…";}
+        if(send)send.disabled=closed;
       }
-      updateSupportBadge();
-      if(supportChatOpen){
-        if($("#supportConversationView")?.classList.contains("hidden"))renderSupportLobby();
-        else{
-          const status=$("#supportStatus");if(status)status.textContent=String(supportChat?.status||"Open");
-          renderSupportConversation();
-          const closed=["Solved","Closed"].includes(supportStatusValue(supportChat));
-          const input=$("#supportChatInput"),send=$("#supportSend");
-          if(input){input.disabled=closed;input.placeholder=closed?"Ticket was closed.":"Type your concern…";}
-          if(send)send.disabled=closed;
-        }
-      }
-    }catch(err){console.warn("PISO WIFI support chat refresh failed",err);}
-    finally{fetching=false;}
-  };
-  refresh();
-  const timer=setInterval(refresh,2500);
-  supportChatUnsub=()=>clearInterval(timer);
+    }
+  },err=>{
+    console.warn("PISO WIFI support chat realtime error",err);
+    window.pisoDebug?.capture(err?.message||err,{type:"firebase.support.realtime",source:`client.js → onSnapshot(supportChats/${currentUser?.uid||"uid"})`,stack:err?.stack});
+  });
 }
-
 async function openSupportConversation(){
   try{
     const currentStatus=supportStatusValue(supportChat);
@@ -391,6 +407,7 @@ async function sendSupportMessage(){
     input.value="";
   }
   catch(e){
+    window.pisoDebug?.capture(e?.message||e,{type:"firebase.support.send",source:`client.js → updateDoc(supportChats/${currentUser?.uid||"uid"})`,stack:e?.stack});
     toast(e?.message||"Unable to send your message.","error");
   }
   finally{supportChatSending=false;}
@@ -414,6 +431,7 @@ async function openSupportModal(){
     renderSupportLobby();
   }catch(e){
     console.warn("Unable to restore PISO WIFI support conversation",e);
+    window.pisoDebug?.capture(e?.message||e,{type:"firebase.support.load",source:`client.js → getDoc(supportChats/${currentUser?.uid||"uid"})`,stack:e?.stack});
     // Keep the lobby usable so Start Chat remains available even while Firebase rules are being debugged.
     supportChat=null; supportChatDocId=currentUser?.uid||""; renderSupportLobby();
   }
@@ -771,21 +789,15 @@ async function withTimeout(promise,ms,label){
   ]);
 }
 
-async function watchClientProfile(uid){
-  return await getDoc(doc(db,"users",uid));
-}
-
 async function bootstrap(user){
   if(!user){
     bootstrapFinished=true; clearTimeout(bootTimer);
-    try{clientProfileUnsub?.();}catch(e){}
-    clientProfileUnsub=null;clientProfileListenerUid="";clientProfileSnapshotPromise=null;
     location.replace("/client-login.html");
     return;
   }
   currentUser=user;
   try{
-    const userSnap=await withTimeout(watchClientProfile(user.uid),8000,"Firebase user profile request timed out.");
+    const userSnap=await withTimeout(getDoc(doc(db,"users",user.uid)),8000,"Firebase user profile request timed out.");
     if(userSnap.exists() && userSnap.data().role==="admin"){
       bootstrapFinished=true; clearTimeout(bootTimer);
       location.replace("/admin/dashboard.html");
