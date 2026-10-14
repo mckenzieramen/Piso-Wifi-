@@ -628,14 +628,110 @@ async function loadCashierAccounts(){
     if(body)body.innerHTML=`<tr><td colspan="4">Could not load accounts: ${esc(error.message||"Check Firestore Rules and Admin access.")}</td></tr>`;
   }
 }
+let cashierRemittances = [];
+let cashierRemittanceUnsub = null;
+let cashierRemittanceBusy = false;
+
+const cashierRemittanceMoney = n => `₱${Number(n || 0).toLocaleString("en-PH",{minimumFractionDigits:2,maximumFractionDigits:2})}`;
+const cashierRemittanceDate = value => {
+  try {
+    const d = value?.toDate ? value.toDate() : new Date(value);
+    return Number.isNaN(d.getTime()) ? "—" : d.toLocaleString("en-PH");
+  } catch { return "—"; }
+};
+function renderCashierRemittanceRows(){
+  const body = $("#cashierRemittanceBody");
+  if (!body) return;
+  const pending = cashierRemittances.filter(r => ["PENDING ADMIN AUTHORIZATION","PENDING"].includes(String(r.status||"").toUpperCase()));
+  const count = $("#cashierRemittanceCount");
+  if (count) count.textContent = `${pending.length} pending approval(s)`;
+  if (!pending.length) {
+    body.innerHTML = `<tr><td colspan="7">No remittance requests awaiting approval.</td></tr>`;
+    return;
+  }
+  body.innerHTML = pending.map(r => {
+    const expected = Number(r.expectedCollection || 0);
+    const actual = Number(r.actualRemittance || 0);
+    const variance = Number(r.variance ?? (actual - expected));
+    const shortOver = variance < 0 ? `Short ${cashierRemittanceMoney(Math.abs(variance))}` : variance > 0 ? `Over ${cashierRemittanceMoney(variance)}` : "Balanced";
+    const color = variance < 0 ? "#dc2626" : variance > 0 ? "#2563eb" : "#64748b";
+    return `<tr>
+      <td>${esc(cashierRemittanceDate(r.createdAt))}</td>
+      <td>${esc(r.cashierName || r.cashierId || "—")}</td>
+      <td>${esc(r.remittedTo || r.recipientName || "—")}</td>
+      <td>${cashierRemittanceMoney(expected)}</td>
+      <td>${cashierRemittanceMoney(actual)}</td>
+      <td><strong style="color:${color}">${shortOver}</strong></td>
+      <td><div style="display:flex;gap:6px;flex-wrap:wrap"><button type="button" class="primary-btn" data-approve-remit="${esc(r.id)}" ${cashierRemittanceBusy?"disabled":""}>Approve</button><button type="button" class="danger-btn" data-reject-remit="${esc(r.id)}" ${cashierRemittanceBusy?"disabled":""}>Reject</button></div></td>
+    </tr>`;
+  }).join("");
+  body.querySelectorAll("[data-approve-remit]").forEach(b => b.addEventListener("click", () => approveCashierRemittance(b.dataset.approveRemit)));
+  body.querySelectorAll("[data-reject-remit]").forEach(b => b.addEventListener("click", () => rejectCashierRemittance(b.dataset.rejectRemit)));
+}
+function watchCashierRemittances(){
+  if (cashierRemittanceUnsub) { cashierRemittanceUnsub(); cashierRemittanceUnsub = null; }
+  const body = $("#cashierRemittanceBody");
+  if (body) body.innerHTML = `<tr><td colspan="7">Loading remittance requests…</td></tr>`;
+  cashierRemittanceUnsub = onSnapshot(collection(db,"remittances"), snap => {
+    cashierRemittances = snap.docs.map(d => ({id:d.id,...d.data()})).sort((a,b) => {
+      const at = a.createdAt?.toDate ? a.createdAt.toDate().getTime() : new Date(a.createdAt || 0).getTime();
+      const bt = b.createdAt?.toDate ? b.createdAt.toDate().getTime() : new Date(b.createdAt || 0).getTime();
+      return bt - at;
+    });
+    renderCashierRemittanceRows();
+  }, error => {
+    console.error("Could not load cashier remittance approvals", error);
+    const target = $("#cashierRemittanceBody");
+    if (target) target.innerHTML = `<tr><td colspan="7">Could not load remittance requests: ${esc(error.message || "Check Firestore Rules and Admin access.")}</td></tr>`;
+  });
+}
+async function approveCashierRemittance(id){
+  if (cashierRemittanceBusy) return;
+  const r = cashierRemittances.find(x => x.id === id);
+  if (!r) return notify("Remittance request not found. Refresh and try again.","error");
+  const ids = Array.isArray(r.transactionIds) ? r.transactionIds : [];
+  if (ids.length > 450) return notify("This remittance includes too many sale records to approve in one batch.","error");
+  if (!window.confirm(`Approve this remittance for ${cashierRemittanceMoney(r.actualRemittance)} to ${r.remittedTo || r.recipientName || "the named recipient"}?`)) return;
+  cashierRemittanceBusy = true; renderCashierRemittanceRows();
+  try {
+    const batch = writeBatch(db);
+    batch.update(doc(db,"remittances",id),{status:"APPROVED",approvedBy:currentUser.uid,approvedAt:serverTimestamp()});
+    ids.forEach(txId => batch.update(doc(db,"cashierTransactions",txId),{remittanceId:id,remittanceApproved:true,remittanceApprovedAt:serverTimestamp()}));
+    await batch.commit();
+    await logActivity("Cashier Remittance",`Approved remittance ${r.remittanceId || id} — ${cashierRemittanceMoney(r.actualRemittance)}`,id);
+    notify("Remittance approved. Included sales are now marked as remitted.","success");
+  } catch(error) {
+    console.error("Remittance approval failed",error);
+    notify(error?.message || "Could not approve remittance. Check Firestore Rules.","error");
+  } finally { cashierRemittanceBusy = false; renderCashierRemittanceRows(); }
+}
+async function rejectCashierRemittance(id){
+  if (cashierRemittanceBusy) return;
+  const r = cashierRemittances.find(x => x.id === id);
+  if (!r) return notify("Remittance request not found. Refresh and try again.","error");
+  const note = window.prompt("Optional reason for rejecting this remittance:","");
+  if (note === null) return;
+  cashierRemittanceBusy = true; renderCashierRemittanceRows();
+  try {
+    await updateDoc(doc(db,"remittances",id),{status:"REJECTED",rejectedBy:currentUser.uid,rejectedAt:serverTimestamp(),rejectionNote:note.trim()});
+    await logActivity("Cashier Remittance",`Rejected remittance ${r.remittanceId || id}`,id);
+    notify("Remittance rejected.","success");
+  } catch(error) {
+    console.error("Remittance rejection failed",error);
+    notify(error?.message || "Could not reject remittance. Check Firestore Rules.","error");
+  } finally { cashierRemittanceBusy = false; renderCashierRemittanceRows(); }
+}
 function renderCashierManagement(){
-  view.innerHTML=baseHead("Cashier Management","Create or permanently delete cashier login accounts. Deletion cannot be undone; sales/history are retained.",'<button class="primary-btn" id="addAdminCashier">+ Create Cashier Account</button>')+
-    `<div class="panel"><div class="panel-head"><div><h3>Cashier Accounts</h3><p>Only Admin can create cashier accounts. This page remains inside the Admin dashboard.</p></div><button type="button" class="secondary-btn" id="refreshCashierAccounts">Refresh</button></div><div class="table-wrap"><table><thead><tr><th>Cashier Name</th><th>Email</th><th>Status</th><th>Created</th><th>Action</th></tr></thead><tbody id="cashierAccountsBody"><tr><td colspan="5">Loading cashier accounts…</td></tr></tbody></table></div></div>`;
+  if (cashierRemittanceUnsub) { cashierRemittanceUnsub(); cashierRemittanceUnsub = null; }
+  view.innerHTML=baseHead("Cashier Management","Create cashier accounts and review remittance requests submitted by Cashiers.",'<button class="primary-btn" id="addAdminCashier">+ Create Cashier Account</button>')+
+    `<div class="panel"><div class="panel-head"><div><h3>Remittance Approval</h3><p>Cashier remittance submissions appear here for Admin review. Approval status syncs live with the Cashier history.</p></div><span id="cashierRemittanceCount" class="badge">Loading…</span><button type="button" class="secondary-btn" id="refreshCashierRemittances">Refresh</button></div><div class="table-wrap"><table><thead><tr><th>Date & Time Remitted</th><th>Cashier</th><th>Remitted To</th><th>Expected Remit</th><th>Actual Remit</th><th>Short / Over</th><th>Admin Action</th></tr></thead><tbody id="cashierRemittanceBody"><tr><td colspan="7">Loading remittance requests…</td></tr></tbody></table></div></div>
+    <div class="panel" style="margin-top:18px"><div class="panel-head"><div><h3>Cashier Accounts</h3><p>Only Admin can create cashier accounts. Deleting an account does not delete its sales/history.</p></div><button type="button" class="secondary-btn" id="refreshCashierAccounts">Refresh</button></div><div class="table-wrap"><table><thead><tr><th>Cashier Name</th><th>Email</th><th>Status</th><th>Created</th><th>Action</th></tr></thead><tbody id="cashierAccountsBody"><tr><td colspan="5">Loading cashier accounts…</td></tr></tbody></table></div></div>`;
   $("#addAdminCashier")?.addEventListener("click",openAdminCashierModal);
   $("#refreshCashierAccounts")?.addEventListener("click",loadCashierAccounts);
+  $("#refreshCashierRemittances")?.addEventListener("click",watchCashierRemittances);
   loadCashierAccounts();
+  watchCashierRemittances();
 }
-
 async function removeCashierAccount(id){
   const cashier=cashierAccounts.find(c=>c.id===id);
   if(!cashier)return notify("Cashier account was not found. Refresh and try again.","error");
