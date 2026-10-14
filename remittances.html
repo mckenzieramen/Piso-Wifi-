@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>PISO WIFI — Remittance Approval</title>
+<style>
+:root{font-family:Inter,Arial,sans-serif;color:#17243a;background:#f3f6fb}*{box-sizing:border-box}body{margin:0;padding:24px}.wrap{max-width:1100px;margin:auto}.top{display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap;margin-bottom:20px}.top h1{margin:0}.muted{color:#64748b}.panel{background:white;border:1px solid #dce4ef;border-radius:16px;padding:18px;margin:14px 0;box-shadow:0 5px 20px #122b4a0a}.row{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap}.meta{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin:14px 0}.meta div{background:#f7f9fc;padding:12px;border-radius:10px}.meta small{display:block;color:#64748b;margin-bottom:5px}.actions{display:flex;gap:8px;flex-wrap:wrap}button,a.btn{border:0;border-radius:9px;padding:10px 14px;font-weight:700;cursor:pointer;text-decoration:none;display:inline-block}button:disabled{opacity:.5;cursor:wait}.primary{background:#175cd3;color:white}.secondary{background:#e8edf5;color:#26364d}.danger{background:#fee4e2;color:#b42318}.badge{display:inline-block;padding:5px 9px;border-radius:99px;background:#fff1c2;color:#7a4e00;font-size:12px;font-weight:700}.badge.ok{background:#d1fadf;color:#05603a}.badge.no{background:#fee4e2;color:#b42318}.message{padding:12px;border-radius:10px;background:#eef4ff;color:#1849a9;margin:12px 0;white-space:pre-wrap}.error{background:#fff0f0;color:#b42318}.empty{padding:30px;text-align:center;color:#64748b}h2{margin:0 0 8px}p{line-height:1.45}.toolbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap}.toolbar a{color:#175cd3}.hidden{display:none!important}@media(max-width:600px){body{padding:12px}.panel{padding:14px}.top h1{font-size:24px}}
+</style>
+</head>
+<body>
+<main class="wrap">
+  <header class="top">
+    <div><h1>PISO WIFI</h1><p class="muted">Admin · Remittance Approval</p></div>
+    <div class="toolbar"><a class="btn secondary" href="/admin/dashboard.html">Back to Admin Dashboard</a><button id="logout" class="secondary">Log out</button></div>
+  </header>
+  <div id="message" class="message">Checking Admin access…</div>
+  <section id="app" class="hidden">
+    <div class="toolbar"><button id="filterPending" class="primary">Pending</button><button id="filterAll" class="secondary">All remittances</button><span id="count" class="muted"></span></div>
+    <div id="items"></div>
+  </section>
+</main>
+<script type="module" src="/js/admin-remittances.js?v=20261012-remittance-approval-1"></script>
+</body>
+</html>
