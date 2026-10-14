@@ -9,8 +9,6 @@ import {
   serverTimestamp, Timestamp
 } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-firestore.js";
 
-console.info("[PISO WIFI] BUILD 2026-10-11 — cashier management deactivate action");
-
 const $ = (s) => document.querySelector(s);
 const APPS_SCRIPT_SHEET_SYNC_URL = "https://script.google.com/macros/s/AKfycbzJcIf9rpdunJ8-1kDvgePWTT1L-cQOFzZLQHFQMaqBYTlviovyxjz4JOX-FpvUrjFu/exec";
 async function postSheetSyncPayload(payload){
@@ -335,12 +333,6 @@ function updateNotificationBadge(){
   el.textContent=count>99?"99+":String(count);
   el.classList.toggle("hidden",count===0);
 }
-function navigateTo(next){
-  const target=String(next||"dashboard").replace(/^#/,"").split("?")[0]||"dashboard";
-  route=target;
-  if(location.hash!=="#"+target) location.hash="#"+target;
-  render();
-}
 function nav(){ document.querySelectorAll("#nav [data-route]").forEach(a=>a.classList.toggle("active",a.dataset.route===route)); }
 function closeMenu(){ $("#sidebar").classList.remove("open"); $("#overlay").classList.remove("show"); }
 function baseHead(title,sub,button=""){ return `<div class="page-head"><div><h1>${title}</h1><p>${sub}</p></div>${button}</div>`; }
@@ -349,7 +341,7 @@ function pageLoader(){ view.innerHTML=`<div class="loading-panel"><div class="lo
 
 function render(){
   nav();
-  const renderers={dashboard:renderDashboard,units:renderUnits,reports:renderReports,payments:renderPayments,statements:renderStatements,notifications:renderNotifications,activity:renderActivity,settings:renderSettings,profile:renderProfile,support:renderSupport,"wifi-subscription":renderWiFiSubscriptions,"cashier-management":renderCashierManagement};
+  const renderers={dashboard:renderDashboard,units:renderUnits,reports:renderReports,payments:renderPayments,statements:renderStatements,notifications:renderNotifications,activity:renderActivity,settings:renderSettings,profile:renderProfile,support:renderSupport};
   (renderers[route]||renderDashboard)();
   closeMenu();
   updateNotificationBadge();
@@ -397,8 +389,6 @@ function renderDashboard(){
       </div>
     </div>
 
-    <div class="panel" style="margin:18px 0"><div class="panel-head"><div><h3>WiFi Subscription</h3><p>Track subscription payments and upcoming expiry dates.</p></div><button class="primary-btn" data-route="wifi-subscription">Manage Subscriptions</button></div><div id="wifiSubscriptionSummary" style="padding:14px 18px;color:#52637a">Open WiFi Subscription to view total paid and reminders.</div></div>
-
     <div class="dashboard-lower-grid">
       <div class="panel">
         <div class="panel-head"><div><h3>Outstanding Payments</h3><p>Customers with an unpaid balance.</p></div><button class="link-btn" data-route="payments">View All</button></div>
@@ -423,7 +413,6 @@ function renderDashboard(){
   $("#topPeriod").onchange=e=>renderTopUnits(e.target.value);
   document.querySelectorAll("[data-pay-unit]").forEach(b=>b.onclick=()=>openPaymentModal(b.dataset.payUnit));
   bindDynamicButtons();
-  updateWiFiSubscriptionSummary();
 }
 function kpi(icon,title,value,sub,cls="",routeTarget=""){ return `<article class="kpi ${cls} ${routeTarget?"is-clickable":""}" ${routeTarget?`data-route="${routeTarget.replace("#","")}" tabindex="0" role="button"`:""}><div class="kpi-icon">${icon}</div><span>${title}</span><b>${value}</b><small>${sub}</small></article>`; }
 const metricIcons={
@@ -470,8 +459,6 @@ function shiftMonth(k,delta){const [y,m]=k.split("-").map(Number);const d=new Da
 function rangeMonths(n){return Array.from({length:n},(_,i)=>shiftMonth(selectedMonth,-i));}
 function yearMonths(k){const y=Number(k.slice(0,4));return Array.from({length:12},(_,i)=>`${y}-${String(i+1).padStart(2,"0")}`);}
 
-function updateWiFiSubscriptionSummary(){const el=$("#wifiSubscriptionSummary");if(!el)return;const upcoming=wifiSubscriptions.filter(x=>{const d=subscriptionDate(x.periodEnd);return d&&d>=new Date()&&d<=new Date(Date.now()+7*86400000)});el.innerHTML=`<b>Total paid: ${money(subscriptionTotalPaid())}</b> · ${wifiSubscriptions.length} payment record(s) · <span style="color:${upcoming.length?"#c2410c":"#15803d"}">${upcoming.length} subscription(s) ending within 7 days</span>${upcoming.length?`<ul>${upcoming.map(x=>`<li>${esc(x.wifiName)} — ${esc(expiryLabel(x))}</li>`).join("")}</ul>`:""}`;}
-
 function renderUnits(){
   const rows=normalizeRows().filter(x=>(!unitSearch||`${x.u.name} ${x.u.unitCode} ${x.u.location} ${x.u.contact}`.toLowerCase().includes(unitSearch.toLowerCase()))&&(!unitStatus||String(x.u.active!==false?"Active":"Inactive")===unitStatus)&&(!unitPaymentStatus||x.c.status===unitPaymentStatus));
   view.innerHTML=baseHead("Units / Clients","Manage your Piso WiFi units and clients.",`<button class="primary-btn" id="addUnitBtn">+ Add New Client</button>`)+`<div class="panel"><div class="panel-head"><div><h3>Registered Units</h3><p>Showing ${rows.length} of ${units.length} units · ${monthLabel(selectedMonth)}</p></div><div class="tools"><input id="unitSearch" class="search" placeholder="Search client or unit…" value="${esc(unitSearch)}"><select id="unitStatus" class="search"><option value="">All Status</option><option ${unitStatus==="Active"?"selected":""}>Active</option><option ${unitStatus==="Inactive"?"selected":""}>Inactive</option></select><select id="unitPaymentStatus" class="search"><option value="">All Payment Status</option><option ${unitPaymentStatus==="Paid"?"selected":""}>Paid</option><option ${unitPaymentStatus==="Partial"?"selected":""}>Partial</option><option ${unitPaymentStatus==="Unpaid"?"selected":""}>Unpaid</option></select><button class="secondary-btn" id="exportUnits">Export Excel/CSV</button></div></div><div class="table-wrap accumulating-table"><table><thead><tr><th>Unit Code</th><th>Client Name</th><th>Location</th><th>Contact</th><th>Status</th><th>This Month</th><th>Payment</th><th>Actions</th></tr></thead><tbody>${rows.length?rows.map(x=>`<tr><td><b>${esc(x.u.unitCode||"—")}</b></td><td>${esc(x.u.name||"—")}</td><td>${esc(x.u.location||"—")}</td><td>${esc(x.u.contact||"—")}</td><td>${statusBadge(x.u.active!==false?"Active":"Inactive")}</td><td class="amount">${money(x.c.gross)}</td><td>${statusBadge(x.c.status)}</td><td><button class="action-btn" data-sale="${x.u.id}">Gross Sale</button><button class="action-btn" data-profile="${x.u.id}">View</button><button class="action-btn" data-edit-unit="${x.u.id}">Edit</button><button class="action-btn danger" data-toggle-unit="${x.u.id}">${x.u.active!==false?"Deactivate":"Activate"}</button>${ENABLE_CLIENT_DELETE?`<button class="action-btn danger solid-danger" data-delete-unit="${x.u.id}">Delete</button>`:""}</td></tr>`).join(""):emptyRow(8,"No clients or units found.")}</tbody></table></div></div>`;
@@ -486,13 +473,13 @@ function exportUnitsCsv(rows){ downloadCsv(`piso-wifi-units-${selectedMonth}.csv
 
 function renderReports(){
   const rows=normalizeRows(), t=totals(rows);
-  view.innerHTML=baseHead("Monthly Reports","View and export monthly summaries.",`<div class="tools"><button class="secondary-btn" id="downloadReport">Download</button><button class="primary-btn" id="printReport">Print</button></div>`)+`<div class="report-cards">${reportCard("Total Units",units.length)}${reportCard("Total Gross Sales",money(t.gross))}${reportCard("Total Internet Cost",money(t.internet))}${reportCard("Total Owner Earn",money(Math.max(0,t.owner-t.elec)),"green")}${reportCard("Customer Earnings",money(t.due),"customer-earnings")}${reportCard("Client Net",money(t.due),"customer-net")}${reportCard("Total Electricity",money(t.elec))}${reportCard("Total Amount Due",money(t.due))}${reportCard("Customer Accumulated Earnings",money(t.paid),"green")}${reportCard("Outstanding",money(t.balance),"red")}</div><div class="panel"><div class="panel-head"><div><h3>${monthLabel(selectedMonth)} Detail</h3><p>All calculations use the current business settings.</p></div><span class="report-rule">Internet ${money(settings.internetCost)} separate · Owner ${settings.ownerPercent}% · Client ${settings.clientPercent}% · Electricity +${money(settings.electricity)}</span></div><div class="table-wrap"><table><thead><tr><th>Unit</th><th>Client</th><th>Gross Sales</th><th>Internet</th><th>Net Sales</th><th>Owner Share</th><th>Customer Earnings</th><th>Electricity</th><th>Client Net</th><th>Amount Due</th><th>Paid</th><th>Balance</th><th>Status</th></tr></thead><tbody>${rows.length?rows.map(x=>`<tr><td>${esc(x.u.unitCode)}</td><td>${esc(x.u.name)}</td><td>${money(x.c.gross)}</td><td>${money(x.c.internet)}</td><td>${money(x.c.net)}</td><td>${money(x.c.owner)}</td><td>${money(x.c.clientTotal)}</td><td>${money(x.c.elec)}</td><td>${money(x.c.clientTotal)}</td><td>${money(x.c.clientTotal)}</td><td>${money(x.c.paid)}</td><td class="amount">${money(x.c.balance)}</td><td>${statusBadge(x.c.status)}</td></tr>`).join(""):emptyRow(13,"No sales recorded for this month.")}</tbody></table></div></div>`;
+  view.innerHTML=baseHead("Monthly Reports","View and export monthly summaries.",`<div class="tools"><button class="secondary-btn" id="downloadReport">Download</button><button class="primary-btn" id="printReport">Print</button></div>`)+`<div class="report-cards">${reportCard("Total Units",units.length)}${reportCard("Total Gross Sales",money(t.gross))}${reportCard("Total Internet Cost",money(t.internet))}${reportCard("Total Net Sales",money(t.net),"net-sales")}${reportCard("Total Owner Share",money(t.owner))}${reportCard("Total Client Share",money(t.client))}${reportCard("Client Net",money(t.due),"customer-net")}${reportCard("Total Electricity",money(t.elec))}${reportCard("Total Amount Due",money(t.due))}${reportCard("Total Collected",money(t.paid),"green")}${reportCard("Outstanding",money(t.balance),"red")}</div><div class="panel"><div class="panel-head"><div><h3>${monthLabel(selectedMonth)} Detail</h3><p>All calculations use the current business settings.</p></div><span class="report-rule">Internet ${money(settings.internetCost)} · Owner ${settings.ownerPercent}% · Client ${settings.clientPercent}% · Electricity ${money(settings.electricity)}</span></div><div class="table-wrap"><table><thead><tr><th>Unit</th><th>Client</th><th>Gross Sales</th><th>Internet</th><th>Net Sales</th><th>Owner Share</th><th>Client Share</th><th>Electricity</th><th>Client Net</th><th>Amount Due</th><th>Paid</th><th>Balance</th><th>Status</th></tr></thead><tbody>${rows.length?rows.map(x=>`<tr><td>${esc(x.u.unitCode)}</td><td>${esc(x.u.name)}</td><td>${money(x.c.gross)}</td><td>${money(x.c.internet)}</td><td>${money(x.c.net)}</td><td>${money(x.c.owner)}</td><td>${money(x.c.client)}</td><td>${money(x.c.elec)}</td><td>${money(x.c.clientTotal)}</td><td>${money(x.c.clientTotal)}</td><td>${money(x.c.paid)}</td><td class="amount">${money(x.c.balance)}</td><td>${statusBadge(x.c.status)}</td></tr>`).join(""):emptyRow(13,"No sales recorded for this month.")}</tbody></table></div></div>`;
   $("#downloadReport").onclick=()=>downloadReportHtml(t,rows); $("#printReport").onclick=()=>printReport(t,rows);
 }
 function reportCard(label,value,cls=""){return `<article class="report-card ${cls}"><span>${label}</span><strong>${value}</strong></article>`;}
 function exportReportCsv(rows){downloadCsv(`piso-wifi-report-${selectedMonth}.csv`,[["Unit","Client","Gross Sales","Internet","Net Sales","Owner Share","Client Share","Electricity","Client Net","Amount Due","Paid","Balance","Status"],...rows.map(x=>[x.u.unitCode,x.u.name,x.c.gross,x.c.internet,x.c.net,x.c.owner,x.c.client,x.c.elec,x.c.clientTotal,x.c.clientTotal,x.c.paid,x.c.balance,x.c.status])]);}
 function exportReportExcel(rows){downloadXlsx(`piso-wifi-report-${selectedMonth}.xlsx`,"Monthly Report",[["Unit","Client","Gross Sales","Internet","Net Sales","Owner Share","Client Share","Electricity","Client Net","Amount Due","Paid","Balance","Status"],...rows.map(x=>[x.u.unitCode,x.u.name,x.c.gross,x.c.internet,x.c.net,x.c.owner,x.c.client,x.c.elec,x.c.clientTotal,x.c.clientTotal,x.c.paid,x.c.balance,x.c.status])]);}
-function reportDocumentHtml(t,rows){return `<!doctype html><html><head><meta charset="utf-8"><title>PISO WIFI Monthly Report — ${esc(monthLabel(selectedMonth))}</title><style>${printCss()}body{max-width:1200px;margin:auto}.brand{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #1685f5;padding-bottom:16px}.customer-net{background:#eef8ff!important;border:1px solid #bfe1ff!important}.amount{text-align:right;font-weight:700}</style></head><body><div class="brand"><div><h1>PISO WIFI</h1><p>Management System · Monthly Report</p></div><div><b>${monthLabel(selectedMonth)}</b><br>Generated ${dateLabel(new Date())}</div></div><div class="print-grid">${[["Total Units",units.length],["Gross Sales",money(t.gross)],["Internet",money(t.internet)],["Total Owner Earn",money(Math.max(0,t.owner-t.elec))],["Client Share",money(t.client)],["Client Net",money(t.due)],["Electricity",money(t.elec)],["Amount Due",money(t.due)],["Customer Accumulated Earnings",money(t.paid)],["Outstanding",money(t.balance)]].map(x=>`<div class="${x[0]==="Client Net"?"customer-net":""}"><b>${x[0]}</b><strong>${x[1]}</strong></div>`).join("")}</div><table><thead><tr><th>Unit</th><th>Client</th><th>Gross</th><th>Internet</th><th>Net</th><th>Owner</th><th>Client</th><th>Electricity</th><th>Client Net</th><th>Due</th><th>Paid</th><th>Balance</th><th>Status</th></tr></thead><tbody>${rows.map(x=>`<tr><td>${esc(x.u.unitCode)}</td><td>${esc(x.u.name)}</td><td>${money(x.c.gross)}</td><td>${money(x.c.internet)}</td><td>${money(x.c.net)}</td><td>${money(x.c.owner)}</td><td>${money(x.c.clientTotal)}</td><td>${money(x.c.elec)}</td><td>${money(x.c.clientTotal)}</td><td>${money(x.c.clientTotal)}</td><td>${money(x.c.paid)}</td><td>${money(x.c.balance)}</td><td>${esc(x.c.status)}</td></tr>`).join("")}</tbody></table></body></html>`;}
+function reportDocumentHtml(t,rows){return `<!doctype html><html><head><meta charset="utf-8"><title>PISO WIFI Monthly Report — ${esc(monthLabel(selectedMonth))}</title><style>${printCss()}body{max-width:1200px;margin:auto}.brand{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #1685f5;padding-bottom:16px}.customer-net{background:#eef8ff!important;border:1px solid #bfe1ff!important}.amount{text-align:right;font-weight:700}</style></head><body><div class="brand"><div><h1>PISO WIFI</h1><p>Management System · Monthly Report</p></div><div><b>${monthLabel(selectedMonth)}</b><br>Generated ${dateLabel(new Date())}</div></div><div class="print-grid">${[["Total Units",units.length],["Gross Sales",money(t.gross)],["Internet",money(t.internet)],["Net Sales",money(t.net)],["Owner Share",money(t.owner)],["Client Share",money(t.client)],["Client Net",money(t.due)],["Electricity",money(t.elec)],["Amount Due",money(t.due)],["Collected",money(t.paid)],["Outstanding",money(t.balance)]].map(x=>`<div class="${x[0]==="Client Net"?"customer-net":""}"><b>${x[0]}</b><strong>${x[1]}</strong></div>`).join("")}</div><table><thead><tr><th>Unit</th><th>Client</th><th>Gross</th><th>Internet</th><th>Net</th><th>Owner</th><th>Client</th><th>Electricity</th><th>Client Net</th><th>Due</th><th>Paid</th><th>Balance</th><th>Status</th></tr></thead><tbody>${rows.map(x=>`<tr><td>${esc(x.u.unitCode)}</td><td>${esc(x.u.name)}</td><td>${money(x.c.gross)}</td><td>${money(x.c.internet)}</td><td>${money(x.c.net)}</td><td>${money(x.c.owner)}</td><td>${money(x.c.client)}</td><td>${money(x.c.elec)}</td><td>${money(x.c.clientTotal)}</td><td>${money(x.c.clientTotal)}</td><td>${money(x.c.paid)}</td><td>${money(x.c.balance)}</td><td>${esc(x.c.status)}</td></tr>`).join("")}</tbody></table></body></html>`;}
 function downloadReportHtml(t,rows){downloadHtmlFile(`piso-wifi-report-${selectedMonth}.html`,reportDocumentHtml(t,rows));}
 function downloadXlsx(name,sheetName,data){if(!window.XLSX){notify("Excel exporter is still loading. Please try again.","error");return;}const wb=XLSX.utils.book_new();const ws=XLSX.utils.aoa_to_sheet(data);XLSX.utils.book_append_sheet(wb,ws,sheetName);XLSX.writeFile(wb,name);}
 function downloadCsv(name,data){const csv=data.map(r=>r.map(v=>`"${String(v??"").replaceAll('"','""')}"`).join(",")).join("\n");const blob=new Blob([csv],{type:"text/csv;charset=utf-8"});const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),500);}
@@ -501,7 +488,7 @@ function printReport(t,rows){openPrintWindow(reportDocumentHtml(t,rows));}
 function renderPayments(){
   const rows=normalizeRows().filter(x=>x.c.balance>0);
   const all=payments.filter(p=>p.month===selectedMonth).sort((a,b)=>String(b.date||"").localeCompare(String(a.date||"")));
-  view.innerHTML=baseHead("Payments","Record and track client payments.",`<button class="primary-btn" id="recordPayment">+ Record Payment</button>`)+`<div class="summary-grid"><div class="summary-card"><h3>TOTAL GROSS THIS MONTH</h3><strong>${money(totals(normalizeRows()).gross)}</strong></div><div class="summary-card"><h3>CLIENT EARNINGS</h3><strong>${money(totals(normalizeRows()).client)}</strong></div><div class="summary-card"><h3>ELECTRICITY</h3><strong class="success-text">${money(totals(normalizeRows()).elec)}</strong></div><div class="summary-card"><h3>TOTAL CUSTOMER EARNINGS</h3><strong class="danger-text">${money(totals(normalizeRows()).due)}</strong></div></div><div class="panel"><div class="panel-head"><div><h3>Outstanding Payments</h3><p>Clients with balances for ${monthLabel(selectedMonth)}</p></div><button class="secondary-btn" id="paymentSearchAll">Show Payment History</button></div><div class="table-wrap"><table><thead><tr><th>Unit</th><th>Client</th><th>Amount Due</th><th>Paid</th><th>Balance</th><th>Status</th><th>Action</th></tr></thead><tbody>${rows.length?rows.map(x=>`<tr><td>${esc(x.u.unitCode)}</td><td>${esc(x.u.name)}</td><td>${money(x.c.clientTotal)}</td><td>${money(x.c.paid)}</td><td class="amount">${money(x.c.balance)}</td><td>${statusBadge(x.c.status)}</td><td><button class="action-btn" data-payment="${x.u.id}">Record Payment</button></td></tr>`).join(""):emptyRow(7,"No outstanding payments.")}</tbody></table></div></div><div class="panel" id="paymentHistory"><div class="panel-head"><div><h3>Payment History</h3><p>${monthLabel(selectedMonth)}</p></div></div><div class="table-wrap"><table><thead><tr><th>Date</th><th>Unit</th><th>Client</th><th>Amount</th><th>Method</th><th>Reference</th></tr></thead><tbody>${all.length?all.map(p=>{const u=units.find(x=>x.id===p.unitId);return `<tr><td>${dateLabel(p.date)}</td><td>${esc(u?.unitCode||"—")}</td><td>${esc(u?.name||"—")}</td><td class="amount">${money(p.amount)}</td><td>${esc(p.method||"—")}</td><td>${esc(p.reference||"—")}</td></tr>`}).join(""):emptyRow(6,"No payments recorded.")}</tbody></table></div></div>`;
+  view.innerHTML=baseHead("Payments","Record and track client payments.",`<button class="primary-btn" id="recordPayment">+ Record Payment</button>`)+`<div class="summary-grid"><div class="summary-card"><h3>CLIENT NET</h3><strong>${money(Math.max(0,totals(normalizeRows()).client-totals(normalizeRows()).elec))}</strong></div><div class="summary-card"><h3>AMOUNT DUE</h3><strong>${money(totals(normalizeRows()).due)}</strong></div><div class="summary-card"><h3>COLLECTED</h3><strong class="success-text">${money(totals(normalizeRows()).paid)}</strong></div><div class="summary-card"><h3>OUTSTANDING</h3><strong class="danger-text">${money(totals(normalizeRows()).balance)}</strong></div></div><div class="panel"><div class="panel-head"><div><h3>Outstanding Payments</h3><p>Clients with balances for ${monthLabel(selectedMonth)}</p></div><button class="secondary-btn" id="paymentSearchAll">Show Payment History</button></div><div class="table-wrap"><table><thead><tr><th>Unit</th><th>Client</th><th>Amount Due</th><th>Paid</th><th>Balance</th><th>Status</th><th>Action</th></tr></thead><tbody>${rows.length?rows.map(x=>`<tr><td>${esc(x.u.unitCode)}</td><td>${esc(x.u.name)}</td><td>${money(x.c.clientTotal)}</td><td>${money(x.c.paid)}</td><td class="amount">${money(x.c.balance)}</td><td>${statusBadge(x.c.status)}</td><td><button class="action-btn" data-payment="${x.u.id}">Record Payment</button></td></tr>`).join(""):emptyRow(7,"No outstanding payments.")}</tbody></table></div></div><div class="panel" id="paymentHistory"><div class="panel-head"><div><h3>Payment History</h3><p>${monthLabel(selectedMonth)}</p></div></div><div class="table-wrap"><table><thead><tr><th>Date</th><th>Unit</th><th>Client</th><th>Amount</th><th>Method</th><th>Reference</th></tr></thead><tbody>${all.length?all.map(p=>{const u=units.find(x=>x.id===p.unitId);return `<tr><td>${dateLabel(p.date)}</td><td>${esc(u?.unitCode||"—")}</td><td>${esc(u?.name||"—")}</td><td class="amount">${money(p.amount)}</td><td>${esc(p.method||"—")}</td><td>${esc(p.reference||"—")}</td></tr>`}).join(""):emptyRow(6,"No payments recorded.")}</tbody></table></div></div>`;
   $("#recordPayment").onclick=()=>openPaymentModal(); $("#paymentSearchAll").onclick=()=>$("#paymentHistory").scrollIntoView({behavior:"smooth"}); bindDynamicButtons();
 }
 
@@ -543,171 +530,8 @@ function renderActivity(){
 }
 function activityRows(filter){const list=activities.filter(a=>!filter||a.activityType===filter);return list.length?list.map(a=>`<tr><td>${dateTimeLabel(a.createdAt)}</td><td><span class="activity-dot"></span>${esc(a.activityType||"Activity")}</td><td>${esc(a.description||"—")}</td><td>${esc(a.userEmail||currentUser?.email||"Admin")}</td></tr>`).join(""):emptyRow(4,"No activity recorded yet. Actions you perform will appear here automatically.");}
 
-let wifiSubscriptions=[];
-function subscriptionDate(v){if(!v)return null;const d=v?.toDate?v.toDate():new Date(v);return Number.isNaN(d.getTime())?null:d;}
-function subscriptionTotalPaid(){return wifiSubscriptions.reduce((sum,x)=>sum+Math.max(0,Number(x.paymentAmount||0)),0);}
-function expiryLabel(x){const end=subscriptionDate(x.periodEnd);if(!end)return "No end date";const days=Math.ceil((new Date(end.getFullYear(),end.getMonth(),end.getDate())-new Date(new Date().getFullYear(),new Date().getMonth(),new Date().getDate()))/86400000);if(days<0)return `Expired ${Math.abs(days)} day(s) ago`;if(days===0)return "Expires today";if(days<=7)return `Ends in ${days} day(s)`;return `Ends ${end.toLocaleDateString()}`;}
-function subscriptionEndingSoon(x){const d=subscriptionDate(x.periodEnd);return !!d&&d>=new Date(new Date().setHours(0,0,0,0))&&d<=new Date(Date.now()+7*86400000);}
-async function loadWiFiSubscriptions(){
-  const snap=await getDocs(collection(db,"wifiSubscriptions"));
-  wifiSubscriptions=snap.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>(subscriptionDate(b.paymentDate)?.getTime()||0)-(subscriptionDate(a.paymentDate)?.getTime()||0));
-  updateWiFiSubscriptionSummary();
-  // Create one Admin notification per subscription end date when it enters the
-  // 7-day reminder window. Updating the period later allows a fresh reminder.
-  for(const sub of wifiSubscriptions){
-    const end=subscriptionDate(sub.periodEnd);if(!end)continue;
-    const days=Math.ceil((new Date(end.getFullYear(),end.getMonth(),end.getDate())-new Date(new Date().getFullYear(),new Date().getMonth(),new Date().getDate()))/86400000);
-    if(days<0||days>7||sub.expiryReminderSentFor===sub.periodEnd)continue;
-    try{
-      await addDoc(collection(db,"notifications"),{type:"wifi-subscription-expiry",title:"WiFi subscription expiring soon",message:`${sub.wifiName||"WiFi subscription"} — ${days===0?"expires today":`expires in ${days} day(s)`} (${sub.periodEnd}). Please review renewal/payment.`,relatedId:sub.id,read:false,createdAt:serverTimestamp()});
-      await updateDoc(doc(db,"wifiSubscriptions",sub.id),{expiryReminderSentFor:sub.periodEnd,expiryReminderSentAt:serverTimestamp()});
-      sub.expiryReminderSentFor=sub.periodEnd;
-    }catch(error){console.warn("Could not save WiFi subscription expiry reminder",sub.id,error);}
-  }
-}
-function renderWiFiSubscriptions(){
-  const ending=wifiSubscriptions.filter(subscriptionEndingSoon).length;
-  view.innerHTML=baseHead("WiFi Subscription","Track WiFi subscriptions, payments, receipts and renewal reminders.",`<button class="primary-btn" id="addWiFiSubscription">+ Add WiFi Subscription</button>`)+`<div class="report-cards">${reportCard("Total Paid",money(subscriptionTotalPaid()),"green")}${reportCard("Subscriptions",wifiSubscriptions.length)}${reportCard("Ending Soon",ending,ending?"red":"green")}</div>${ending?`<div class="notice" style="margin-bottom:16px;border-left:4px solid #d97706"><b>Upcoming expiry reminders</b><ul>${wifiSubscriptions.filter(subscriptionEndingSoon).map(x=>`<li>${esc(x.wifiName)} — ${esc(expiryLabel(x))}</li>`).join("")}</ul></div>`:""}<div class="panel"><div class="panel-head"><div><h3>Subscription Payment History</h3><p>Every saved payment and receipt is listed here. Receipt images are stored in Firestore, not Firebase Storage.</p></div></div><div class="table-wrap"><table><thead><tr><th>Wi-Fi Name</th><th>Subscription Info</th><th>Payment</th><th>Payment Date</th><th>Period</th><th>Mode</th><th>Reference</th><th>Receipt</th><th>Reminder</th></tr></thead><tbody>${wifiSubscriptions.length?wifiSubscriptions.map(x=>{const d=subscriptionDate(x.periodEnd),soon=subscriptionEndingSoon(x),expired=d&&d<new Date(new Date().setHours(0,0,0,0));return `<tr><td>${esc(x.wifiName||"—")}</td><td>${esc(x.subscriptionInfo||"—")}</td><td>${money(x.paymentAmount)}</td><td>${esc(x.paymentDate||"—")}</td><td>${esc(x.periodStart||"—")} – ${esc(x.periodEnd||"—")}</td><td>${esc(x.paymentMode||"—")}</td><td>${esc(x.referenceNumber||"—")}</td><td>${x.receiptDataUrl?`<button type="button" class="action-btn" data-view-wifi-receipt="${x.id}">View</button> <button type="button" class="action-btn" data-download-wifi-receipt="${x.id}">Download</button>`:"—"}</td><td style="color:${soon||expired?"#d33":"#15803d"};font-weight:700">${esc(expiryLabel(x))}</td></tr>`}).join(""):`<tr><td colspan="9">No WiFi subscriptions recorded yet.</td></tr>`}</tbody></table></div></div>`;
-  $("#addWiFiSubscription")?.addEventListener("click",openWiFiSubscriptionModal);
-  document.querySelectorAll("[data-view-wifi-receipt]").forEach(b=>b.addEventListener("click",()=>viewWiFiReceipt(b.dataset.viewWifiReceipt)));
-  document.querySelectorAll("[data-download-wifi-receipt]").forEach(b=>b.addEventListener("click",()=>downloadWiFiReceipt(b.dataset.downloadWifiReceipt)));
-}
-function compressReceiptImage(file){
-  return new Promise((resolve,reject)=>{
-    if(!file||!file.type.startsWith("image/")){reject(new Error("Please upload a JPG, PNG or WEBP receipt photo."));return;}
-    const reader=new FileReader();
-    reader.onerror=()=>reject(new Error("Could not read the receipt image."));
-    reader.onload=()=>{
-      const img=new Image();
-      img.onerror=()=>reject(new Error("This receipt image could not be opened. Try a JPG or PNG photo."));
-      img.onload=()=>{
-        const maxDimension=1400,scale=Math.min(1,maxDimension/Math.max(img.width,img.height));
-        const canvas=document.createElement("canvas");canvas.width=Math.max(1,Math.round(img.width*scale));canvas.height=Math.max(1,Math.round(img.height*scale));
-        const ctx=canvas.getContext("2d");if(!ctx){reject(new Error("Image compression is not supported by this browser."));return;}
-        ctx.fillStyle="#ffffff";ctx.fillRect(0,0,canvas.width,canvas.height);ctx.drawImage(img,0,0,canvas.width,canvas.height);
-        let quality=.78,data=canvas.toDataURL("image/jpeg",quality);
-        while(data.length>650000&&quality>.35){quality-=.08;data=canvas.toDataURL("image/jpeg",quality);}
-        if(data.length>650000){const shrink=Math.sqrt(500000/data.length);canvas.width=Math.max(1,Math.round(canvas.width*shrink));canvas.height=Math.max(1,Math.round(canvas.height*shrink));ctx.drawImage(img,0,0,canvas.width,canvas.height);data=canvas.toDataURL("image/jpeg",.48);}
-        if(data.length>700000){reject(new Error("Receipt photo is too large after compression. Please crop the image closer to the receipt and try again."));return;}
-        resolve({dataUrl:data,mimeType:"image/jpeg",fileName:(file.name||"receipt").replace(/\.[^.]+$/,".jpg"),size:data.length});
-      };
-      img.src=reader.result;
-    };
-    reader.readAsDataURL(file);
-  });
-}
-function viewWiFiReceipt(id){const x=wifiSubscriptions.find(r=>r.id===id);if(!x?.receiptDataUrl)return;const root=$("#modalRoot");root.innerHTML=`<div class="modal-backdrop" id="receiptBackdrop"><div class="modal" style="width:min(900px,96vw)"><div class="modal-head"><h3>${esc(x.wifiName)} — Receipt</h3><button class="close" id="closeReceipt">×</button></div><div class="modal-body" style="text-align:center"><img src="${x.receiptDataUrl}" alt="Receipt for ${esc(x.wifiName)}" style="max-width:100%;max-height:68vh;object-fit:contain;border:1px solid #e2e8f0;border-radius:8px"></div><div class="modal-actions"><button class="secondary-btn" id="cancelReceipt">Close</button><button class="primary-btn" id="downloadReceiptNow">Download Receipt</button></div></div></div>`;$("#closeReceipt").onclick=closeModal;$("#cancelReceipt").onclick=closeModal;$("#downloadReceiptNow").onclick=()=>downloadWiFiReceipt(id);}
-function downloadWiFiReceipt(id){const x=wifiSubscriptions.find(r=>r.id===id);if(!x?.receiptDataUrl)return;const a=document.createElement("a");a.href=x.receiptDataUrl;a.download=x.receiptFileName||`wifi-receipt-${id}.jpg`;document.body.appendChild(a);a.click();a.remove();}
-function openWiFiSubscriptionModal(){
-  openModal("Add WiFi Subscription",`<div class="form-grid"><div class="field full"><label>Wi-Fi Name *</label><input id="wsName" required placeholder="PLDT"></div><div class="field full"><label>WiFi Subscription Information *</label><input id="wsInfo" required placeholder="UNLI FIBER"></div><div class="field"><label>Payment Information (Amount Paid) *</label><input id="wsAmount" type="number" min="0.01" step="0.01" required placeholder="Amount paid"></div><div class="field"><label>Subscription Period *</label><div style="display:flex;gap:8px"><input id="wsStart" type="date" required aria-label="Period start"><input id="wsEnd" type="date" required aria-label="Period end"></div></div><div class="field"><label>Payment Date *</label><input id="wsPaymentDate" type="date" required value="${new Date().toISOString().slice(0,10)}"></div><div class="field"><label>Mode of Payment *</label><select id="wsMode"><option>GCash</option><option>Bank Transfer</option><option>Cash</option><option>Credit/Debit Card</option><option>Other</option></select></div><div class="field full"><label>Reference Number</label><input id="wsReference" placeholder="Reference / transaction number"></div><div class="field full"><label>Upload Photo of Receipt *</label><input id="wsReceipt" type="file" accept="image/jpeg,image/png,image/webp" required><small>JPG, PNG or WEBP only. The photo is compressed and saved in Firestore. No Firebase Storage or billing upgrade is used. Please use a clear, cropped photo of the receipt.</small></div></div>`,"Save Subscription Payment",async()=>{
-    const wifiName=$("#wsName").value.trim(),subscriptionInfo=$("#wsInfo").value.trim(),paymentAmount=Number($("#wsAmount").value),periodStart=$("#wsStart").value,periodEnd=$("#wsEnd").value,paymentDate=$("#wsPaymentDate").value,paymentMode=$("#wsMode").value,referenceNumber=$("#wsReference").value.trim(),file=$("#wsReceipt").files[0];
-    if(!wifiName||!subscriptionInfo||!(paymentAmount>0)||!periodStart||!periodEnd||periodEnd<periodStart||!paymentDate||!file)throw new Error("Complete all required fields and ensure the subscription end date is on or after the start date.");
-    if(file.size>15*1024*1024)throw new Error("Choose a receipt photo smaller than 15 MB before compression.");
-    const receipt=await compressReceiptImage(file);
-    await addDoc(collection(db,"wifiSubscriptions"),{wifiName,subscriptionInfo,paymentAmount,periodStart,periodEnd,paymentDate,paymentMode,referenceNumber,receiptDataUrl:receipt.dataUrl,receiptMimeType:receipt.mimeType,receiptFileName:receipt.fileName,receiptSize:receipt.size,createdBy:currentUser.uid,createdAt:serverTimestamp()});
-    await logActivity("WiFi Subscription",`Recorded subscription payment for ${wifiName} — ${money(paymentAmount)}`);await loadWiFiSubscriptions();
-  });
-}
-
-// CASHIER ACCOUNT MANAGEMENT — stays inside the Admin dashboard.
-let cashierAccounts=[];
-async function loadCashierAccounts(){
-  const tableBody=$("#cashierAccountsBody");
-  if(tableBody)tableBody.innerHTML='<tr><td colspan="5">Loading cashier accounts…</td></tr>';
-  try{
-    const snap=await getDocs(collection(db,"users"));
-    cashierAccounts=snap.docs.map(d=>({id:d.id,...d.data()})).filter(u=>String(u.role||"").toLowerCase()==="cashier");
-    const body=$("#cashierAccountsBody");
-    if(!body)return;
-    body.innerHTML=cashierAccounts.length?cashierAccounts.map(c=>`<tr><td>${esc(c.name||"—")}</td><td>${esc(c.email||"—")}</td><td><span class="badge ${c.active===false?"inactive":"active"}">${c.active===false?"Inactive":"Active"}</span></td><td>${c.createdAt?.toDate?esc(c.createdAt.toDate().toLocaleDateString()):esc(c.createdAt||"—")}</td><td><button type="button" class="danger-btn" data-delete-cashier="${esc(c.id)}" ${c.active===false?"disabled":""}>Permanently Delete</button></td></tr>`).join(""):'<tr><td colspan="5">No cashier accounts yet. Use “Create Cashier Account” to add one.</td></tr>';
-    body.querySelectorAll("[data-delete-cashier]").forEach(button=>button.addEventListener("click",()=>removeCashierAccount(button.dataset.deleteCashier)));
-  }catch(error){
-    console.error("Could not load cashier accounts",error);
-    const body=$("#cashierAccountsBody");
-    if(body)body.innerHTML=`<tr><td colspan="4">Could not load accounts: ${esc(error.message||"Check Firestore Rules and Admin access.")}</td></tr>`;
-  }
-}
-function renderCashierManagement(){
-  view.innerHTML=baseHead("Cashier Management","Create or permanently delete cashier login accounts. Deletion cannot be undone; sales/history are retained.",'<button class="primary-btn" id="addAdminCashier">+ Create Cashier Account</button>')+
-    `<div class="panel"><div class="panel-head"><div><h3>Cashier Accounts</h3><p>Only Admin can create cashier accounts. This page remains inside the Admin dashboard.</p></div><button type="button" class="secondary-btn" id="refreshCashierAccounts">Refresh</button></div><div class="table-wrap"><table><thead><tr><th>Cashier Name</th><th>Email</th><th>Status</th><th>Created</th><th>Action</th></tr></thead><tbody id="cashierAccountsBody"><tr><td colspan="5">Loading cashier accounts…</td></tr></tbody></table></div></div>`;
-  $("#addAdminCashier")?.addEventListener("click",openAdminCashierModal);
-  $("#refreshCashierAccounts")?.addEventListener("click",loadCashierAccounts);
-  loadCashierAccounts();
-}
-
-async function removeCashierAccount(id){
-  const cashier=cashierAccounts.find(c=>c.id===id);
-  if(!cashier)return notify("Cashier account was not found. Refresh and try again.","error");
-  if(cashier.id===currentUser?.uid)return notify("You cannot delete the Admin account you are currently using.","error");
-  const label=`${cashier.name||"Cashier"} (${cashier.email||cashier.id})`;
-  const confirmed=window.confirm(
-    `PERMANENTLY DELETE ${label}?\n\nThis will permanently delete the Cashier's Firebase Authentication login and Admin user profile. Their existing sales/history will be kept.\n\nThis action cannot be undone.`
-  );
-  if(!confirmed)return;
-  const button=document.querySelector(`[data-delete-cashier="${CSS.escape(id)}"]`);
-  if(button){button.disabled=true;button.textContent="Deleting…";}
-  try{
-    const signedInUser=auth.currentUser;
-    if(!signedInUser)throw new Error("Your Admin session has expired. Sign in again.");
-    const idToken=await signedInUser.getIdToken(true);
-    const response=await fetch("/api/admin/delete-cashier",{
-      method:"POST",
-      headers:{"Content-Type":"application/json","Authorization":`Bearer ${idToken}`},
-      body:JSON.stringify({cashierUid:id})
-    });
-    const result=await response.json().catch(()=>({}));
-    if(!response.ok)throw new Error(result.error||`Delete failed (${response.status}).`);
-    // Remove the deleted cashier from the visible list immediately after the
-    // server confirms Auth + profile deletion. Do not wait on a follow-up list read.
-    cashierAccounts=cashierAccounts.filter(account=>account.id!==id);
-    const body=$("#cashierAccountsBody");
-    if(body){
-      body.innerHTML=cashierAccounts.length?cashierAccounts.map(c=>`<tr><td>${esc(c.name||"—")}</td><td>${esc(c.email||"—")}</td><td><span class="badge ${c.active===false?"inactive":"active"}">${c.active===false?"Inactive":"Active"}</span></td><td>${c.createdAt?.toDate?esc(c.createdAt.toDate().toLocaleDateString()):esc(c.createdAt||"—")}</td><td><button type="button" class="danger-btn" data-delete-cashier="${esc(c.id)}" ${c.active===false?"disabled":""}>Permanently Delete</button></td></tr>`).join(""):'<tr><td colspan="5">No cashier accounts yet. Use “Create Cashier Account” to add one.</td></tr>';
-      body.querySelectorAll("[data-delete-cashier]").forEach(button=>button.addEventListener("click",()=>removeCashierAccount(button.dataset.deleteCashier)));
-    }
-    notify("Cashier permanently deleted from Firebase. The account is removed from this dashboard; existing sales/history were kept.","success");
-    // Refresh in the background, without delaying the successful UI update.
-    loadCashierAccounts().catch(error=>console.warn("Background cashier list refresh failed",error));
-  }catch(error){
-    console.error("Could not permanently delete cashier",error);
-    notify(error?.message||"Could not permanently delete this cashier.","error");
-    if(button){button.disabled=false;button.textContent="Permanently Delete";}
-  }
-}
-
-function openAdminCashierModal(){
-  openModal("Create Cashier Account",`<div class="form-grid"><div class="field full"><label>Cashier Name *</label><input id="adminCashierName" required placeholder="Cashier full name" autocomplete="name"></div><div class="field full"><label>Cashier Email *</label><input id="adminCashierEmail" type="email" required placeholder="cashier@example.com" autocomplete="email"></div><div class="field full"><label>Temporary Password *</label><input id="adminCashierPassword" type="text" minlength="6" required placeholder="At least 6 characters" autocomplete="new-password"><small>The temporary password will be shown after creation and included in the HTML welcome email sent to this cashier.</small></div></div>`,"Create Account",async()=>{
-    const name=$("#adminCashierName").value.trim();
-    const email=$("#adminCashierEmail").value.trim().toLowerCase();
-    const password=$("#adminCashierPassword").value;
-    if(!name||!email||! /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)||password.length<6)throw new Error("Enter the cashier name, a valid email address, and a temporary password of at least 6 characters.");
-    let credential=null,profileSaved=false,emailSent=false,emailError="";
-    try{
-      credential=await createUserWithEmailAndPassword(clientProvisionerAuth,email,password);
-      await setDoc(doc(db,"users",credential.user.uid),{role:"cashier",name,email,active:true,forcePasswordChange:true,createdAt:serverTimestamp(),createdBy:currentUser.uid});
-      profileSaved=true;
-      await provisionerSignOut(clientProvisionerAuth);
-      try{
-        const idToken=await currentUser.getIdToken(true);
-        const response=await fetch("/api/password-recovery",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({action:"sendCashierWelcome",idToken,name,email,temporaryPassword:password,cashierPortalUrl:"https://piso-wifi.pages.dev/cashier/"})});
-        const result=await response.json().catch(()=>({ok:false,error:"Email service returned an unreadable response."}));
-        if(!response.ok||result.ok!==true)throw new Error(result.error||"The email service could not send the welcome email.");
-        emailSent=true;
-      }catch(mailError){emailError=mailError?.message||"Email service is not configured yet.";console.error("Cashier created, welcome email failed:",mailError);}
-      await loadCashierAccounts();
-      const message=emailSent
-        ? `Cashier account created and HTML welcome email sent.\n\nName: ${name}\nEmail: ${email}\nTemporary password: ${password}\n\nPortal: https://piso-wifi.pages.dev/cashier/\n\nThe cashier should sign in and change this temporary password.`
-        : `Cashier account was created, but the welcome email was NOT sent.\n\nName: ${name}\nEmail: ${email}\nTemporary password: ${password}\n\nEmail error: ${emailError}\n\nDeploy the updated Google Apps Script email handler, then try again. Keep this password private.`;
-      window.alert(message);
-    }catch(error){
-      try{if(clientProvisionerAuth.currentUser)await provisionerSignOut(clientProvisionerAuth);}catch(_e){}
-      if(credential && !profileSaved)console.error("Cashier account profile save failed",error);
-      throw new Error(error?.code==="auth/email-already-in-use"?"This email already has a Firebase Authentication account.":(error.message||"Could not create cashier account."));
-    }
-  });
-}
 function renderSettings(){
-  view.innerHTML=baseHead("Settings","Configure the business rules used by all calculations.")+`<div class="settings-layout"><div class="panel settings-card"><div class="panel-head"><div><h3>Business Settings</h3><p>These values drive dashboard, payments, statements and reports.</p></div></div><div class="settings-body"><div class="setting-row"><div><b>Internet Cost</b><small>Fixed internet cost per unit/month.</small></div><input id="sInternet" type="number" min="0" step="0.01" value="${settings.internetCost}"></div><div class="setting-row"><div><b>Owner Share</b><small>Percentage of net sales allocated to owner.</small></div><input id="sOwner" type="number" min="0" max="100" step="1" value="${settings.ownerPercent}"></div><div class="setting-row"><div><b>Client Share</b><small>Percentage of net sales allocated to client.</small></div><input id="sClient" type="number" min="0" max="100" step="1" value="${settings.clientPercent}"></div><div class="setting-row"><div><b>Electricity</b><small>Electricity amount per unit/month.</small></div><input id="sElec" type="number" min="0" step="0.01" value="${settings.electricity}"></div><div class="setting-row"><div><b>Electricity Rule</b><small>How electricity affects the client amount.</small></div><select id="sRule"><option value="ADD_TO_CLIENT" ${settings.electricityRule==="ADD_TO_CLIENT"?"selected":""}>Add to Client</option><option value="SUBTRACT_FROM_CLIENT" ${settings.electricityRule==="SUBTRACT_FROM_CLIENT"?"selected":""}>Deduct from Client</option><option value="SEPARATE_CHARGE" ${settings.electricityRule==="SEPARATE_CHARGE"?"selected":""}>Separate Charge</option></select></div><div class="settings-actions"><button class="primary-btn" id="saveSettings">Save Settings</button></div></div></div><div class="panel"><div class="panel-head"><div><h3>Current Formula</h3><p>Used for ${monthLabel(selectedMonth)}</p></div></div><div class="formula-box"><div>Gross Sales</div><div>= Gross Split Base</div><strong>× ${settings.ownerPercent}% Owner = ${money(10000 * settings.ownerPercent / 100)} per ₱10,000</strong><strong>× ${settings.clientPercent}% Client = ${money(10000 * settings.clientPercent / 100)} per ₱10,000</strong><div>Internet: <b>${money(settings.internetCost)}</b> (separate cost — not deducted before 70/30)</div><div>Electricity: <b>+ ${money(settings.electricity)}</b> added to customer earnings</div></div></div></div>`;
+  view.innerHTML=baseHead("Settings","Configure the business rules used by all calculations.")+`<div class="settings-layout"><div class="panel settings-card"><div class="panel-head"><div><h3>Business Settings</h3><p>These values drive dashboard, payments, statements and reports.</p></div></div><div class="settings-body"><div class="setting-row"><div><b>Internet Cost</b><small>Fixed internet cost per unit/month.</small></div><input id="sInternet" type="number" min="0" step="0.01" value="${settings.internetCost}"></div><div class="setting-row"><div><b>Owner Share</b><small>Percentage of net sales allocated to owner.</small></div><input id="sOwner" type="number" min="0" max="100" step="1" value="${settings.ownerPercent}"></div><div class="setting-row"><div><b>Client Share</b><small>Percentage of net sales allocated to client.</small></div><input id="sClient" type="number" min="0" max="100" step="1" value="${settings.clientPercent}"></div><div class="setting-row"><div><b>Electricity</b><small>Electricity amount per unit/month.</small></div><input id="sElec" type="number" min="0" step="0.01" value="${settings.electricity}"></div><div class="setting-row"><div><b>Electricity Rule</b><small>How electricity affects the client amount.</small></div><select id="sRule"><option value="ADD_TO_CLIENT" ${settings.electricityRule==="ADD_TO_CLIENT"?"selected":""}>Add to Client</option><option value="SUBTRACT_FROM_CLIENT" ${settings.electricityRule==="SUBTRACT_FROM_CLIENT"?"selected":""}>Deduct from Client</option><option value="SEPARATE_CHARGE" ${settings.electricityRule==="SEPARATE_CHARGE"?"selected":""}>Separate Charge</option></select></div><div class="settings-actions"><button class="primary-btn" id="saveSettings">Save Settings</button></div></div></div><div class="panel"><div class="panel-head"><div><h3>Current Formula</h3><p>Used for ${monthLabel(selectedMonth)}</p></div></div><div class="formula-box"><div>Gross Sales</div><strong>− ${money(settings.internetCost)} Internet</strong><div>= Net Sales</div><strong>× ${settings.ownerPercent}% Owner</strong><strong>× ${settings.clientPercent}% Client</strong><div>Electricity: <b>${settings.electricityRule.replaceAll("_"," ")}</b></div></div></div></div>`;
   $("#saveSettings").onclick=saveSettings;
 }
 async function saveSettings(){
@@ -835,7 +659,7 @@ function subscribeSelectedSupport(id){
 let adminSupportTypingTimer=null;
 function bindAdminChatEvents(chat){if(!chat)return;const input=$("#adminSupportInput"),send=$("#adminSupportSend");if(send)send.onclick=()=>sendAdminSupportMessage(chat.id);if(input){input.oninput=()=>{clearTimeout(adminSupportTypingTimer);setAdminSupportTyping(chat.id,true);adminSupportTypingTimer=setTimeout(()=>setAdminSupportTyping(chat.id,false),1200);};input.onkeydown=e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();sendAdminSupportMessage(chat.id);}};}$("#supportOpenBtn")?.addEventListener("click",()=>setSupportStatus(chat.id,"Open"));$("#supportSolveBtn")?.addEventListener("click",()=>setSupportStatus(chat.id,"Solved"));$("#supportCloseBtn")?.addEventListener("click",()=>setSupportStatus(chat.id,"Closed"));}
 async function setAdminSupportTyping(id,on){try{await updateDoc(doc(db,"supportChats",id),{"typingBy.admin":!!on,updatedAt:new Date().toISOString()});}catch(e){}}
-async function sendAdminSupportMessage(id){const input=$("#adminSupportInput");const text=String(input?.value||"").trim();if(!text)return;try{await updateDoc(doc(db,"supportChats",id),{messages:arrayUnion({senderType:"admin",text,createdAt:new Date().toISOString()}),lastMessage:text,lastMessageSender:"admin",lastMessageAt:new Date().toISOString(),updatedAt:new Date().toISOString(),unreadForAdmin:false,unreadForCustomer:true,"typingBy.admin":false,status:"Open"});input.value="";}catch(e){notify(e?.message||"Unable to send support reply.","error");}}
+async function sendAdminSupportMessage(id){const input=$("#adminSupportInput");const text=String(input?.value||"").trim();if(!text)return;try{await updateDoc(doc(db,"supportChats",id),{messages:arrayUnion({senderType:"admin",text,createdAt:new Date().toISOString()}),updatedAt:new Date().toISOString(),unreadForAdmin:false,unreadForCustomer:true,"typingBy.admin":false,status:"Open"});input.value="";}catch(e){notify(e?.message||"Unable to send support reply.","error");}}
 async function setSupportStatus(id,status){try{
   const patch={status,updatedAt:new Date().toISOString(),unreadForAdmin:false};
   if(status==="Solved"){
@@ -861,7 +685,7 @@ function openProfile(id){
 function renderProfileTab(id,tab){
   const u=units.find(x=>x.id===id), host=$("#profileTab"); if(!host)return;
   if(tab==="overview"){const r=records.find(x=>x.unitId===id&&x.month===selectedMonth)||{unitId:id,month:selectedMonth,grossSales:0};const c=calc(r);host.innerHTML=`<div class="summary-grid"><div class="summary-card"><h3>GROSS SALES</h3><strong>${money(c.gross)}</strong></div><div class="summary-card"><h3>INTERNET COST</h3><strong>${money(c.internet)}</strong></div><div class="summary-card"><h3>NET SALES</h3><strong>${money(c.net)}</strong></div><div class="summary-card"><h3>OWNER SHARE (${settings.ownerPercent}%)</h3><strong>${money(c.owner)}</strong></div><div class="summary-card"><h3>CLIENT SHARE (${settings.clientPercent}%)</h3><strong>${money(c.client)}</strong></div><div class="summary-card customer-net-card"><h3>CUSTOMER EARNINGS</h3><strong>${money(c.clientTotal)}</strong></div><div class="summary-card"><h3>ELECTRICITY</h3><strong>${money(c.elec)}</strong></div><div class="summary-card"><h3>AMOUNT DUE</h3><strong>${money(c.clientTotal)}</strong></div><div class="summary-card"><h3>AMOUNT PAID</h3><strong class="success-text">${money(c.paid)}</strong></div><div class="summary-card"><h3>BALANCE</h3><strong class="danger-text">${money(c.balance)}</strong></div></div><div class="panel profile-contact"><h3>Client Details</h3><p><b>Phone:</b> ${esc(u.contact||"—")}</p><p><b>Location:</b> ${esc(u.location||"—")}</p></div>`;return;}
-  if(tab==="sales"){const rows=records.filter(r=>r.unitId===id).sort((a,b)=>String(b.month).localeCompare(String(a.month)));host.innerHTML=`<div class="panel"><div class="panel-head"><div><h3>Monthly Sales History</h3><p>Historical records are kept by month.</p></div><button class="primary-btn" data-sale="${id}">Gross Sale</button></div><div class="table-wrap"><table><thead><tr><th>Month</th><th>Gross Sales</th><th>Internet</th><th>Net Sales</th><th>Owner Share</th><th>Customer Earnings</th><th>Electricity</th><th>Client Net</th><th>Amount Due</th><th>Actions</th></tr></thead><tbody>${rows.length?rows.map(r=>{const c=calc(r);return `<tr><td>${monthLabel(r.month)}</td><td>${money(c.gross)}</td><td>${money(c.internet)}</td><td>${money(c.net)}</td><td>${money(c.owner)}</td><td>${money(c.client)}</td><td>${money(c.elec)}</td><td>${money(Math.max(0,c.client-c.elec))}</td><td>${money(c.clientTotal)}</td><td><button class="action-btn" data-edit-sale="${r.id}">Edit</button><button class="action-btn danger" data-delete-sale="${r.id}">Delete</button></td></tr>`}).join(""):emptyRow(10,"No sales recorded for this client.")}</tbody></table></div></div>`;bindDynamicButtons();return;}
+  if(tab==="sales"){const rows=records.filter(r=>r.unitId===id).sort((a,b)=>String(b.month).localeCompare(String(a.month)));host.innerHTML=`<div class="panel"><div class="panel-head"><div><h3>Monthly Sales History</h3><p>Historical records are kept by month.</p></div><button class="primary-btn" data-sale="${id}">Gross Sale</button></div><div class="table-wrap"><table><thead><tr><th>Month</th><th>Gross Sales</th><th>Internet</th><th>Net Sales</th><th>Owner Share</th><th>Client Share</th><th>Electricity</th><th>Client Net</th><th>Amount Due</th><th>Actions</th></tr></thead><tbody>${rows.length?rows.map(r=>{const c=calc(r);return `<tr><td>${monthLabel(r.month)}</td><td>${money(c.gross)}</td><td>${money(c.internet)}</td><td>${money(c.net)}</td><td>${money(c.owner)}</td><td>${money(c.client)}</td><td>${money(c.elec)}</td><td>${money(Math.max(0,c.client-c.elec))}</td><td>${money(c.clientTotal)}</td><td><button class="action-btn" data-edit-sale="${r.id}">Edit</button><button class="action-btn danger" data-delete-sale="${r.id}">Delete</button></td></tr>`}).join(""):emptyRow(10,"No sales recorded for this client.")}</tbody></table></div></div>`;bindDynamicButtons();return;}
   if(tab==="payments"){const ps=payments.filter(p=>p.unitId===id).sort((a,b)=>String(b.date||"").localeCompare(String(a.date||"")));host.innerHTML=`<div class="panel"><div class="panel-head"><div><h3>Payment History</h3><p>All recorded payments for ${esc(u.name)}.</p></div><button class="primary-btn" data-payment="${id}">Record Payment</button></div><div class="table-wrap"><table><thead><tr><th>Date</th><th>Month</th><th>Amount</th><th>Method</th><th>Reference</th><th>Status</th></tr></thead><tbody>${ps.length?ps.map(p=>`<tr><td>${dateLabel(p.date)}</td><td>${monthLabel(p.month)}</td><td>${money(p.amount)}</td><td>${esc(p.method||"—")}</td><td>${esc(p.reference||"—")}</td><td>${statusBadge("Paid")}</td></tr>`).join(""):emptyRow(5,"No payments recorded.")}</tbody></table></div></div>`;bindDynamicButtons();return;}
   if(tab==="statement"){host.innerHTML=`<div class="panel"><div class="panel-head"><div><h3>Statement</h3><p>${monthLabel(selectedMonth)}</p></div><button class="primary-btn" id="profilePrintStatement">Print / PDF</button></div>${statementHtml(u,calc(records.find(r=>r.unitId===id&&r.month===selectedMonth)||{unitId:id,month:selectedMonth,grossSales:0}),selectedMonth)}</div>`;$("#profilePrintStatement").onclick=()=>printStatement(id,selectedMonth);}
 }
@@ -887,8 +711,7 @@ async function openUnitModal(id=null){
       <div class="field"><label>Unit Code *</label><div class="unit-combobox"><input id="fCodeSearch" value="${esc(currentCode)}" placeholder="Search or select 1–50" autocomplete="off" aria-autocomplete="list"><input id="fCode" type="hidden" value="${esc(currentCode)}"><div id="unitCodeOptions" class="unit-options">${codeOptions}</div></div><small class="hint">Active unit codes cannot be selected. Deactivated unit codes become available again.</small></div>
       <div class="field"><label>First Name *</label><input id="fFirstName" value="${esc(u?.firstName||"")}" placeholder="First Name" autocomplete="off"></div>
       <div class="field"><label>Last Name *</label><input id="fLastName" value="${esc(u?.lastName||String(u?.name||"").trim().split(/\s+/).slice(1).join(" "))}" placeholder="Last Name" autocomplete="off"></div>
-      <div class="field full"><label>Registered Gmail *</label><input id="fEmail" type="email" value="${esc(u?.email||"")}" placeholder="customer@gmail.com" autocomplete="off"><small class="hint">Used for Customer Account login and account recovery.</small></div>
-      ${id?"":`<div class="field full"><label>Temporary Password *</label><input id="fPassword" type="password" value="" placeholder="Create temporary password" autocomplete="new-password" minlength="6"><small class="hint">Customer will use this password for the first login, then create a private permanent password.</small></div>`}
+      <div class="field full"><label>Registered Gmail *</label><input id="fEmail" type="email" value="${esc(u?.email||"")}" placeholder="customer@gmail.com" autocomplete="off"><small class="hint">Used for account recovery and customer records.</small></div>
       <div class="field"><label>Contact Number</label><input id="fContact" value="${esc(u?.contact||"")}" placeholder="09171234567" autocomplete="off"></div>
       <div class="field"><label>Date Joined</label><input id="fDateJoined" type="date" value="${esc(suggestedDate)}"></div>
       <div class="field full"><label>Unit Location</label><input id="fLocation" value="${esc(u?.location||"")}" placeholder="Brgy. San Isidro, Antipolo" autocomplete="off"></div>
@@ -930,9 +753,7 @@ async function openUnitModal(id=null){
         await addNotification("client","Client profile updated.",`${name} (${clientCode}) was updated.`,id);
       }else{
         const authEmail=email;
-        const enteredPassword=String($("#fPassword")?.value||"").trim();
-        const temporaryPassword=enteredPassword || clientCode;
-        if(temporaryPassword.length<6) throw new Error("Temporary password must be at least 6 characters.");
+        const temporaryPassword=clientCode;
         let cred;
         try{ cred=await createUserWithEmailAndPassword(clientProvisionerAuth,authEmail,temporaryPassword); }
         catch(e){
@@ -1055,48 +876,16 @@ function startCoreRealtime(){
   coreRealtimeUnsubs.push(onSnapshot(collection(db,"activities"),snap=>{activities=snap.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>timeValue(b.createdAt)-timeValue(a.createdAt));scheduleDashboardRealtime();},err=>console.warn("PISO WIFI realtime activities unavailable",err)));
 }
 
-function showAuthError(message){console.error("[PISO WIFI]",message);const loader=$("#authLoading");if(loader){loader.innerHTML=`<div class="auth-error"><strong>Unable to open the dashboard</strong><span>${esc(message)}</span><button type="button" id="returnAdminLogin">Return to Login</button></div>`;loader.classList.remove("hidden");$("#returnAdminLogin")?.addEventListener("click",()=>location.replace("/admin/index.html"));}}
-let bootstrappedUserUid="";
-async function bootstrap(user){if(!user){location.replace("/admin/index.html");return;}if(bootstrappedUserUid===user.uid && !$("#app")?.classList.contains("hidden"))return;bootstrappedUserUid=user.uid;currentUser=user;try{await authorize(user);await loadData();try{await loadWiFiSubscriptions();}catch(e){console.warn("WiFi subscriptions unavailable",e);}await logActivity("System",`Admin login — ${user.email||"Admin"}`);setupMonthSelector();startSupportRealtime();startCoreRealtime();$("#authLoading").classList.add("hidden");$("#app").classList.remove("hidden");$("#userEmail").textContent=user.email||"Owner";route=parseRoute();render();}catch(e){bootstrappedUserUid="";showAuthError(e?.message||"Firebase authorization or database access failed.");}}
+function showAuthError(message){console.error("[PISO WIFI]",message);const loader=$("#authLoading");if(loader){loader.innerHTML=`<div class="auth-error"><strong>Unable to open the dashboard</strong><span>${esc(message)}</span><button onclick="location.href='index.html'">Return to Login</button></div>`;loader.classList.remove("hidden");}}
+async function bootstrap(user){if(!user){location.replace("index.html");return;}currentUser=user;try{await authorize(user);await loadData();await logActivity("System",`Admin login — ${user.email||"Admin"}`);setupMonthSelector();startSupportRealtime();startCoreRealtime();$("#authLoading").classList.add("hidden");$("#app").classList.remove("hidden");$("#userEmail").textContent=user.email||"Owner";route=location.hash.replace("#","").split("?")[0]||"dashboard";render();}catch(e){showAuthError(e?.message||"Firebase authorization or database access failed.");}}
 
 function parseRoute(){const raw=location.hash.replace("#","");return raw.split("?")[0]||"dashboard";}
-document.addEventListener("click",e=>{const a=e.target.closest("[data-route]");if(a){e.preventDefault();e.stopPropagation();navigateTo(a.dataset.route);return;} const p=e.target.closest("[data-print-inline]");if(p){const id=$("#statementUnit")?.value;if(id)printStatement(id,$("#statementMonth").value);} const pdf=e.target.closest("[data-pdf-inline]");if(pdf){const id=$("#statementUnit")?.value;if(id)downloadStatementPdf(id,$("#statementMonth").value);} const html=e.target.closest("[data-html-inline]");if(html){const id=$("#statementUnit")?.value;if(id)downloadStatementHtml(id,$("#statementMonth").value);}});
+document.addEventListener("click",e=>{const a=e.target.closest("[data-route]");if(a){e.preventDefault();location.hash="#"+a.dataset.route;} const p=e.target.closest("[data-print-inline]");if(p){const id=$("#statementUnit")?.value;if(id)printStatement(id,$("#statementMonth").value);} const pdf=e.target.closest("[data-pdf-inline]");if(pdf){const id=$("#statementUnit")?.value;if(id)downloadStatementPdf(id,$("#statementMonth").value);} const html=e.target.closest("[data-html-inline]");if(html){const id=$("#statementUnit")?.value;if(id)downloadStatementHtml(id,$("#statementMonth").value);}});
 window.addEventListener("hashchange",()=>{route=parseRoute();render();});
 $("#menuBtn").onclick=()=>{$("#sidebar").classList.add("open");$("#overlay").classList.add("show")};$("#overlay").onclick=closeMenu;
-$("#logoutBtn").onclick=async()=>{await signOut(auth);location.href="/admin/index.html"};
+$("#logoutBtn").onclick=async()=>{await signOut(auth);location.href="index.html"};
 $("#globalSearch").oninput=e=>{const q=e.target.value.trim();if(q.length>=2){unitSearch=q;route="units";if(location.hash!=="#units")location.hash="#units";else renderUnits();}else if(!q){unitSearch="";if(route==="units")renderUnits();}};
 
 let authResolved=false;
-let authBootstrapStarted=false;
-let authBootstrapTimer=null;
-function startAdminAuthBootstrap(user){
-  if(authBootstrapStarted)return;
-  authBootstrapStarted=true;
-  authResolved=true;
-  if(authBootstrapTimer)clearTimeout(authBootstrapTimer);
-  Promise.resolve(bootstrap(user)).catch(error=>{
-    authBootstrapStarted=false;
-    showAuthError(error?.message||"Unable to finish Admin login.");
-  });
-}
-
-// Listen for Firebase's initial auth state immediately. Do not wait indefinitely
-// on authStateReady(), which can leave the entire page on "Checking authentication…".
-const stopInitialAuthListener=onAuthStateChanged(auth,user=>{
-  startAdminAuthBootstrap(user);
-},error=>{
-  authResolved=true;
-  showAuthError(error?.message||"Firebase could not verify your Admin session. Check your connection and reload.");
-});
-
-// If the first auth-state callback never arrives, stop showing an endless spinner.
-authBootstrapTimer=setTimeout(()=>{
-  if(authBootstrapStarted)return;
-  const user=auth.currentUser;
-  if(user){
-    startAdminAuthBootstrap(user);
-  }else{
-    authResolved=true;
-    showAuthError("Authentication is taking too long. Check your internet connection, then reload the Admin page. Your data has not been deleted.");
-  }
-},12000);
+const authTimeout=setTimeout(()=>{if(!authResolved){const u=auth.currentUser;if(u)bootstrap(u);else showAuthError("Firebase Authentication did not finish loading. Please refresh the page and try logging in again.");}},8000);
+onAuthStateChanged(auth,user=>{authResolved=true;clearTimeout(authTimeout);bootstrap(user);});
