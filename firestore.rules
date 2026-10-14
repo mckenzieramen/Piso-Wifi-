@@ -311,10 +311,12 @@ service cloud.firestore {
     }
 
     // WIFI PLANS
-    // Admin can manage all plans. Active cashiers can read plans for the cashier portal.
-    // Cashiers cannot create, update, or delete plans.
     match /wifi_plans/{id} {
-      allow read: if isAdmin() || isCashier();
+      allow read: if isAdmin()
+        || (
+          isCashier()
+          && resource.data.status == "ACTIVE"
+        );
 
       allow create, update, delete: if isAdmin();
     }

@@ -1,0 +1,22 @@
+PISO WIFI - CASHIER / ADMIN / RECEIPT UPDATE
+=============================================
+
+This update preserves the existing project and features. It makes these targeted changes:
+1. Cashier Enter Sale > Sales History now lists pending/unpaid customer earnings only. Paid transactions move out of this list.
+2. Receipt History no longer has View/Print or amount reveal controls. It shows the receipt amount and a Resend Email button; Admin Sync retry is shown only if needed.
+3. Admin dashboard's initial selected month is reset to the current month on page load so current sales are not hidden by an old saved month selection. The user can still choose another month in the UI.
+4. The original Firestore Rules are included with only the two missing acknowledgment fields added to the cashierTransactions update allowlist.
+
+EMAIL DELIVERY - REQUIRED CLOUDFLARE SECRETS
+The existing functions/api/send-receipt.js uses Resend. Automatic email after payment and manual resend will not work until these are configured in Cloudflare Pages > Settings > Variables and Secrets:
+- RESEND_API_KEY = your Resend API key (secret)
+- RECEIPT_FROM_EMAIL = a verified sender address/domain configured in Resend
+- FIREBASE_API_KEY (or FIREBASE_WEB_API_KEY) = the web API key for the same Firebase project
+Also verify the customer record has a valid registered email saved into the sale record. For sales already created with a blank customerEmail, update the customer profile and create a new test sale or use a controlled data correction; do not re-pay an already-paid record just to trigger email.
+
+DEPLOY
+- Deploy website/function files through the existing GitHub/Cloudflare Pages workflow.
+- Publish the included firestore.rules separately in Firebase Console > Firestore Database > Rules.
+- Confirm the deployed site uses the same Firebase project.
+- Test with a new low-value test sale: confirm it appears in Admin current-month dashboard, then send payment, confirm it disappears from pending Sales History, appears in Receipt History, updates Admin payment totals, and sends email.
+- The ZIP is a code update, not a live-system verification. Email delivery depends on the secrets and verified sender above.

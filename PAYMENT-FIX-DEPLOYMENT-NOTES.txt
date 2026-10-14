@@ -30,8 +30,3 @@ The Send Payment handler now:
 - distinguishes transaction-save failure from receipt creation, dashboard sync, and email failure;
 - reports payment status as saved only after the cashierTransactions update succeeds.
 This does not bypass Firestore security. If permission-denied appears, publish the included rules to the same Firebase project used by this deployed site.
-
-DIAGNOSTIC FOLLOW-UP UPDATE
----------------------------
-The Send Payment handler now separates the primary cashierTransactions status update from the later receipts document creation. This matters because a receipt write can fail after the payment status already saved. The user-facing message now states which step failed, avoiding a false claim that payment was not saved.
-The screenshot shows a row already marked CUSTOMER EARNINGS PAID; do not click Send Payment again on that same transaction. Check the new step-specific message after deploying this build.
