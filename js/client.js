@@ -234,8 +234,8 @@ const supportStatusValue=chat=>{const s=String(chat?.status||"Open").trim().toLo
 const supportChatRef=()=>supportChatId()?doc(db,"supportChats",supportChatId()):null;
 function supportNow(){return new Date().toISOString();}
 function supportMessageHtml(m){
-  const type=m?.senderType==="customer"?"customer":m?.senderType==="admin"?"admin":"system";
-  const who=type==="customer"?clientName():type==="admin"?"PISO WIFI Support":"PISO WIFI Support";
+  const type=m?.senderType==="customer"?"customer":(m?.senderType==="admin"||m?.senderType==="cashier")?"admin":"system";
+  const who=type==="customer"?clientName():m?.senderType==="cashier"?(m?.senderName||supportChat?.assignedCashierName||"PISO NETY Customer Service"):m?.senderType==="admin"?"PISO NETY Admin":"PISO NETY Customer Service";
   return `<div class="piso-chat-message ${type}"><div class="piso-chat-bubble">${esc(m?.text||"")}</div><div class="piso-chat-meta">${esc(who)} · ${esc(dateTime(m?.createdAt||""))}</div></div>`;
 }
 function renderSupportConversation(){
@@ -248,7 +248,7 @@ function renderSupportConversation(){
   const msgs=Array.isArray(supportChat?.messages)?supportChat.messages:[];
   host.innerHTML=msgs.length?msgs.map(supportMessageHtml).join(""):`<div class="piso-chat-empty"><div class="support-icon">${icons.mail}</div><b>Start a conversation</b><span>Tell us what you need help with and our Admin can reply here.</span></div>`;
   const typing=$("#supportTyping");
-  if(typing){const adminTyping=!!supportChat?.typingBy?.admin;typing.classList.toggle("show",adminTyping);typing.textContent=adminTyping?"PISO WIFI Support is typing…":"";}
+  if(typing){const staffTyping=!!supportChat?.typingBy?.admin||!!supportChat?.typingBy?.cashier;typing.classList.toggle("show",staffTyping);typing.textContent=staffTyping?"PISO NETY Customer Service is typing…":"";}
   requestAnimationFrame(()=>{
     if(wasAtBottom)host.scrollTop=host.scrollHeight;
     else host.scrollTop=previousTop;
@@ -279,7 +279,7 @@ function renderSupportLobby(){
     const selected=chat?.id===supportChat?.id;
     return `<button type="button" class="piso-ticket-history-item ${selected?"selected":""}" data-support-ticket-id="${esc(chat?.id||"")}"><span class="piso-ticket-history-main"><b>${esc(chat?.subject||"Support Concern")}</b><small>${esc(last||"No messages yet")}</small><em>${esc(created)}</em></span><span class="piso-ticket-status ${st.toLowerCase()}">${esc(st)}</span></button>`;
   }).join("")}</div></div>`:`<div class="piso-ticket-history empty"><div><b>Ticket History</b><small>Your support history will appear here after you open a concern.</small></div></div>`;
-  lobby.innerHTML=`<div class="piso-support-hero"><div class="support-icon">${icons.bell}</div><span class="eyebrow">PISO WIFI CUSTOMER SUPPORT</span><h2>How can we help?</h2><p>Chat directly with the PISO WIFI Admin. Your conversations stay connected to your Customer Account.</p></div><div class="piso-ticket-card"><div><b>Customer Support</b><small>${closed?"This concern was solved. You can open a new chat anytime.":active?"Your active support conversation.":"No active conversation. Start a new concern anytime."}</small></div><span class="piso-ticket-status ${status.toLowerCase()}">${esc(status)}</span></div>${historyHtml}<button id="startSupportChat" class="client-primary piso-support-start">${actionLabel}</button>`;
+  lobby.innerHTML=`<div class="piso-support-hero"><div class="support-icon">${icons.bell}</div><span class="eyebrow">PISO WIFI CUSTOMER SUPPORT</span><h2>How can we help?</h2><p>Chat with PISO NETY Customer Service. A cashier will assist first, and your conversation can be transferred to Admin when needed.</p></div><div class="piso-ticket-card"><div><b>Customer Support</b><small>${closed?"This concern was solved. You can open a new chat anytime.":active?"Your active support conversation.":"No active conversation. Start a new concern anytime."}</small></div><span class="piso-ticket-status ${status.toLowerCase()}">${esc(status)}</span></div>${historyHtml}<button id="startSupportChat" class="client-primary piso-support-start">${actionLabel}</button>`;
   lobby.querySelectorAll("[data-support-ticket-id]").forEach(btn=>btn.onclick=async()=>{
     const id=btn.getAttribute("data-support-ticket-id");
     const found=supportChatHistory.find(chat=>chat.id===id);
@@ -329,8 +329,8 @@ async function createSupportChat(forceNew=false){
   supportChatDocId=`${currentUser.uid}_${Date.now()}`;
   const ref=supportChatRef();
   const unit=primaryUnit();
-  const greeting={senderType:"admin",text:"Hi! I’m PISO WIFI Customer Support. Let us know what you need help with, and our Admin will assist you here.",createdAt:supportNow()};
-  const payload={authUserId:currentUser.uid,unitId:unit.id||"",clientCode:unit.clientCode||"",customerName:clientName(),customerEmail:clientEmail(),status:"Open",messages:[greeting],typingBy:{customer:false,admin:false},unreadForAdmin:true,unreadForCustomer:false,createdAt:serverTimestamp(),updatedAt:supportNow()};
+  const greeting={senderType:"system",text:"Hi! Welcome to PISO NETY Customer Service. Our cashier support team will assist you first. If your concern needs Admin assistance, the cashier can transfer this conversation.",createdAt:supportNow()};
+  const payload={authUserId:currentUser.uid,unitId:unit.id||"",clientCode:unit.clientCode||"",customerName:clientName(),customerEmail:clientEmail(),subject:"PISO NETY Customer Service",status:"Open",assignedRole:"cashier",assignedCashierId:"",assignedCashierName:"",transferredToAdmin:false,messages:[greeting],typingBy:{customer:false,admin:false,cashier:false},unreadForCashier:true,unreadForAdmin:false,unreadForCustomer:false,createdAt:serverTimestamp(),updatedAt:supportNow()};
   await setDoc(ref,payload);
   supportChat={id:ref.id,...payload,createdAt:new Date(),updatedAt:supportNow()};
   supportChatHistory=[supportChat,...(supportChatHistory||[])];
@@ -391,14 +391,15 @@ async function sendSupportMessage(){
     const existingMessages=Array.isArray(supportChat?.messages)?supportChat.messages:[];
     const firstCustomerMessage=!existingMessages.some(m=>String(m?.senderType||"").toLowerCase()==="customer");
     const customerMessage={senderType:"customer",text,createdAt:supportNow()};
-    const acknowledgement={senderType:"system",text:"Thank you for letting us know about this. Kindly please wait for the Admin's reply. We’ll assist you as soon as possible.",createdAt:supportNow(),kind:"auto-acknowledgement"};
+    const acknowledgement={senderType:"system",text:"Thank you for contacting PISO NETY Customer Service. A cashier will review your concern shortly. If needed, they can transfer the conversation to Admin.",createdAt:supportNow(),kind:"auto-acknowledgement"};
     await updateDoc(supportChatRef(),{
       messages:firstCustomerMessage?arrayUnion(customerMessage,acknowledgement):arrayUnion(customerMessage),
       lastMessage:text,
       lastMessageSender:"customer",
       lastMessageAt:supportNow(),
       updatedAt:supportNow(),
-      unreadForAdmin:true,
+      unreadForCashier:true,
+      unreadForAdmin:supportChat?.assignedRole==="admin"||supportChat?.transferredToAdmin===true,
       unreadForCustomer:false,
       "typingBy.customer":false,
       status:"Open"
