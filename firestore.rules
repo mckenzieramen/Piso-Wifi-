@@ -185,6 +185,14 @@ service cloud.firestore {
         || (
           isSignedIn()
           && resource.data.authUserId == request.auth.uid
+        )
+        || (
+          isCashier()
+          && resource.data.assignedRole == "cashier"
+          && (
+            resource.data.assignedCashierId == ""
+            || resource.data.assignedCashierId == request.auth.uid
+          )
         );
 
       allow create: if isAdmin()
@@ -197,18 +205,37 @@ service cloud.firestore {
 
       allow update: if isAdmin()
         || (
+          isCashier()
+          && resource.data.assignedRole == "cashier"
+          && (
+            resource.data.assignedCashierId == ""
+            || resource.data.assignedCashierId == request.auth.uid
+          )
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            "messages", "updatedAt", "typingBy", "unreadForCashier",
+            "unreadForCustomer", "lastMessage", "lastMessageSender", "lastMessageAt",
+            "status", "assignedRole", "assignedCashierId", "assignedCashierName",
+            "transferredToAdmin", "transferredAt", "transferredBy", "transferredByName",
+            "unreadForAdmin"
+          ])
+          && (
+            request.resource.data.assignedRole == "cashier"
+            || (
+              request.resource.data.assignedRole == "admin"
+              && request.resource.data.transferredToAdmin == true
+              && request.resource.data.transferredBy == request.auth.uid
+            )
+          )
+        )
+        || (
           isSignedIn()
           && resource.data.authUserId == request.auth.uid
           && request.resource.data.authUserId == resource.data.authUserId
           && request.resource.data.diff(resource.data).affectedKeys()
             .hasOnly([
-              "messages",
-              "updatedAt",
-              "typingBy",
-              "unreadForAdmin",
-              "unreadForCustomer",
-              "status",
-              "reopenedAt"
+              "messages", "updatedAt", "typingBy", "unreadForAdmin",
+              "unreadForCashier", "unreadForCustomer", "lastMessage",
+              "lastMessageSender", "lastMessageAt", "status", "reopenedAt"
             ])
         );
 
