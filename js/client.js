@@ -306,7 +306,7 @@ function renderSupportChat(){
   lobby.classList.add("hidden"); convo.classList.remove("hidden");
   const status=supportStatusValue(supportChat);
   $("#supportStatus").textContent=status;
-  $("#supportChatCustomer").textContent=clientName();
+  $("#supportChatCustomer").textContent="PISO NET Support";
   renderSupportConversation();
   const closed=["Solved","Closed"].includes(status);
   const input=$("#supportChatInput"), send=$("#supportSend");
