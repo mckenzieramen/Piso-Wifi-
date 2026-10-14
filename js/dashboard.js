@@ -92,7 +92,8 @@ let coreRealtimeUnsubs=[];
 let dashboardRealtimeTimer=null;
 let settings = { internetCost:1000, ownerPercent:70, clientPercent:30, electricity:100, electricityRule:"ADD_TO_CLIENT" };
 let route = "dashboard";
-let selectedMonth = localStorage.getItem("pisoSelectedMonth") || todayKey();
+let selectedMonth = todayKey();
+try { localStorage.setItem("pisoSelectedMonth", selectedMonth); } catch (_) {}
 let unitSearch = "", unitStatus = "", unitPaymentStatus = "";
 
 // TEMPORARY ADMIN FEATURE: keep true while client deletion is needed.
