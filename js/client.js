@@ -82,7 +82,6 @@ let clientProfileSnapshotPromise=null;
 let clientRealtimeUnitIdsKey="";
 
 function toast(message,type="success"){
-  if(type==="error") window.pisoDebug?.capture(message,{type:"client.toast"});
   const el=$("#clientToast"); if(!el)return;
   el.textContent=message; el.className=`client-toast show ${type}`;
   clearTimeout(window.__clientToast); window.__clientToast=setTimeout(()=>el.classList.remove("show"),2800);
@@ -191,7 +190,6 @@ function subscribeClientCollectionChunks(collectionName,field,ids,assign,unsubSt
       clientRealtimeRender();
     },err=>{
       console.warn(`PISO WIFI realtime ${collectionName} error`,err);
-      window.pisoDebug?.capture(err?.message||err,{type:"firebase.realtime",source:`client.js → ${collectionName} realtime (${field} in [...])`,stack:err?.stack});
     });
     unsubStore.push(unsub);
   });
@@ -219,7 +217,6 @@ function startClientRealtime(){
     clientRealtimeRender();
   },err=>{
     console.warn("PISO WIFI realtime units error",err);
-    window.pisoDebug?.capture(err?.message||err,{type:"firebase.realtime",source:"client.js → units realtime (authUserId == currentUser.uid)",stack:err?.stack});
   });
   clientRealtimeUnsubs.push(unitUnsub);
   clientSettingsUnsub=onSnapshot(doc(db,"settings","business"),snap=>{
@@ -227,7 +224,6 @@ function startClientRealtime(){
     clientRealtimeRender();
   },err=>{
     console.warn("PISO WIFI realtime settings error",err);
-    window.pisoDebug?.capture(err?.message||err,{type:"firebase.realtime",source:"client.js → settings/business realtime",stack:err?.stack});
   });
   clientRealtimeUnsubs.push(clientSettingsUnsub);
 }
@@ -376,7 +372,6 @@ function subscribeSupportChat(){
     }
   },err=>{
     console.warn("PISO WIFI support chat realtime error",err);
-    window.pisoDebug?.capture(err?.message||err,{type:"firebase.support.realtime",source:`client.js → onSnapshot(supportChats/${currentUser?.uid||"uid"})`,stack:err?.stack});
   });
 }
 async function openSupportConversation(){
@@ -420,7 +415,6 @@ async function sendSupportMessage(){
     input.value="";
   }
   catch(e){
-    window.pisoDebug?.capture(e?.message||e,{type:"firebase.support.send",source:`client.js → updateDoc(supportChats/${currentUser?.uid||"uid"})`,stack:e?.stack});
     toast(e?.message||"Unable to send your message.","error");
   }
   finally{supportChatSending=false;}
@@ -444,7 +438,6 @@ async function openSupportModal(){
     renderSupportLobby();
   }catch(e){
     console.warn("Unable to restore PISO WIFI support conversation",e);
-    window.pisoDebug?.capture(e?.message||e,{type:"firebase.support.load",source:`client.js → getDoc(supportChats/${currentUser?.uid||"uid"})`,stack:e?.stack});
     // Keep the lobby usable so Start Chat remains available even while Firebase rules are being debugged.
     supportChat=null; supportChatDocId=currentUser?.uid||""; renderSupportLobby();
   }
