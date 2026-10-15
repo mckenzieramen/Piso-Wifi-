@@ -34,9 +34,9 @@ export async function onRequestPost({ request, env }) {
     }
 
     const scriptUrl = String(env.APPS_SCRIPT_OTP_URL || "https://script.google.com/macros/s/AKfycbzJcIf9rpdunJ8-1kDvgePWTT1L-cQOFzZLQHFQMaqBYTlviovyxjz4JOX-FpvUrjFu/exec").trim();
-    const secret = String(env.PISO_WIFI_RECEIPT_SECRET || "").trim();
+    const secret = String(env.APPS_SCRIPT_RECEIPT_SECRET || env.PISO_WIFI_RECEIPT_SECRET || "").trim();
     if (!secret) {
-      return new Response(JSON.stringify({ ok: false, error: "Google Apps Script receipt connection is missing PISO_WIFI_RECEIPT_SECRET in Cloudflare Pages variables/secrets. It must match the Apps Script project property." }), { status: 503, headers });
+      return new Response(JSON.stringify({ ok: false, error: "Google Apps Script receipt connection is missing APPS_SCRIPT_RECEIPT_SECRET in Cloudflare Pages variables/secrets. It must match the Apps Script project property PISO_WIFI_RECEIPT_SECRET." }), { status: 503, headers });
     }
 
     const upstream = await fetch(scriptUrl, {
