@@ -54,3 +54,46 @@
 .piso-transfer-premium:hover{transform:translateY(-1px);border-color:#6ee7b7;box-shadow:0 8px 19px rgba(5,150,105,.2)}
 .piso-transfer-premium:focus-visible{outline:3px solid rgba(16,185,129,.25);outline-offset:2px}
 @media(max-width:700px){.piso-transfer-premium{min-height:38px;padding:0 10px}.piso-support-head-actions{margin-left:0}}
+
+
+/* Piso Net premium ticket status filter tabs */
+.support-filter-tabs{
+  display:flex!important;align-items:center;gap:7px!important;
+  width:100%;box-sizing:border-box;padding:7px!important;margin:12px 0 15px!important;
+  border:1px solid #dce8f5!important;border-radius:16px!important;
+  background:linear-gradient(135deg,#f7fbff 0%,#edf4fc 100%)!important;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.95),0 5px 16px rgba(24,69,112,.06)!important;
+}
+.support-filter-tabs .support-filter-tab{
+  appearance:none!important;-webkit-appearance:none!important;
+  display:inline-flex!important;flex:1 1 0!important;align-items:center!important;justify-content:center!important;
+  gap:6px!important;min-width:0!important;min-height:42px!important;padding:0 9px!important;
+  border:1px solid transparent!important;border-radius:11px!important;
+  background:transparent!important;color:#61758b!important;
+  font:700 12px/1.1 system-ui,-apple-system,"Segoe UI",sans-serif!important;
+  box-shadow:none!important;cursor:pointer!important;white-space:nowrap!important;
+  transition:background .18s ease,color .18s ease,box-shadow .18s ease,transform .18s ease!important;
+}
+.support-filter-tabs .support-filter-tab:hover{
+  background:#fff!important;border-color:#dbe7f4!important;color:#175e9d!important;
+  transform:translateY(-1px)!important;
+}
+.support-filter-tabs .support-filter-tab.active{
+  color:#fff!important;background:linear-gradient(135deg,#1686e5 0%,#075eb4 100%)!important;
+  border-color:#0b6fc4!important;box-shadow:0 5px 13px rgba(7,94,180,.22)!important;
+}
+.support-filter-tabs .support-filter-label{display:inline-block!important;white-space:nowrap!important}
+.support-filter-tabs .support-filter-count{
+  display:inline-flex!important;align-items:center!important;justify-content:center!important;
+  min-width:22px!important;height:22px!important;padding:0 5px!important;box-sizing:border-box!important;
+  border-radius:7px!important;background:#e1eaf4!important;color:#536b83!important;
+  font:800 10px/1 system-ui,-apple-system,"Segoe UI",sans-serif!important;font-variant-numeric:tabular-nums!important;
+}
+.support-filter-tabs .support-filter-tab.active .support-filter-count{
+  background:rgba(255,255,255,.2)!important;color:#fff!important;
+}
+@media(max-width:480px){
+ .support-filter-tabs{gap:4px!important;padding:5px!important}
+ .support-filter-tabs .support-filter-tab{gap:4px!important;min-height:38px!important;padding:0 5px!important;font-size:11px!important}
+ .support-filter-tabs .support-filter-count{min-width:19px!important;height:19px!important;font-size:9px!important}
+}
