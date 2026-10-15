@@ -57,3 +57,14 @@
 .piso-transfer-premium svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
 .piso-transfer-premium:hover{transform:translateY(-1px);border-color:#86efac;box-shadow:0 7px 18px rgba(16,185,129,.16)}
 @media(max-width:600px){.piso-support-chat-head{padding:14px!important;gap:10px}.piso-transfer-premium{width:36px;height:36px}.support-filter-tab{padding:8px 4px;font-size:11px}}
+
+
+/* Premium transfer control: icon-led, visible, aligned opposite customer name */
+.piso-support-chat-head{display:flex;align-items:flex-start;justify-content:space-between;gap:18px;padding:18px 20px!important;border-bottom:1px solid #e3edf7;background:linear-gradient(120deg,#f8fcff,#edf6ff)}
+.piso-support-customer-title{min-width:0;flex:1}
+.piso-support-head-actions{display:flex;align-items:center;justify-content:flex-end;gap:9px;flex-shrink:0}
+.piso-transfer-premium{display:inline-flex;align-items:center;justify-content:center;gap:9px;min-height:42px;padding:0 14px;border:1px solid #a9e8ca;border-radius:14px;background:linear-gradient(135deg,#f0fdf6,#d8f8e7);color:#06784e;font-size:12px;font-weight:800;box-shadow:0 5px 15px rgba(5,150,105,.12);cursor:pointer;transition:transform .16s ease,box-shadow .16s ease}
+.piso-transfer-icon{display:inline-grid;place-items:center;width:28px;height:28px;border-radius:9px;background:linear-gradient(135deg,#10b981,#07865c);color:white;box-shadow:0 3px 8px rgba(5,150,105,.2)}
+.piso-transfer-icon svg{width:17px;height:17px;fill:none;stroke:currentColor;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
+.piso-transfer-premium:hover{transform:translateY(-1px);box-shadow:0 8px 20px rgba(5,150,105,.18)}
+@media(max-width:600px){.piso-support-chat-head{padding:14px!important;gap:10px}.piso-transfer-premium{min-height:38px;padding:0 10px}.piso-support-head-actions{gap:6px}}
