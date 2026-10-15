@@ -258,7 +258,7 @@ function renderSupportConversation(){
   const msgs=Array.isArray(supportChat?.messages)?supportChat.messages:[];
   host.innerHTML=msgs.length?msgs.map(supportMessageHtml).join(""):`<div class="piso-chat-empty"><div class="support-icon">${icons.mail}</div><b>Start a conversation</b><span>Tell us what you need help with and our support team can reply here.</span></div>`;
   const typing=$("#supportTyping");
-  if(typing){const staffTyping=!!supportChat?.typingBy?.admin||!!supportChat?.typingBy?.cashier;typing.classList.toggle("show",staffTyping);typing.textContent=staffTyping?"Piso Net Support is typing…":"";}
+  if(typing){const staffTyping=!!supportChat?.typingBy?.admin||!!supportChat?.typingBy?.cashier;typing.classList.toggle("show",staffTyping);typing.textContent=staffTyping?"Customer Support is typing…":"";}
   requestAnimationFrame(()=>{
     if(wasAtBottom)host.scrollTop=host.scrollHeight;
     else host.scrollTop=previousTop;
@@ -339,7 +339,7 @@ async function createSupportChat(forceNew=false){
   supportChatDocId=`${currentUser.uid}_${Date.now()}`;
   const ref=supportChatRef();
   const unit=primaryUnit();
-  const greeting={senderType:"admin",senderName:"Piso Net Admin",text:"Hi! Welcome to Piso Net Customer Service. Our cashier support team will assist you first. If your concern needs Admin assistance, the cashier can transfer this conversation.",createdAt:supportNow(),automatedWelcome:true};
+  const greeting={senderType:"admin",senderName:"Piso Net Admin",text:"Hi! Welcome to Piso Net Customer Service. Our support team will assist you, as soon as possible. Kindly state your concern here.",createdAt:supportNow(),automatedWelcome:true};
   const payload={authUserId:currentUser.uid,unitId:unit.id||"",clientCode:unit.clientCode||"",customerName:clientName(),customerEmail:clientEmail(),subject:"Piso Net Support",status:"Open",assignedRole:"cashier",assignedCashierId:"",assignedCashierName:"",transferredToAdmin:false,messages:[greeting],typingBy:{customer:false,admin:false,cashier:false},unreadForCashier:true,unreadForAdmin:false,unreadForCustomer:false,createdAt:serverTimestamp(),updatedAt:supportNow()};
   await setDoc(ref,payload);
   supportChat={id:ref.id,...payload,createdAt:new Date(),updatedAt:supportNow()};
@@ -402,10 +402,11 @@ async function sendSupportMessage(){
   supportChatSending=true;
   try{
     await createSupportChat();
+    try{await updateDoc(supportChatRef(),{"typingBy.customer":false});}catch(e){}
     const existingMessages=Array.isArray(supportChat?.messages)?supportChat.messages:[];
     const firstCustomerMessage=!existingMessages.some(m=>String(m?.senderType||"").toLowerCase()==="customer");
     const customerMessage={senderType:"customer",text,createdAt:supportNow()};
-    const acknowledgement={senderType:"system",text:"Thank you for contacting Piso Net Support. A cashier will review your concern shortly. If needed, they can transfer the conversation to Admin.",createdAt:supportNow(),kind:"auto-acknowledgement"};
+    const acknowledgement={senderType:"system",text:"Thank you for letting us know about this. Let me notify our support team, and we will get in touch with you as soon as possible.",createdAt:supportNow(),kind:"auto-acknowledgement"};
     await updateDoc(supportChatRef(),{
       messages:firstCustomerMessage?arrayUnion(customerMessage,acknowledgement):arrayUnion(customerMessage),
       lastMessage:text,
@@ -432,11 +433,15 @@ async function sendSupportMessage(){
 async function setSupportTyping(isTyping){
   const typing=$("#supportTyping");
   if(typing){
-    typing.textContent=isTyping?"You are typing…":"";
-    typing.classList.toggle("show",!!isTyping);
+    const staffTyping=!!supportChat?.typingBy?.admin||!!supportChat?.typingBy?.cashier;
+    typing.textContent=staffTyping?"Customer Support is typing…":"";
+    typing.classList.toggle("show",staffTyping);
   }
+  const ref=supportChatRef();
+  if(!ref||!supportChat)return;
+  try{await updateDoc(ref,{"typingBy.customer":!!isTyping,updatedAt:supportNow()});}catch(e){}
 }
-function bindSupportTyping(){const input=$("#supportChatInput");if(!input)return;input.oninput=()=>{clearTimeout(supportTypingTimer);setSupportTyping(true);supportTypingTimer=setTimeout(()=>setSupportTyping(false),1200);};input.onkeydown=e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();sendSupportMessage();}};}
+function bindSupportTyping(){const input=$("#supportChatInput");if(!input)return;input.oninput=()=>{clearTimeout(supportTypingTimer);setSupportTyping(true);supportTypingTimer=setTimeout(()=>setSupportTyping(false),1200);};input.onblur=()=>{clearTimeout(supportTypingTimer);setSupportTyping(false);};input.onkeydown=e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();sendSupportMessage();}};}
 async function openSupportModal(){
   const modal=$("#clientSupportModal");if(!modal)return;modal.classList.remove("hidden");modal.setAttribute("aria-hidden","false");supportChatOpen=false;renderSupportLobby();
   try{

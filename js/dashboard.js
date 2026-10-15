@@ -901,15 +901,9 @@ function subscribeSelectedSupport(id){
         // Preserve the exact scroll position across realtime updates.
         // If the admin is already at the bottom, keep them at the bottom;
         // otherwise never force the conversation back to the top.
-        const previousTop=box.scrollTop;
-        const previousHeight=box.scrollHeight;
-        const clientHeight=box.clientHeight;
-        const wasAtBottom=previousHeight-previousTop-clientHeight<32;
         box.innerHTML=supportMessagesHtml(c);
-        requestAnimationFrame(()=>{
-          if(wasAtBottom)box.scrollTop=box.scrollHeight;
-          else box.scrollTop=previousTop;
-        });
+        // Keep the active conversation pinned to the newest messages.
+        requestAnimationFrame(()=>{box.scrollTop=box.scrollHeight;});
       }
       const typ=$("#adminSupportTyping");
       if(typ){
@@ -933,15 +927,19 @@ function subscribeSelectedSupport(id){
   });
 }
 let adminSupportTypingTimer=null;
-function bindAdminChatEvents(chat){if(!chat)return;const input=$("#adminSupportInput"),send=$("#adminSupportSend");if(send)send.onclick=()=>sendAdminSupportMessage(chat.id);if(input){input.oninput=()=>{clearTimeout(adminSupportTypingTimer);setAdminSupportTyping(chat.id,true);adminSupportTypingTimer=setTimeout(()=>setAdminSupportTyping(chat.id,false),1200);};input.onkeydown=e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();sendAdminSupportMessage(chat.id);}};}$("#supportOpenBtn")?.addEventListener("click",()=>setSupportStatus(chat.id,"Open"));$("#supportSolveBtn")?.addEventListener("click",()=>setSupportStatus(chat.id,"Solved"));$("#supportCloseBtn")?.addEventListener("click",()=>setSupportStatus(chat.id,"Closed"));}
+function bindAdminChatEvents(chat){if(!chat)return;const input=$("#adminSupportInput"),send=$("#adminSupportSend");if(send)send.onclick=()=>sendAdminSupportMessage(chat.id);if(input){input.oninput=()=>{clearTimeout(adminSupportTypingTimer);setAdminSupportTyping(chat.id,true);adminSupportTypingTimer=setTimeout(()=>setAdminSupportTyping(chat.id,false),1200);};input.onblur=()=>{clearTimeout(adminSupportTypingTimer);setAdminSupportTyping(chat.id,false);};input.onkeydown=e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();sendAdminSupportMessage(chat.id);}};}$("#supportOpenBtn")?.addEventListener("click",()=>setSupportStatus(chat.id,"Open"));$("#supportSolveBtn")?.addEventListener("click",()=>setSupportStatus(chat.id,"Solved"));$("#supportCloseBtn")?.addEventListener("click",()=>setSupportStatus(chat.id,"Closed"));}
 async function setAdminSupportTyping(id,on){
   const typ=$("#adminSupportTyping");
   if(typ){
-    typ.textContent=on?"You are typing…":"";
-    typ.classList.toggle("show",!!on);
+    const chat=supportChats.find(c=>c.id===id);
+    const customerTyping=!!chat?.typingBy?.customer;
+    const cashierTyping=!!chat?.typingBy?.cashier;
+    typ.textContent=customerTyping?"Customer is typing…":(cashierTyping?"Customer Support is typing…":"");
+    typ.classList.toggle("show",customerTyping||cashierTyping);
   }
+  try{await updateDoc(doc(db,"supportChats",id),{"typingBy.admin":!!on,updatedAt:new Date().toISOString()});}catch(e){}
 }
-async function sendAdminSupportMessage(id){const input=$("#adminSupportInput");const text=String(input?.value||"").trim();if(!text)return;try{await updateDoc(doc(db,"supportChats",id),{messages:arrayUnion({senderType:"admin",text,createdAt:new Date().toISOString()}),lastMessage:text,lastMessageSender:"admin",lastMessageAt:new Date().toISOString(),updatedAt:new Date().toISOString(),unreadForAdmin:false,unreadForCustomer:true,"typingBy.admin":false,status:"Open"});input.value="";}catch(e){notify(e?.message||"Unable to send support reply.","error");}}
+async function sendAdminSupportMessage(id){const input=$("#adminSupportInput");const text=String(input?.value||"").trim();if(!text)return;try{await updateDoc(doc(db,"supportChats",id),{messages:arrayUnion({senderType:"admin",text,createdAt:new Date().toISOString()}),lastMessage:text,lastMessageSender:"admin",lastMessageAt:new Date().toISOString(),updatedAt:new Date().toISOString(),unreadForAdmin:false,unreadForCustomer:true,"typingBy.admin":false,"typingBy.customer":false,status:"Open"});input.value="";}catch(e){notify(e?.message||"Unable to send support reply.","error");}}
 async function setSupportStatus(id,status){try{
   const patch={status,updatedAt:new Date().toISOString(),unreadForAdmin:false};
   if(status==="Solved"){
