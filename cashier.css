@@ -44,3 +44,16 @@
 .piso-transfer-premium:focus-visible{outline:3px solid rgba(99,102,241,.28);outline-offset:2px}
 #cashierSupportInput,.chat-compose textarea{font-size:16px!important;line-height:1.5;touch-action:manipulation;overscroll-behavior:contain}
 @media(max-width:600px){.piso-support-chat-head{padding:14px!important;gap:10px}.piso-transfer-premium{min-height:36px;padding:0 11px}.piso-support-head-actions{gap:6px}}
+
+/* Premium support inbox filters and compact transfer icon */
+.support-filter-tabs{display:flex;gap:5px;padding:5px;margin:10px 0 14px;background:#f3f6fb;border:1px solid #e5eaf2;border-radius:13px}
+.support-filter-tab{flex:1;border:0;border-radius:9px;background:transparent;color:#64748b;padding:9px 8px;font-size:12px;font-weight:650;cursor:pointer;transition:background .15s ease,color .15s ease,box-shadow .15s ease}
+.support-filter-tab:hover{color:#1e293b;background:#fff}
+.support-filter-tab.active{background:#fff;color:#1d4ed8;box-shadow:0 2px 7px rgba(15,23,42,.09)}
+.piso-support-chat-head{display:flex;align-items:flex-start;justify-content:space-between;gap:18px;padding:18px 20px!important;border-bottom:1px solid #e8edf5}
+.piso-support-customer-title{min-width:0;flex:1}
+.piso-support-head-actions{display:flex;align-items:center;justify-content:flex-end;gap:10px;flex-shrink:0}
+.piso-transfer-premium{display:inline-flex;align-items:center;justify-content:center;width:40px;height:40px;padding:0;border:1px solid #d9e8df;border-radius:13px;background:linear-gradient(180deg,#fff,#f5fbf7);color:#0d9b65;box-shadow:0 4px 12px rgba(16,185,129,.10);cursor:pointer;transition:transform .16s ease,box-shadow .16s ease,border-color .16s ease}
+.piso-transfer-premium svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.piso-transfer-premium:hover{transform:translateY(-1px);border-color:#86efac;box-shadow:0 7px 18px rgba(16,185,129,.16)}
+@media(max-width:600px){.piso-support-chat-head{padding:14px!important;gap:10px}.piso-transfer-premium{width:36px;height:36px}.support-filter-tab{padding:8px 4px;font-size:11px}}
