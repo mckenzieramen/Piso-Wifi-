@@ -1,7 +1,7 @@
 // Cloudflare Pages Function: forwards receipt email requests to the existing Google Apps Script.
 // Required Cloudflare Pages variables:
 // APPS_SCRIPT_OTP_URL (optional; defaults to the project's existing Apps Script web app URL)
-// PISO_WIFI_RECEIPT_SECRET (must match the Script Property PISO_WIFI_RECEIPT_SECRET in Apps Script)
+// APPS_SCRIPT_RECEIPT_SECRET (preferred existing Cloudflare secret; value must match Script Property PISO_WIFI_RECEIPT_SECRET in Apps Script)
 export async function onRequestPost({ request, env }) {
   const headers = { "Content-Type": "application/json", "Cache-Control": "no-store" };
   try {

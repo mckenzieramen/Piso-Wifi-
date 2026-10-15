@@ -1,7 +1,7 @@
 // Cloudflare Pages Function: forwards receipt email requests to the existing Google Apps Script.
 // Required Cloudflare Pages variables:
 // APPS_SCRIPT_OTP_URL (optional; defaults to the project's existing Apps Script web app URL)
-// PISO_WIFI_RECEIPT_SECRET (must match the Script Property PISO_WIFI_RECEIPT_SECRET in Apps Script)
+// APPS_SCRIPT_RECEIPT_SECRET (preferred existing Cloudflare secret; value must match Script Property PISO_WIFI_RECEIPT_SECRET in Apps Script)
 export async function onRequestPost({ request, env }) {
   const headers = { "Content-Type": "application/json", "Cache-Control": "no-store" };
   try {
@@ -34,9 +34,9 @@ export async function onRequestPost({ request, env }) {
     }
 
     const scriptUrl = String(env.APPS_SCRIPT_OTP_URL || "https://script.google.com/macros/s/AKfycbzJcIf9rpdunJ8-1kDvgePWTT1L-cQOFzZLQHFQMaqBYTlviovyxjz4JOX-FpvUrjFu/exec").trim();
-    const secret = String(env.PISO_WIFI_RECEIPT_SECRET || "").trim();
+    const secret = String(env.APPS_SCRIPT_RECEIPT_SECRET || env.PISO_WIFI_RECEIPT_SECRET || "").trim();
     if (!secret) {
-      return new Response(JSON.stringify({ ok: false, error: "Google Apps Script receipt connection is missing PISO_WIFI_RECEIPT_SECRET in Cloudflare Pages variables/secrets. It must match the Apps Script project property." }), { status: 503, headers });
+      return new Response(JSON.stringify({ ok: false, error: "Google Apps Script receipt connection is missing APPS_SCRIPT_RECEIPT_SECRET (or PISO_WIFI_RECEIPT_SECRET) in Cloudflare Pages variables/secrets. Set it to the same value as the PISO_WIFI_RECEIPT_SECRET Script Property in Google Apps Script." }), { status: 503, headers });
     }
 
     const upstream = await fetch(scriptUrl, {
