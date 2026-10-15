@@ -3,7 +3,7 @@ import {
   onAuthStateChanged, signOut, signInWithEmailAndPassword
 } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-auth.js";
 import {
-  collection, doc, getDoc, getDocs, query, where, updateDoc, setDoc, onSnapshot, arrayUnion,
+  collection, doc, getDoc, getDocs, query, where, updateDoc, setDoc, addDoc, onSnapshot, arrayUnion, orderBy,
   serverTimestamp, writeBatch
 } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-firestore.js";
 import { calculateFinancialRecord } from "./finance.js";
@@ -236,6 +236,8 @@ let supportChatUnsub=null;
 let supportChat=null;
 let supportChatOpen=false;
 let supportChatSending=false;
+let supportMessageUnsub=null;
+let supportThreadMessages=[];
 let supportTypingTimer=null;
 let supportChatDocId="";
 let supportChatHistory=[];
@@ -255,7 +257,10 @@ function renderSupportConversation(){
   const clientHeight=host.clientHeight;
   const hadContent=host.children.length>0;
   const wasAtBottom=!hadContent || previousHeight-previousTop-clientHeight<32;
-  const msgs=Array.isArray(supportChat?.messages)?supportChat.messages:[];
+  const legacy=Array.isArray(supportChat?.messages)?supportChat.messages:[];
+  const merged=new Map();
+  [...legacy,...supportThreadMessages].forEach((m,i)=>merged.set(String(m.id||`${m.senderType||"system"}|${m.createdAt||""}|${m.text||""}|${i}`),m));
+  const msgs=[...merged.values()].sort((a,b)=>String(a.createdAt||"").localeCompare(String(b.createdAt||"")));
   host.innerHTML=msgs.length?msgs.map(supportMessageHtml).join(""):`<div class="piso-chat-empty"><div class="support-icon">${icons.mail}</div><b>Start a conversation</b><span>Tell us what you need help with and our support team can reply here.</span></div>`;
   const typing=$("#supportTyping");
   if(typing){const staffTyping=!!supportChat?.typingBy?.admin||!!supportChat?.typingBy?.cashier;typing.classList.toggle("show",staffTyping);typing.textContent=staffTyping?"Customer Support is typing…":"";}
@@ -359,6 +364,12 @@ function subscribeSupportChat(){
       supportChatDocId=snap.id;
       const idx=supportChatHistory.findIndex(c=>c.id===snap.id);
       if(idx>=0)supportChatHistory[idx]=supportChat; else supportChatHistory=[supportChat,...supportChatHistory];
+      if(supportMessageUnsub){supportMessageUnsub();supportMessageUnsub=null;}
+      supportThreadMessages=[];
+      supportMessageUnsub=onSnapshot(query(collection(db,"supportChats",snap.id,"messages"),orderBy("createdAt","asc")),messageSnap=>{
+        supportThreadMessages=messageSnap.docs.map(d=>({id:d.id,...d.data()}));
+        if(supportChatOpen && !$("#supportConversationView")?.classList.contains("hidden"))renderSupportConversation();
+      },err=>console.warn("Support message stream failed",err));
     }
     updateSupportBadge();
     if(supportChatOpen){
@@ -403,12 +414,13 @@ async function sendSupportMessage(){
   try{
     await createSupportChat();
     try{await updateDoc(supportChatRef(),{"typingBy.customer":false});}catch(e){}
-    const existingMessages=Array.isArray(supportChat?.messages)?supportChat.messages:[];
+    const existingMessages=[...(Array.isArray(supportChat?.messages)?supportChat.messages:[]),...supportThreadMessages];
     const firstCustomerMessage=!existingMessages.some(m=>String(m?.senderType||"").toLowerCase()==="customer");
     const customerMessage={senderType:"customer",text,createdAt:supportNow()};
     const acknowledgement={senderType:"system",text:"Thank you for letting us know about this. Let me notify our support team, and we will get in touch with you as soon as possible.",createdAt:supportNow(),kind:"auto-acknowledgement"};
+    await addDoc(collection(db,"supportChats",supportChat.id,"messages"),customerMessage);
+    if(firstCustomerMessage)await addDoc(collection(db,"supportChats",supportChat.id,"messages"),acknowledgement);
     await updateDoc(supportChatRef(),{
-      messages:firstCustomerMessage?arrayUnion(customerMessage,acknowledgement):arrayUnion(customerMessage),
       lastMessage:text,
       lastMessageSender:"customer",
       lastMessageAt:supportNow(),
