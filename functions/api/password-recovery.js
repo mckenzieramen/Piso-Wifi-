@@ -6,11 +6,14 @@
  * This avoids browser CORS/preflight problems with Google Apps Script.
  */
 
-// Use the configured current Apps Script deployment when available.
-// Fallback matches the deployment referenced by the active customer login JS.
-const APPS_SCRIPT_OTP_URL = String(context.env?.APPS_SCRIPT_PASSWORD_RESET_URL || 'https://script.google.com/macros/s/AKfycbzJcIf9rpdunJ8-1kDvgePWTT1L-cQOFzZLQHFQMaqBYTlviovyxjz4JOX-FpvUrjFu/exec').trim();
-
+// Use the configured Apps Script deployment from the request context.
+// Keep the fallback aligned with the deployment referenced by the active customer login JS.
 export async function onRequestPost(context) {
+  const appsScriptOtpUrl = String(
+    context.env?.APPS_SCRIPT_PASSWORD_RESET_URL ||
+    'https://script.google.com/macros/s/AKfycbzJcIf9rpdunJ8-1kDvgePWTT1L-cQOFzZLQHFQMaqBYTlviovyxjz4JOX-FpvUrjFu/exec'
+  ).trim();
+
   try {
     const body = await context.request.text();
 
@@ -25,7 +28,7 @@ export async function onRequestPost(context) {
       return json({ ok: false, error: 'Invalid password recovery request.' }, 400);
     }
 
-    const upstream = await fetch(APPS_SCRIPT_OTP_URL, {
+    const upstream = await fetch(appsScriptOtpUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'text/plain;charset=utf-8'
