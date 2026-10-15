@@ -6,7 +6,7 @@
  * This avoids browser CORS/preflight problems with Google Apps Script.
  */
 
-const APPS_SCRIPT_OTP_URL = 'https://script.google.com/macros/s/AKfycbw0V3j5VPpFq2Ui0Y28CAC9owTXLawEsjEllq12W9wtzpFjFgXLgI5VCRDHzc26raWJ/exec';
+const APPS_SCRIPT_OTP_URL = 'https://script.google.com/macros/s/AKfycbzJcIf9rpdunJ8-1kDvgePWTT1L-cQOFzZLQHFQMaqBYTlviovyxjz4JOX-FpvUrjFu/exec';
 
 export async function onRequestPost(context) {
   try {
