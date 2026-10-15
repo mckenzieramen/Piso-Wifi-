@@ -22,6 +22,6 @@ Set these in Cloudflare Pages → project `piso-wifi` → Settings → Variables
 2. In the customer portal, hard refresh and check that the `ca9/b815` WatchChangeAggregator assertion no longer appears. Data refresh may take up to 15 seconds; support messages may take up to 2.5 seconds.
 3. Use **Retry Dashboard Sync** on an existing test sale/payment; do not create duplicate sales to test.
 4. After Resend secrets are configured, use **Resend Email** on an existing receipt.
-5. Test customer support end-to-end: customer opens chat, cashier sees it under **PISO NETY Support**, cashier claims and replies, customer sees the cashier name, then cashier transfers it to Admin. Do not re-enter payments or sales for testing.
+5. Test customer support end-to-end: customer opens chat, cashier sees it under **Piso Net Support**, cashier claims and replies, customer sees the cashier name, then cashier transfers it to Admin. Do not re-enter payments or sales for testing.
 
 The code and ZIP are syntax/integrity checked. Live Firebase and Cloudflare secret configuration cannot be verified from this workspace.

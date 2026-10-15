@@ -6,7 +6,7 @@ Workflow retained:
 - Cashier inbox listens for unassigned tickets and tickets assigned to the signed-in cashier.
 - Cashier can claim, reply, and transfer the same ticket to Admin.
 - Admin can read and take over transferred tickets.
-- Customer-facing chat header is PISO NET Support.
+- Customer-facing chat header is Piso Net Support.
 - Cashier portal has a single Customer Service menu routed to supportChats.
 
 Changed files:

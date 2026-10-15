@@ -3,8 +3,8 @@ PISO WiFi Customer Service Chat Fix — 2026-10-14
 Changes:
 - Cashier portal now has one chat menu named exactly "Customer Service".
 - That menu opens the shared supportChats inbox, not the legacy customerChats inbox.
-- Removed the separate "PISO NETY Support" menu entry.
-- Customer-facing support name/header text changed to "PISO NET Support".
+- Removed the separate "Piso Net Support" menu entry.
+- Customer-facing support name/header text changed to "Piso Net Support".
 - Cashier replies continue to be written to the same supportChats document used by the customer portal, preserving conversation history.
 - Updated cache-busting version strings.
 
