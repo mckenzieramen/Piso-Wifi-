@@ -78,3 +78,13 @@
 .piso-transfer-premium:hover{transform:translateY(-1px);border-color:#6ee7b7;box-shadow:0 8px 19px rgba(5,150,105,.2)}
 .piso-transfer-premium:focus-visible{outline:3px solid rgba(16,185,129,.25);outline-offset:2px}
 @media(max-width:700px){.piso-transfer-premium{min-height:38px;padding:0 10px}.piso-support-head-actions{margin-left:0}}
+
+/* Premium Open/Solved/Closed/All ticket filters with live counts */
+.support-filter-tabs{display:flex;gap:6px;padding:6px;margin:12px 0 15px;background:linear-gradient(135deg,#f5f9ff,#edf4fc);border:1px solid #e0eaf5;border-radius:15px}
+.support-filter-tab{display:flex;align-items:center;justify-content:center;gap:7px;min-height:38px;padding:0 11px;border:1px solid transparent;border-radius:11px;background:transparent;color:#62758b;font-size:12px;font-weight:750;box-shadow:none;transition:all .18s ease}
+.support-filter-label{white-space:nowrap}
+.support-filter-count{display:inline-flex;align-items:center;justify-content:center;min-width:22px;height:22px;padding:0 6px;border-radius:7px;background:#e2eaf4;color:#526a82;font-size:10px;font-weight:850;font-variant-numeric:tabular-nums}
+.support-filter-tab:hover{background:#fff;border-color:#dce8f5;color:#1c5c91}
+.support-filter-tab.active{background:linear-gradient(135deg,#147fda,#095eae);border-color:#0b69ba;color:#fff;box-shadow:0 5px 13px rgba(9,94,174,.22)}
+.support-filter-tab.active .support-filter-count{background:rgba(255,255,255,.2);color:#fff}
+#cashierSupportInput{font-size:16px!important;line-height:1.55;min-height:48px;resize:vertical;touch-action:manipulation}
