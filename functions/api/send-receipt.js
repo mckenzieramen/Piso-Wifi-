@@ -33,7 +33,7 @@ export async function onRequestPost({ request, env }) {
       return new Response(JSON.stringify({ ok: false, error: "Invalid receipt email payload. Check the customer email and receipt details." }), { status: 400, headers });
     }
 
-    const scriptUrl = String(env.APPS_SCRIPT_OTP_URL || "https://script.google.com/macros/s/AKfycbzJcIf9rpdunJ8-1kDvgePWTT1L-cQOFzZLQHFQMaqBYTlviovyxjz4JOX-FpvUrjFu/exec").trim();
+    const scriptUrl = String(env.APPS_SCRIPT_OTP_URL || "https://script.google.com/macros/s/AKfycbziRdnywiBqCJoBqJwXElHEGWdgyljApiYAhOvDJEyKJ_rzLWPP_GgYSmsfR1IE3_Fe/exec").trim();
     const secret = String(env.APPS_SCRIPT_RECEIPT_SECRET || env.PISO_WIFI_RECEIPT_SECRET || "").trim();
     if (!secret) {
       return new Response(JSON.stringify({ ok: false, error: "Google Apps Script receipt connection is missing APPS_SCRIPT_RECEIPT_SECRET in Cloudflare Pages variables/secrets. It must match the Apps Script project property PISO_WIFI_RECEIPT_SECRET." }), { status: 503, headers });
