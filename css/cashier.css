@@ -241,3 +241,20 @@
 @media(max-width:900px){.cashier-sidebar{position:sticky!important;top:0;z-index:100;display:block!important;padding:10px 14px!important}.cashier-mobile-brand-row{min-height:42px}.cashier-menu-toggle{display:flex}.cashier-sidebar .cashier-nav,.cashier-sidebar .cashier-logout{display:none!important}.cashier-menu-open .cashier-sidebar .cashier-nav{display:flex!important;flex-direction:column!important;gap:6px!important;padding-top:12px!important}.cashier-menu-open .cashier-sidebar .cashier-logout{display:block!important;width:100%;margin-top:8px}.cashier-sidebar .cashier-nav button{width:100%;min-height:44px;text-align:left;border-radius:12px}.cashier-brand{padding:0!important}.cashier-brand small{display:block!important}.cashier-main{min-width:0!important}.cashier-top{padding:14px!important}.cashier-service-layout.chat.mobile-inbox-active .cashier-support-thread{display:none!important}.cashier-service-layout.chat.mobile-thread-active .cashier-support-inbox{display:none!important}.cashier-service-layout.chat.mobile-thread-active .cashier-support-thread{display:flex!important;min-height:calc(100dvh - 180px)!important}.cashier-service-layout.chat.mobile-thread-active .cashier-support-thread .messages{flex:1;min-height:36vh!important;max-height:none!important;height:auto!important}.cashier-service-layout.chat.mobile-thread-active .cashier-mobile-back{display:inline-flex!important}.cashier-service-layout.chat.mobile-thread-active .cashier-support-thread>.admin-chat-head{padding-bottom:12px!important;margin-bottom:12px!important}.cashier-service-layout.chat.mobile-thread-active .cashier-support-thread .chat-compose{position:sticky;bottom:0;background:#081811;padding-top:8px;margin-top:8px!important}.cashier-support-inbox{max-height:none!important}.cashier-service-panel{padding:14px!important}}
 @media(min-width:901px){.cashier-mobile-back{display:none!important}.cashier-service-layout.chat .cashier-support-inbox,.cashier-service-layout.chat .cashier-support-thread{display:flex!important}.cashier-service-layout.chat .cashier-support-inbox{display:block!important}.cashier-service-layout.chat .cashier-support-thread{display:flex!important}}
 @media(max-width:380px){.cashier-inbox-heading{align-items:flex-start}.cashier-inbox-unread{font-size:9px;padding:4px 6px}.cashier-live-unread{display:none}.cashier-service-layout.chat.mobile-thread-active .cashier-support-thread{padding:10px!important}.cashier-support-thread .chat-compose button{min-height:46px}}
+
+/* Mobile zoom fix: prevent Safari/Chrome mobile from auto-zooming when cashier fields are focused. */
+@media (max-width: 900px) {
+  .cashier-login-card input,
+  .cashier-app input,
+  .cashier-app select,
+  .cashier-app textarea,
+  .cashier-support-search input,
+  .cashier-support-thread .chat-compose textarea {
+    font-size: 16px !important;
+  }
+  html, body {
+    width: 100%;
+    max-width: 100%;
+    overflow-x: clip;
+  }
+}
