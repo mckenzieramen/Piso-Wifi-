@@ -418,10 +418,7 @@ async function verifyOtp(e){
   if(!/^\\d{6}$/.test(code)){msgEl.textContent="Enter the 6-digit OTP.";msgEl.className="client-login-message error";return;}
   btn.disabled=true;btn.textContent="Verifying…";msgEl.textContent="Verifying your code…";msgEl.className="client-login-message";
   try{
-    const verified=await callRecovery({action:"verifyCode",clientId:recoveryClientId,email:recoveryEmail,code});
-    // The verification endpoint may issue the actual password-reset session token only
-    // after the OTP is accepted. Preserve that returned token for resetPassword.
-    recoveryToken=verified.resetToken||verified.verificationToken||verified.recoveryToken||verified.sessionToken||verified.token||recoveryToken;
+    await callRecovery({action:"verifyCode",clientId:recoveryClientId,email:recoveryEmail,code});
     document.querySelector("#otpModal")?.remove();
     openNewPasswordModal();
   }catch(err){
