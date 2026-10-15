@@ -284,9 +284,7 @@ async function verifyOtp(e){
   if(!/^\\d{6}$/.test(code)){msgEl.textContent="Enter the 6-digit OTP.";msgEl.className="client-login-message error";return;}
   btn.disabled=true;btn.textContent="Verifying…";msgEl.textContent="Verifying your code…";msgEl.className="client-login-message";
   try{
-    const verified=await callRecovery({action:"verifyCode",clientId:recoveryClientId,email:recoveryEmail,code});
-    recoveryToken=verified.resetToken||verified.verificationToken||verified.token||"";
-    if(!recoveryToken) throw new Error("Verification succeeded but no password reset token was returned. Request a new code.");
+    await callRecovery({action:"verifyCode",clientId:recoveryClientId,email:recoveryEmail,code});
     document.querySelector("#otpModal")?.remove();
     openNewPasswordModal();
   }catch(err){

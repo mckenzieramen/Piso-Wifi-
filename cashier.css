@@ -131,35 +131,3 @@
  .support-filter-tabs .support-filter-tab{gap:4px!important;min-height:38px!important;padding:0 5px!important;font-size:11px!important}
  .support-filter-tabs .support-filter-count{min-width:19px!important;height:19px!important;font-size:9px!important}
 }
-
-
-/* Receipt History: scrollable list and clear customer bullet */
-.receipt-list{
-  max-height:min(62vh, 680px);
-  overflow-y:auto;
-  overflow-x:hidden;
-  overscroll-behavior:contain;
-  scrollbar-gutter:stable;
-  padding:2px 8px 8px 2px;
-  align-content:start;
-}
-.receipt-list::-webkit-scrollbar{width:8px}
-.receipt-list::-webkit-scrollbar-track{background:#eef3f9;border-radius:99px}
-.receipt-list::-webkit-scrollbar-thumb{background:#b8c9dc;border-radius:99px;border:2px solid #eef3f9}
-.receipt-list{scrollbar-width:thin;scrollbar-color:#b8c9dc #eef3f9}
-.receipt-customer-name{display:flex;align-items:center;gap:8px;min-width:0}
-.receipt-customer-name::before{
-  content:"";
-  flex:0 0 7px;
-  width:7px;height:7px;border-radius:50%;
-  background:linear-gradient(135deg,#1478e8,#5aabff);
-  box-shadow:0 0 0 3px rgba(20,120,232,.10);
-}
-@media(max-width:600px){
-  .receipt-list{max-height:58vh;padding-right:5px}
-  .receipt-row{grid-template-columns:minmax(0,1fr);gap:10px;padding:13px}
-  .receipt-amount{justify-content:flex-start}
-  .receipt-actions{grid-column:1;justify-content:stretch}
-  .receipt-actions button{width:100%;min-height:42px}
-}
-

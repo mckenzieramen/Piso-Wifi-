@@ -169,33 +169,27 @@
 @media(max-width:380px){.cashier-service-heading{display:block}.cashier-service-live{margin-top:12px;width:max-content}.cashier-support-thread .chat-compose{grid-template-columns:minmax(0,1fr)!important}.cashier-support-thread .chat-compose button{width:100%}.cashier-support-thread .piso-support-head-actions>*{flex:1 1 auto}}
 
 
-/* Receipt History: scrollable list and clear customer bullet */
-.receipt-list{
-  max-height:min(62vh, 680px);
-  overflow-y:auto;
-  overflow-x:hidden;
-  overscroll-behavior:contain;
-  scrollbar-gutter:stable;
-  padding:2px 8px 8px 2px;
-  align-content:start;
+/* Cashier Chat Support: true mobile inbox/thread navigation */
+.cashier-support-back{display:none}
+@media(max-width:700px){
+ .cashier-service-layout.chat{display:block!important;grid-template-columns:minmax(0,1fr)!important;gap:0!important}
+ .cashier-support-inbox,.cashier-support-thread{width:100%;min-width:0;max-width:100%;}
+ .cashier-service-layout.chat:not(.mobile-thread-open) .cashier-support-thread{display:none!important}
+ .cashier-service-layout.chat.mobile-thread-open .cashier-support-inbox{display:none!important}
+ .cashier-service-layout.chat.mobile-thread-open .cashier-support-thread{display:flex!important;min-height:calc(100dvh - 190px)!important;height:calc(100dvh - 190px);padding:12px!important}
+ .cashier-support-thread>.admin-chat-head{gap:8px!important;padding-bottom:10px!important;margin-bottom:10px!important}
+ .cashier-support-back{display:inline-flex;align-items:center;justify-content:center;gap:5px;flex:0 0 auto;min-height:38px;padding:0 10px;border:1px solid #d8e5f3;border-radius:11px;background:#f2f7fd;color:#155ca8;font-size:13px;font-weight:800}
+ .cashier-support-thread .piso-support-customer-title{flex:1 1 calc(100% - 60px);min-width:0}
+ .cashier-support-thread .piso-support-customer-title h3{font-size:15px!important;line-height:1.3}
+ .cashier-support-thread .piso-support-head-actions{width:100%;justify-content:flex-start;gap:6px!important}
+ .cashier-support-thread .piso-support-head-actions button{min-height:36px;padding:0 9px!important;font-size:12px}
+ .cashier-support-thread .messages{flex:1 1 0;min-height:120px!important;max-height:none!important;height:auto;padding:12px!important;overscroll-behavior:contain}
+ .cashier-support-thread .bubble{max-width:90%;padding:10px 11px;font-size:13px}
+ .cashier-support-thread .chat-compose{display:grid!important;grid-template-columns:minmax(0,1fr) auto!important;align-items:end;gap:7px!important;margin-top:9px!important}
+ .cashier-support-thread .chat-compose textarea{min-height:44px;max-height:100px;padding:10px!important;font-size:16px}
+ .cashier-support-thread .chat-compose button{min-height:44px;padding:0 14px!important}
+ .cashier-support-inbox{max-height:none!important;min-height:0!important;padding:12px!important}
+ .support-filter-tabs{grid-template-columns:repeat(4,minmax(0,1fr))!important}
+ .chat-item{padding:12px!important}
 }
-.receipt-list::-webkit-scrollbar{width:8px}
-.receipt-list::-webkit-scrollbar-track{background:#eef3f9;border-radius:99px}
-.receipt-list::-webkit-scrollbar-thumb{background:#b8c9dc;border-radius:99px;border:2px solid #eef3f9}
-.receipt-list{scrollbar-width:thin;scrollbar-color:#b8c9dc #eef3f9}
-.receipt-customer-name{display:flex;align-items:center;gap:8px;min-width:0}
-.receipt-customer-name::before{
-  content:"";
-  flex:0 0 7px;
-  width:7px;height:7px;border-radius:50%;
-  background:linear-gradient(135deg,#1478e8,#5aabff);
-  box-shadow:0 0 0 3px rgba(20,120,232,.10);
-}
-@media(max-width:600px){
-  .receipt-list{max-height:58vh;padding-right:5px}
-  .receipt-row{grid-template-columns:minmax(0,1fr);gap:10px;padding:13px}
-  .receipt-amount{justify-content:flex-start}
-  .receipt-actions{grid-column:1;justify-content:stretch}
-  .receipt-actions button{width:100%;min-height:42px}
-}
-
+@media(max-width:380px){.cashier-support-thread .piso-support-head-actions{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr))}.cashier-support-thread .piso-support-head-actions>*{min-width:0}.cashier-support-thread .chat-compose{grid-template-columns:minmax(0,1fr) auto!important}.cashier-support-thread .chat-compose button{width:auto}}
