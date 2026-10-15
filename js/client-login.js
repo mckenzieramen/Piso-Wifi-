@@ -413,9 +413,20 @@ function openOtpModal(result){
 
 async function verifyOtp(e){
   e.preventDefault();
-  const code=document.querySelector("#otpCode").value.replace(/\D/g,"");
-  const msgEl=document.querySelector("#otpMessage");const btn=document.querySelector("#otpVerify");
-  if(!/^\d{6}$/.test(code)){msgEl.textContent="Enter the 6-digit OTP.";msgEl.className="client-login-message error";return;}
+  // Scope all selectors to the submitted form. This avoids accidentally reading
+  // a stale/hidden OTP modal if the customer opened recovery more than once.
+  const form=e.currentTarget;
+  const input=form.querySelector("#otpCode");
+  const msgEl=form.querySelector("#otpMessage");
+  const btn=form.querySelector("#otpVerify");
+  const code=String(input?.value ?? "").replace(/[^0-9]/g,"").slice(0,6);
+  if(input && input.value !== code) input.value=code;
+  if(!/^\d{6}$/.test(code)){
+    msgEl.textContent="Enter all 6 digits of the OTP.";
+    msgEl.className="client-login-message error";
+    input?.focus();
+    return;
+  }
   btn.disabled=true;btn.textContent="Verifying…";msgEl.textContent="Verifying your code…";msgEl.className="client-login-message";
   try{
     await callRecovery({action:"verifyCode",clientId:recoveryClientId,email:recoveryEmail,code});
