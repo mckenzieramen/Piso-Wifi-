@@ -110,3 +110,15 @@
 .piso-ticket-action.closed{color:#475569;background:linear-gradient(135deg,#fff,#f1f5f9);border:1px solid #dbe3ec}
 .piso-ticket-action:hover{transform:translateY(-1px);box-shadow:0 6px 15px rgba(15,23,42,.10)}
 .admin-support-messages,.messages{overflow-y:auto;overscroll-behavior:contain;scrollbar-gutter:stable;scroll-behavior:auto}
+
+/* Cashier payment summary and private history amounts */
+.cashier-payment-summary{grid-template-columns:minmax(220px,1fr);max-width:440px;margin:14px 0 20px}
+.cashier-payment-summary .card{border:1px solid #cfe5fb;border-radius:16px;background:linear-gradient(135deg,#f7fbff,#eaf5ff);box-shadow:0 8px 24px rgba(20,105,180,.08);padding:18px}
+.cashier-payment-summary .card small{font-size:12px;font-weight:750;color:#416987}
+.cashier-payment-summary .card strong{display:block;margin-top:8px;font-size:25px;color:#1169b5;font-variant-numeric:tabular-nums}
+.cashier-history-amount{display:inline-block;filter:blur(5px);user-select:none;cursor:default;transition:filter .18s ease}
+.cashier-history-amount:hover{filter:blur(3px)}
+.receipt-email-state{display:inline-flex!important;width:max-content;max-width:100%;padding:4px 8px;border-radius:7px;font-size:10px!important;font-weight:750}
+.receipt-email-state.sent{background:#eafaf1;color:#087647}
+.receipt-email-state.failed{background:#fff0f0;color:#b42318}
+.receipt-email-state.pending{background:#f1f5f9;color:#526579}
