@@ -97,3 +97,16 @@
  .support-filter-tabs .support-filter-tab{gap:4px!important;min-height:38px!important;padding:0 5px!important;font-size:11px!important}
  .support-filter-tabs .support-filter-count{min-width:19px!important;height:19px!important;font-size:9px!important}
 }
+
+/* Premium cashier ticket status controls */
+.piso-ticket-status{display:inline-flex;align-items:center;gap:7px;padding:8px 12px;border:1px solid #dbe7f3;border-radius:999px;background:#f8fbff;color:#4b627a;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.04em}
+.piso-ticket-status:before{content:"";width:7px;height:7px;border-radius:50%;background:#94a3b8}
+.piso-ticket-status.status-open{color:#145ca8;background:#eff7ff;border-color:#cce5ff}.piso-ticket-status.status-open:before{background:#2185df}
+.piso-ticket-status.status-solved{color:#047857;background:#ecfdf5;border-color:#a7f3d0}.piso-ticket-status.status-solved:before{background:#10b981}
+.piso-ticket-status.status-closed{color:#475569;background:#f1f5f9;border-color:#dbe3ec}.piso-ticket-status.status-closed:before{background:#64748b}
+.piso-ticket-action{display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:38px;padding:0 13px;border-radius:12px;font-size:12px;font-weight:800;cursor:pointer;transition:transform .15s ease,box-shadow .15s ease}
+.piso-ticket-action svg{width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.piso-ticket-action.solved{color:#047857;background:linear-gradient(135deg,#ecfdf5,#d1fae5);border:1px solid #a7f3d0;box-shadow:0 4px 12px rgba(16,185,129,.09)}
+.piso-ticket-action.closed{color:#475569;background:linear-gradient(135deg,#fff,#f1f5f9);border:1px solid #dbe3ec}
+.piso-ticket-action:hover{transform:translateY(-1px);box-shadow:0 6px 15px rgba(15,23,42,.10)}
+.admin-support-messages,.messages{overflow-y:auto;overscroll-behavior:contain;scrollbar-gutter:stable;scroll-behavior:auto}
