@@ -33,3 +33,14 @@
  .remit-unlock{width:100%!important}
  .cashier-login-card{width:calc(100% - 28px)!important;max-width:420px;margin:20px auto!important;padding:22px!important}
 }
+
+/* Premium transfer action aligned opposite the customer identity */
+.piso-support-chat-head{display:flex;align-items:flex-start;justify-content:space-between;gap:18px;padding:18px 20px!important;border-bottom:1px solid #e8edf5}
+.piso-support-customer-title{min-width:0;flex:1}
+.piso-support-head-actions{display:flex;align-items:center;justify-content:flex-end;gap:10px;flex-shrink:0}
+.piso-transfer-premium{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:38px;padding:0 14px;border:1px solid #dbe4f2;border-radius:12px;background:linear-gradient(180deg,#fff,#f5f7fb);color:#334155;font-size:13px;font-weight:650;letter-spacing:.01em;box-shadow:0 3px 10px rgba(15,23,42,.06);transition:transform .16s ease,box-shadow .16s ease,border-color .16s ease;cursor:pointer}
+.piso-transfer-premium svg{width:17px;height:17px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.piso-transfer-premium:hover{transform:translateY(-1px);border-color:#a5b4fc;box-shadow:0 7px 18px rgba(79,70,229,.13);color:#4338ca}
+.piso-transfer-premium:focus-visible{outline:3px solid rgba(99,102,241,.28);outline-offset:2px}
+#cashierSupportInput,.chat-compose textarea{font-size:16px!important;line-height:1.5;touch-action:manipulation;overscroll-behavior:contain}
+@media(max-width:600px){.piso-support-chat-head{padding:14px!important;gap:10px}.piso-transfer-premium{min-height:36px;padding:0 11px}.piso-support-head-actions{gap:6px}}
