@@ -167,3 +167,35 @@
 @media(max-width:980px){.cashier-service-layout.chat{grid-template-columns:minmax(0,1fr)!important}.cashier-support-inbox{min-height:0;max-height:370px}.cashier-support-thread{min-height:400px}.cashier-support-thread .messages{max-height:48vh!important}}
 @media(max-width:600px){.cashier-service-panel{padding:14px!important}.cashier-service-heading{gap:10px;margin-bottom:14px;padding-bottom:14px}.cashier-service-heading h2{font-size:22px}.cashier-service-heading p{font-size:12px;line-height:1.55}.cashier-service-live{padding:7px 9px;font-size:10px}.cashier-service-layout.chat{gap:12px!important}.cashier-support-inbox,.cashier-support-thread{padding:13px!important;border-radius:15px!important;min-height:0}.cashier-support-inbox{max-height:330px}.support-filter-tabs{grid-template-columns:repeat(4,minmax(0,1fr))!important;gap:4px!important;padding:4px!important}.support-filter-tabs .support-filter-tab{min-height:49px!important;padding:6px 2px!important;font-size:10px!important}.support-filter-tabs .support-filter-count{min-width:18px!important;height:18px!important;font-size:9px!important}.chat-item{padding:12px!important}.cashier-support-thread>.admin-chat-head{gap:10px!important}.cashier-support-thread .piso-support-head-actions{justify-content:flex-start!important;width:100%}.cashier-support-thread .piso-ticket-action,.cashier-support-thread .piso-transfer-premium{min-height:36px!important;padding:0 10px!important}.cashier-support-thread .messages{min-height:250px!important;max-height:50vh!important;padding:12px!important}.cashier-support-thread .bubble{max-width:92%;padding:10px 12px!important}.cashier-support-thread .chat-compose{display:grid!important;grid-template-columns:minmax(0,1fr) auto!important;align-items:end}.cashier-support-thread .chat-compose textarea{font-size:14px!important}.cashier-support-thread .chat-compose button{padding:0 14px!important}.cashier-support-empty{min-height:260px;padding:22px 10px}}
 @media(max-width:380px){.cashier-service-heading{display:block}.cashier-service-live{margin-top:12px;width:max-content}.cashier-support-thread .chat-compose{grid-template-columns:minmax(0,1fr)!important}.cashier-support-thread .chat-compose button{width:100%}.cashier-support-thread .piso-support-head-actions>*{flex:1 1 auto}}
+
+
+/* Receipt History: scrollable list and clear customer bullet */
+.receipt-list{
+  max-height:min(62vh, 680px);
+  overflow-y:auto;
+  overflow-x:hidden;
+  overscroll-behavior:contain;
+  scrollbar-gutter:stable;
+  padding:2px 8px 8px 2px;
+  align-content:start;
+}
+.receipt-list::-webkit-scrollbar{width:8px}
+.receipt-list::-webkit-scrollbar-track{background:#eef3f9;border-radius:99px}
+.receipt-list::-webkit-scrollbar-thumb{background:#b8c9dc;border-radius:99px;border:2px solid #eef3f9}
+.receipt-list{scrollbar-width:thin;scrollbar-color:#b8c9dc #eef3f9}
+.receipt-customer-name{display:flex;align-items:center;gap:8px;min-width:0}
+.receipt-customer-name::before{
+  content:"";
+  flex:0 0 7px;
+  width:7px;height:7px;border-radius:50%;
+  background:linear-gradient(135deg,#1478e8,#5aabff);
+  box-shadow:0 0 0 3px rgba(20,120,232,.10);
+}
+@media(max-width:600px){
+  .receipt-list{max-height:58vh;padding-right:5px}
+  .receipt-row{grid-template-columns:minmax(0,1fr);gap:10px;padding:13px}
+  .receipt-amount{justify-content:flex-start}
+  .receipt-actions{grid-column:1;justify-content:stretch}
+  .receipt-actions button{width:100%;min-height:42px}
+}
+
