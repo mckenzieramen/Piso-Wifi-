@@ -68,3 +68,13 @@
 .piso-transfer-icon svg{width:17px;height:17px;fill:none;stroke:currentColor;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
 .piso-transfer-premium:hover{transform:translateY(-1px);box-shadow:0 8px 20px rgba(5,150,105,.18)}
 @media(max-width:600px){.piso-support-chat-head{padding:14px!important;gap:10px}.piso-transfer-premium{min-height:38px;padding:0 10px}.piso-support-head-actions{gap:6px}}
+
+/* Piso Net premium transfer control */
+.piso-support-chat-head{display:flex;align-items:flex-start;justify-content:space-between;gap:16px}
+.piso-support-head-actions{display:flex;align-items:center;justify-content:flex-end;gap:10px;flex-shrink:0;margin-left:auto}
+.piso-transfer-premium{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:42px;padding:0 13px;border:1px solid #a7f3d0;border-radius:13px;background:linear-gradient(135deg,#f0fdf4 0%,#d1fae5 100%);color:#047857;font-size:12px;font-weight:800;letter-spacing:.01em;box-shadow:0 5px 14px rgba(5,150,105,.13),inset 0 1px 0 rgba(255,255,255,.9);cursor:pointer;transition:transform .16s ease,box-shadow .16s ease,border-color .16s ease}
+.piso-transfer-logo{display:grid;place-items:center;width:27px;height:27px;border-radius:9px;background:linear-gradient(135deg,#10b981,#047857);color:#fff;box-shadow:0 3px 8px rgba(4,120,87,.2)}
+.piso-transfer-logo svg{width:17px;height:17px;fill:none;stroke:currentColor;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
+.piso-transfer-premium:hover{transform:translateY(-1px);border-color:#6ee7b7;box-shadow:0 8px 19px rgba(5,150,105,.2)}
+.piso-transfer-premium:focus-visible{outline:3px solid rgba(16,185,129,.25);outline-offset:2px}
+@media(max-width:700px){.piso-transfer-premium{min-height:38px;padding:0 10px}.piso-support-head-actions{margin-left:0}}
