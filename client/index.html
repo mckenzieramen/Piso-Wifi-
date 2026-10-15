@@ -241,6 +241,27 @@ input,select,textarea{font-size:16px}
 @media(max-width:1050px){.client-sidebar{width:274px}.client-main{margin-left:0}.client-content{padding:26px 24px 42px}.client-topbar{padding:0 24px}}
 @media(max-width:700px){.client-content{padding:18px 15px 34px}.client-welcome{padding:20px;min-height:0;border-radius:17px}.client-welcome h1{font-size:24px}.dashboard-filters{width:100%}.client-select-wrap{min-width:0;flex:1}.financial-grid{grid-template-columns:1fr 1fr}.financial-card{min-height:138px;padding:16px}.financial-card>strong{font-size:21px}.client-two-col{grid-template-columns:1fr}.client-sidebar-brand{height:78px}.client-official-logo{width:105px}.client-brand-caption{font-size:8px}}
 @media(max-width:480px){.financial-grid{grid-template-columns:1fr}.client-topbar{height:66px;padding:0 14px}.client-content{padding:15px 12px 30px}.client-welcome h1{font-size:22px}.client-identity{padding-right:6px}.client-identity b{max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}}
+
+/* Customer support chat bubble contrast: staff/admin messages are white on customer side. */
+.piso-chat-message.admin .piso-chat-bubble,
+.piso-chat-message.system .piso-chat-bubble { background:#fff !important; color:#17324d !important; border:1px solid #dbe5ef !important; }
+.piso-chat-message.customer .piso-chat-bubble { background:#1677e8 !important; color:#fff !important; }
+
+/* Premium customer-support view */
+#clientSupportModal .piso-support-hero{border-radius:22px;background:linear-gradient(135deg,#101828 0%,#253858 58%,#4f46e5 100%);color:#fff;padding:24px;box-shadow:0 18px 44px rgba(15,23,42,.18)}
+#clientSupportModal .piso-support-hero .eyebrow,#clientSupportModal .piso-support-hero small,#clientSupportModal .piso-support-hero span{color:rgba(255,255,255,.82)}
+#clientSupportModal .piso-ticket-history{border:1px solid #e5eaf2;border-radius:18px;background:#fff;padding:16px;box-shadow:0 8px 24px rgba(15,23,42,.05)}
+#clientSupportModal .piso-ticket-history-item{border-radius:14px;transition:transform .18s ease,box-shadow .18s ease,border-color .18s ease}
+#clientSupportModal .piso-ticket-history-item:hover{transform:translateY(-1px);box-shadow:0 8px 20px rgba(15,23,42,.08);border-color:#c7d2fe}
+#clientSupportModal .piso-chat-message.admin .piso-chat-bubble,#clientSupportModal .piso-chat-message.cashier .piso-chat-bubble,#clientSupportModal .piso-chat-message.system .piso-chat-bubble{background:#fff!important;color:#172033!important;border:1px solid #e1e7ef!important;border-radius:16px 16px 16px 5px!important;box-shadow:0 3px 10px rgba(15,23,42,.04)}
+#clientSupportModal .piso-chat-message.customer .piso-chat-bubble{background:linear-gradient(135deg,#2563eb,#4f46e5)!important;color:#fff!important;border-radius:16px 16px 5px 16px!important;box-shadow:0 5px 14px rgba(37,99,235,.18)}
+#clientSupportModal .piso-chat-composer{border:1px solid #e4e9f1;border-radius:18px;padding:8px;background:#fff;box-shadow:0 8px 24px rgba(15,23,42,.06)}
+#clientSupportModal .piso-chat-send{border-radius:13px;background:linear-gradient(135deg,#2563eb,#4f46e5);box-shadow:0 5px 12px rgba(37,99,235,.2)}
+#clientSupportModal .piso-chat-typing.show{color:#4f46e5;font-weight:600}
+.typing-indicator{font-size:12px;color:#4f46e5;padding:8px 12px;font-weight:600}
+
+/* Compact icon-only transfer action */
+.icon-only{display:inline-flex!important;align-items:center;justify-content:center;width:40px;min-width:40px;height:40px;padding:0!important;border-radius:12px!important}
 </style>
 <link rel="stylesheet" href="/css/client.css">
 </head>
@@ -305,7 +326,7 @@ input,select,textarea{font-size:16px}
       <button id="closeSupportModal" class="support-close" type="button" aria-label="Close support">×</button>
       <div id="supportLobby" class="piso-support-lobby"></div>
       <div id="supportConversationView" class="piso-support-conversation hidden">
-        <div class="piso-support-head"><button id="supportBack" class="support-back" type="button" aria-label="Back to support">←</button><div class="support-head-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 13a8 8 0 0 1 16 0"/><path d="M4 13v4a2 2 0 0 0 2 2h1.5v-6H6a2 2 0 0 0-2 2M20 13v4a2 2 0 0 1-2 2h-1.5v-6H18a2 2 0 0 1 2 2"/><path d="M9.5 19h2.5"/></svg></div><div><b id="supportChatCustomer">Customer Support</b><small>PISO NET Support · <span id="supportStatus">Open</span></small></div><span class="support-live-dot">Live</span></div>
+        <div class="piso-support-head"><button id="supportBack" class="support-back" type="button" aria-label="Back to support">←</button><div class="support-head-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 13a8 8 0 0 1 16 0"/><path d="M4 13v4a2 2 0 0 0 2 2h1.5v-6H6a2 2 0 0 0-2 2M20 13v4a2 2 0 0 1-2 2h-1.5v-6H18a2 2 0 0 1 2 2"/><path d="M9.5 19h2.5"/></svg></div><div><b id="supportChatCustomer">Customer Support</b><small>Piso Net Support · <span id="supportStatus">Open</span></small></div><span class="support-live-dot">Live</span></div>
         <div id="supportConversation" class="piso-chat-messages"></div>
         <div id="supportTyping" class="piso-chat-typing" aria-live="polite"></div>
         <div class="piso-chat-composer"><textarea id="supportChatInput" class="piso-chat-input" placeholder="Type your concern…" rows="1"></textarea><button id="supportSend" class="piso-chat-send" type="button">Send</button></div>
@@ -330,6 +351,6 @@ input,select,textarea{font-size:16px}
 
   <div id="clientToast" class="client-toast"></div>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-  <script type="module" src="/js/client.js?v=20261014-customer-service-chat-permissions-fix-3"></script>
+  <script type="module" src="/js/client.js?v=20261015-remove-solved-banner-1"></script>
 </body>
 </html>

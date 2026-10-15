@@ -33,3 +33,169 @@
  .remit-unlock{width:100%!important}
  .cashier-login-card{width:calc(100% - 28px)!important;max-width:420px;margin:20px auto!important;padding:22px!important}
 }
+
+
+/* Premium transfer control: icon-led, visible, aligned opposite customer name */
+.piso-support-chat-head{display:flex;align-items:flex-start;justify-content:space-between;gap:18px;padding:18px 20px!important;border-bottom:1px solid #e3edf7;background:linear-gradient(120deg,#f8fcff,#edf6ff)}
+.piso-support-customer-title{min-width:0;flex:1}
+.piso-support-head-actions{display:flex;align-items:center;justify-content:flex-end;gap:9px;flex-shrink:0}
+.piso-transfer-premium{display:inline-flex;align-items:center;justify-content:center;gap:9px;min-height:42px;padding:0 14px;border:1px solid #a9e8ca;border-radius:14px;background:linear-gradient(135deg,#f0fdf6,#d8f8e7);color:#06784e;font-size:12px;font-weight:800;box-shadow:0 5px 15px rgba(5,150,105,.12);cursor:pointer;transition:transform .16s ease,box-shadow .16s ease}
+.piso-transfer-icon{display:inline-grid;place-items:center;width:28px;height:28px;border-radius:9px;background:linear-gradient(135deg,#10b981,#07865c);color:white;box-shadow:0 3px 8px rgba(5,150,105,.2)}
+.piso-transfer-icon svg{width:17px;height:17px;fill:none;stroke:currentColor;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
+.piso-transfer-premium:hover{transform:translateY(-1px);box-shadow:0 8px 20px rgba(5,150,105,.18)}
+@media(max-width:600px){.piso-support-chat-head{padding:14px!important;gap:10px}.piso-transfer-premium{min-height:38px;padding:0 10px}.piso-support-head-actions{gap:6px}}
+
+/* Piso Net premium transfer control */
+.piso-support-chat-head{display:flex;align-items:flex-start;justify-content:space-between;gap:16px}
+.piso-support-head-actions{display:flex;align-items:center;justify-content:flex-end;gap:10px;flex-shrink:0;margin-left:auto}
+.piso-transfer-premium{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:42px;padding:0 13px;border:1px solid #a7f3d0;border-radius:13px;background:linear-gradient(135deg,#f0fdf4 0%,#d1fae5 100%);color:#047857;font-size:12px;font-weight:800;letter-spacing:.01em;box-shadow:0 5px 14px rgba(5,150,105,.13),inset 0 1px 0 rgba(255,255,255,.9);cursor:pointer;transition:transform .16s ease,box-shadow .16s ease,border-color .16s ease}
+.piso-transfer-logo{display:grid;place-items:center;width:27px;height:27px;border-radius:9px;background:linear-gradient(135deg,#10b981,#047857);color:#fff;box-shadow:0 3px 8px rgba(4,120,87,.2)}
+.piso-transfer-logo svg{width:17px;height:17px;fill:none;stroke:currentColor;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
+.piso-transfer-premium:hover{transform:translateY(-1px);border-color:#6ee7b7;box-shadow:0 8px 19px rgba(5,150,105,.2)}
+.piso-transfer-premium:focus-visible{outline:3px solid rgba(16,185,129,.25);outline-offset:2px}
+@media(max-width:700px){.piso-transfer-premium{min-height:38px;padding:0 10px}.piso-support-head-actions{margin-left:0}}
+
+
+/* Piso Net premium ticket status filter tabs */
+.support-filter-tabs{
+  display:flex!important;align-items:center;gap:7px!important;
+  width:100%;box-sizing:border-box;padding:7px!important;margin:12px 0 15px!important;
+  border:1px solid #dce8f5!important;border-radius:16px!important;
+  background:linear-gradient(135deg,#f7fbff 0%,#edf4fc 100%)!important;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.95),0 5px 16px rgba(24,69,112,.06)!important;
+}
+.support-filter-tabs .support-filter-tab{
+  appearance:none!important;-webkit-appearance:none!important;
+  display:inline-flex!important;flex:1 1 0!important;align-items:center!important;justify-content:center!important;
+  gap:6px!important;min-width:0!important;min-height:42px!important;padding:0 9px!important;
+  border:1px solid transparent!important;border-radius:11px!important;
+  background:transparent!important;color:#61758b!important;
+  font:700 12px/1.1 system-ui,-apple-system,"Segoe UI",sans-serif!important;
+  box-shadow:none!important;cursor:pointer!important;white-space:nowrap!important;
+  transition:background .18s ease,color .18s ease,box-shadow .18s ease,transform .18s ease!important;
+}
+.support-filter-tabs .support-filter-tab:hover{
+  background:#fff!important;border-color:#dbe7f4!important;color:#175e9d!important;
+  transform:translateY(-1px)!important;
+}
+.support-filter-tabs .support-filter-tab.active{
+  color:#fff!important;background:linear-gradient(135deg,#1686e5 0%,#075eb4 100%)!important;
+  border-color:#0b6fc4!important;box-shadow:0 5px 13px rgba(7,94,180,.22)!important;
+}
+.support-filter-tabs .support-filter-label{display:inline-block!important;white-space:nowrap!important}
+.support-filter-tabs .support-filter-count{
+  display:inline-flex!important;align-items:center!important;justify-content:center!important;
+  min-width:22px!important;height:22px!important;padding:0 5px!important;box-sizing:border-box!important;
+  border-radius:7px!important;background:#e1eaf4!important;color:#536b83!important;
+  font:800 10px/1 system-ui,-apple-system,"Segoe UI",sans-serif!important;font-variant-numeric:tabular-nums!important;
+}
+.support-filter-tabs .support-filter-tab.active .support-filter-count{
+  background:rgba(255,255,255,.2)!important;color:#fff!important;
+}
+@media(max-width:480px){
+ .support-filter-tabs{gap:4px!important;padding:5px!important}
+ .support-filter-tabs .support-filter-tab{gap:4px!important;min-height:38px!important;padding:0 5px!important;font-size:11px!important}
+ .support-filter-tabs .support-filter-count{min-width:19px!important;height:19px!important;font-size:9px!important}
+}
+
+/* Premium cashier ticket status controls */
+.piso-ticket-status{display:inline-flex;align-items:center;gap:7px;padding:8px 12px;border:1px solid #dbe7f3;border-radius:999px;background:#f8fbff;color:#4b627a;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.04em}
+.piso-ticket-status:before{content:"";width:7px;height:7px;border-radius:50%;background:#94a3b8}
+.piso-ticket-status.status-open{color:#145ca8;background:#eff7ff;border-color:#cce5ff}.piso-ticket-status.status-open:before{background:#2185df}
+.piso-ticket-status.status-solved{color:#047857;background:#ecfdf5;border-color:#a7f3d0}.piso-ticket-status.status-solved:before{background:#10b981}
+.piso-ticket-status.status-closed{color:#475569;background:#f1f5f9;border-color:#dbe3ec}.piso-ticket-status.status-closed:before{background:#64748b}
+.piso-ticket-action{display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:38px;padding:0 13px;border-radius:12px;font-size:12px;font-weight:800;cursor:pointer;transition:transform .15s ease,box-shadow .15s ease}
+.piso-ticket-action svg{width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.piso-ticket-action.solved{color:#047857;background:linear-gradient(135deg,#ecfdf5,#d1fae5);border:1px solid #a7f3d0;box-shadow:0 4px 12px rgba(16,185,129,.09)}
+.piso-ticket-action.closed{color:#475569;background:linear-gradient(135deg,#fff,#f1f5f9);border:1px solid #dbe3ec}
+.piso-ticket-action:hover{transform:translateY(-1px);box-shadow:0 6px 15px rgba(15,23,42,.10)}
+.admin-support-messages,.messages{overflow-y:auto;overscroll-behavior:contain;scrollbar-gutter:stable;scroll-behavior:auto}
+
+/* Cashier payment summary and private history amounts */
+.cashier-payment-summary{grid-template-columns:minmax(220px,1fr);max-width:440px;margin:14px 0 20px}
+.cashier-payment-summary .card{border:1px solid #cfe5fb;border-radius:16px;background:linear-gradient(135deg,#f7fbff,#eaf5ff);box-shadow:0 8px 24px rgba(20,105,180,.08);padding:18px}
+.cashier-payment-summary .card small{font-size:12px;font-weight:750;color:#416987}
+.cashier-payment-summary .card strong{display:block;margin-top:8px;font-size:25px;color:#1169b5;font-variant-numeric:tabular-nums}
+.cashier-history-amount{display:inline-block;filter:blur(5px);user-select:none;cursor:default;transition:filter .18s ease}
+.cashier-history-amount:hover{filter:blur(3px)}
+.receipt-email-state{display:inline-flex!important;width:max-content;max-width:100%;padding:4px 8px;border-radius:7px;font-size:10px!important;font-weight:750}
+.receipt-email-state.sent{background:#eafaf1;color:#087647}
+.receipt-email-state.failed{background:#fff0f0;color:#b42318}
+.receipt-email-state.pending{background:#f1f5f9;color:#526579}
+
+
+/* Customer Service — premium spacing and responsive layout */
+.cashier-service-panel{padding:clamp(16px,2.4vw,28px)!important;overflow:hidden}
+.cashier-service-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:20px;margin:0 0 22px;padding:0 0 20px;border-bottom:1px solid #e8eef6}
+.cashier-service-heading h2{margin:5px 0 7px!important;font-size:clamp(22px,2.2vw,29px);line-height:1.2;letter-spacing:-.035em;color:#10243d}
+.cashier-service-heading p{margin:0!important;max-width:650px;color:#718198;font-size:13px;line-height:1.65}
+.cashier-service-eyebrow{font-size:10px;letter-spacing:.16em;font-weight:900;color:#2476c7}
+.cashier-service-live{display:inline-flex;align-items:center;gap:8px;white-space:nowrap;padding:9px 12px;border:1px solid #ccebdc;border-radius:999px;background:#f0fbf5;color:#16764b;font-size:11px;font-weight:800}
+.cashier-service-live span{width:7px;height:7px;border-radius:50%;background:#20b779;box-shadow:0 0 0 4px #20b77920}
+.cashier-service-layout.chat{display:grid!important;grid-template-columns:minmax(260px,320px) minmax(0,1fr)!important;align-items:stretch;gap:18px!important;min-width:0}
+.cashier-support-inbox,.cashier-support-thread{margin:0!important;min-width:0;min-height:430px;padding:18px!important;border:1px solid #e1eaf4!important;border-radius:18px!important;box-shadow:0 10px 28px rgba(23,52,87,.045)!important}
+.cashier-support-inbox{max-height:650px;overflow:auto;background:linear-gradient(180deg,#fbfdff 0%,#fff 100%)!important}
+.cashier-inbox-heading{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:14px}
+.cashier-inbox-heading h3{margin:0!important;font-size:15px;color:#142b47}
+.cashier-inbox-heading p{margin:5px 0 0;color:#8392a6;font-size:11px}
+.support-filter-tabs{display:grid!important;grid-template-columns:repeat(4,minmax(0,1fr))!important;gap:5px!important;padding:5px!important;margin:0 0 14px!important;border-radius:14px!important}
+.support-filter-tabs .support-filter-tab{display:flex!important;flex-direction:column!important;gap:5px!important;min-height:54px!important;padding:7px 3px!important;white-space:normal!important;font-size:11px!important}
+.support-filter-tabs .support-filter-label{white-space:normal!important;line-height:1.1!important}
+.support-filter-tabs .support-filter-count{min-width:20px!important;height:20px!important;padding:0 5px!important}
+.chat-item{display:block!important;width:100%!important;min-width:0!important;padding:14px!important;margin:0 0 9px!important;text-align:left!important;border:1px solid #e5edf6!important;border-radius:14px!important;background:#fff!important;white-space:normal!important;box-shadow:0 2px 8px rgba(20,45,75,.025);transition:border-color .18s ease,background .18s ease,box-shadow .18s ease!important}
+.chat-item:hover{border-color:#b7d7f7!important;background:#f8fbff!important}
+.chat-item.active{border-color:#75b7f0!important;background:linear-gradient(135deg,#eff8ff,#fff)!important;box-shadow:0 5px 16px rgba(25,112,190,.09)!important}
+.chat-item b{display:block;overflow-wrap:anywhere;color:#17324f;font-size:13px;line-height:1.4}
+.chat-item small{display:block;margin:5px 0 7px;color:#73859a;font-size:10px;line-height:1.45;overflow-wrap:anywhere}
+.chat-item div{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;color:#52657b;font-size:12px;line-height:1.5;overflow-wrap:anywhere}
+.cashier-support-thread{display:flex;flex-direction:column;overflow:hidden}
+.cashier-support-thread>.admin-chat-head{flex:0 0 auto;min-width:0;flex-wrap:wrap;gap:14px!important;padding:0 0 16px!important;border-bottom:1px solid #e8eef6!important;margin-bottom:14px}
+.cashier-support-thread .piso-support-customer-title{min-width:0;flex:1 1 220px}
+.cashier-support-thread .piso-support-customer-title h3{overflow-wrap:anywhere;font-size:16px!important}
+.cashier-support-thread .piso-support-customer-title p,.cashier-support-thread .piso-support-customer-title small{overflow-wrap:anywhere;line-height:1.5}
+.cashier-support-thread .piso-support-head-actions{display:flex;align-items:center;justify-content:flex-end;flex-wrap:wrap;gap:7px!important;max-width:100%}
+.cashier-support-thread .messages{width:100%;min-width:0;flex:1 1 auto;min-height:280px!important;max-height:54vh!important;padding:18px!important;border:1px solid #edf1f6;border-radius:16px!important;background:#f8fafd!important;gap:12px!important}
+.cashier-support-thread .bubble{max-width:min(82%,560px);padding:12px 14px;border:1px solid #e8eef5;border-radius:15px!important;line-height:1.55;overflow-wrap:anywhere}
+.cashier-support-thread .bubble small{display:block;margin-top:7px;color:#8291a3;font-size:10px;line-height:1.4}
+.cashier-support-thread .chat-compose{align-items:flex-end;gap:10px!important;margin-top:14px!important}
+.cashier-support-thread .chat-compose textarea{min-width:0;min-height:52px;max-height:130px;resize:vertical;border:1px solid #dce6f1!important;border-radius:14px!important;padding:13px!important}
+.cashier-support-thread .chat-compose button{min-height:48px;padding:0 20px;border-radius:13px!important}
+.cashier-support-empty{display:grid;place-content:center;justify-items:center;flex:1;min-height:360px;padding:30px;text-align:center}
+.cashier-support-empty-icon{display:grid;place-items:center;width:56px;height:56px;margin-bottom:14px;border-radius:18px;background:linear-gradient(135deg,#e9f4ff,#f2f7ff);color:#2379c7;font-size:24px}
+.cashier-support-empty h3{margin:0 0 7px!important;color:#1c3552;font-size:16px}
+.cashier-support-empty p{max-width:280px;margin:0;color:#7b8ba0;font-size:12px;line-height:1.65}
+@media(max-width:980px){.cashier-service-layout.chat{grid-template-columns:minmax(0,1fr)!important}.cashier-support-inbox{min-height:0;max-height:370px}.cashier-support-thread{min-height:400px}.cashier-support-thread .messages{max-height:48vh!important}}
+@media(max-width:600px){.cashier-service-panel{padding:14px!important}.cashier-service-heading{gap:10px;margin-bottom:14px;padding-bottom:14px}.cashier-service-heading h2{font-size:22px}.cashier-service-heading p{font-size:12px;line-height:1.55}.cashier-service-live{padding:7px 9px;font-size:10px}.cashier-service-layout.chat{gap:12px!important}.cashier-support-inbox,.cashier-support-thread{padding:13px!important;border-radius:15px!important;min-height:0}.cashier-support-inbox{max-height:330px}.support-filter-tabs{grid-template-columns:repeat(4,minmax(0,1fr))!important;gap:4px!important;padding:4px!important}.support-filter-tabs .support-filter-tab{min-height:49px!important;padding:6px 2px!important;font-size:10px!important}.support-filter-tabs .support-filter-count{min-width:18px!important;height:18px!important;font-size:9px!important}.chat-item{padding:12px!important}.cashier-support-thread>.admin-chat-head{gap:10px!important}.cashier-support-thread .piso-support-head-actions{justify-content:flex-start!important;width:100%}.cashier-support-thread .piso-ticket-action,.cashier-support-thread .piso-transfer-premium{min-height:36px!important;padding:0 10px!important}.cashier-support-thread .messages{min-height:250px!important;max-height:50vh!important;padding:12px!important}.cashier-support-thread .bubble{max-width:92%;padding:10px 12px!important}.cashier-support-thread .chat-compose{display:grid!important;grid-template-columns:minmax(0,1fr) auto!important;align-items:end}.cashier-support-thread .chat-compose textarea{font-size:14px!important}.cashier-support-thread .chat-compose button{padding:0 14px!important}.cashier-support-empty{min-height:260px;padding:22px 10px}}
+@media(max-width:380px){.cashier-service-heading{display:block}.cashier-service-live{margin-top:12px;width:max-content}.cashier-support-thread .chat-compose{grid-template-columns:minmax(0,1fr)!important}.cashier-support-thread .chat-compose button{width:100%}.cashier-support-thread .piso-support-head-actions>*{flex:1 1 auto}}
+
+
+/* Receipt History: scrollable list and clear customer bullet */
+.receipt-list{
+  max-height:min(62vh, 680px);
+  overflow-y:auto;
+  overflow-x:hidden;
+  overscroll-behavior:contain;
+  scrollbar-gutter:stable;
+  padding:2px 8px 8px 2px;
+  align-content:start;
+}
+.receipt-list::-webkit-scrollbar{width:8px}
+.receipt-list::-webkit-scrollbar-track{background:#eef3f9;border-radius:99px}
+.receipt-list::-webkit-scrollbar-thumb{background:#b8c9dc;border-radius:99px;border:2px solid #eef3f9}
+.receipt-list{scrollbar-width:thin;scrollbar-color:#b8c9dc #eef3f9}
+.receipt-customer-name{display:flex;align-items:center;gap:8px;min-width:0}
+.receipt-customer-name::before{
+  content:"";
+  flex:0 0 7px;
+  width:7px;height:7px;border-radius:50%;
+  background:linear-gradient(135deg,#1478e8,#5aabff);
+  box-shadow:0 0 0 3px rgba(20,120,232,.10);
+}
+@media(max-width:600px){
+  .receipt-list{max-height:58vh;padding-right:5px}
+  .receipt-row{grid-template-columns:minmax(0,1fr);gap:10px;padding:13px}
+  .receipt-amount{justify-content:flex-start}
+  .receipt-actions{grid-column:1;justify-content:stretch}
+  .receipt-actions button{width:100%;min-height:42px}
+}
+
