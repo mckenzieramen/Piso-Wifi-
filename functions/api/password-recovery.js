@@ -6,15 +6,10 @@
  * This avoids browser CORS/preflight problems with Google Apps Script.
  */
 
+const APPS_SCRIPT_OTP_URL = 'https://script.google.com/macros/s/AKfycbw0V3j5VPpFq2Ui0Y28CAC9owTXLawEsjEllq12W9wtzpFjFgXLgI5VCRDHzc26raWJ/exec';
 
 export async function onRequestPost(context) {
   try {
-    // Resolve the deployment URL inside the request handler; `context` is only
-    // available here. Prefer the current Cloudflare Pages secret.
-    const appsScriptOtpUrl = String(
-      context.env?.APPS_SCRIPT_PASSWORD_RESET_URL ||
-      'https://script.google.com/macros/s/AKfycbziRdnywiBqCJoBqJwXElHEGWdgyljApiYAhOvDJEyKJ_rzLWPP_GgYSmsfR1IE3_Fe/exec'
-    ).trim();
     const body = await context.request.text();
 
     if (!body) {
@@ -28,7 +23,7 @@ export async function onRequestPost(context) {
       return json({ ok: false, error: 'Invalid password recovery request.' }, 400);
     }
 
-    const upstream = await fetch(appsScriptOtpUrl, {
+    const upstream = await fetch(APPS_SCRIPT_OTP_URL, {
       method: 'POST',
       headers: {
         'Content-Type': 'text/plain;charset=utf-8'
