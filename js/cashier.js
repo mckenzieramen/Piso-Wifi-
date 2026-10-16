@@ -221,7 +221,7 @@ if(tab==="receipt"){
   
   return;
 }
- if(tab==="service"||tab==="support"){
+ if(tab==="service"||tab==="support"){$("#title").textContent="Customer Service";
    const normalizedSearch=supportSearchTerm.trim().toLowerCase();
    const filteredTickets=supportTickets.filter(c=>{const status=String(c.status||"Open").toLowerCase();const statusMatch=supportTicketFilter==="All"||status===supportTicketFilter.toLowerCase()||(supportTicketFilter==="Closed"&&status==="solved");const haystack=[c.customerName,c.customerEmail,c.clientCode,c.customerId,c.unitCode,c.lastMessage,...(Array.isArray(c.messages)?c.messages.map(m=>m.text):[])].filter(Boolean).join(" ").toLowerCase();return statusMatch&&(!normalizedSearch||haystack.includes(normalizedSearch));});
    const selected=filteredTickets.find(c=>c.id===selectedSupportTicketId)||filteredTickets[0]||null;
