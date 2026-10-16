@@ -163,3 +163,13 @@
   .receipt-actions button{width:100%;min-height:42px}
 }
 
+
+
+/* Permanent fix: the global tab header was removed from the Cashier UI; do not show it on any tab */
+body.cashier-app .cashier-main > .cashier-top,
+body.cashier-app .cashier-main .cashier-top{
+  display:none!important;
+  height:0!important;min-height:0!important;
+  margin:0!important;padding:0!important;border:0!important;
+}
+body.cashier-app .cashier-main{padding-top:12px!important}

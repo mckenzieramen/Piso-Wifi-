@@ -469,3 +469,13 @@ body.cashier-support-active .cashier-service-live{flex:0 0 auto!important}
 }
 @keyframes pisoBlueBackdrop{from{opacity:0}to{opacity:1}}
 @media(prefers-reduced-motion:reduce){body.cashier-app .cashier-sidebar .cashier-nav,body.cashier-app .cashier-sidebar .cashier-logout,body.cashier-app.cashier-menu-open:after{transition:none!important;animation:none!important}}
+
+
+/* Permanent fix: the global tab header was removed from the Cashier UI; do not show it on any tab */
+body.cashier-app .cashier-main > .cashier-top,
+body.cashier-app .cashier-main .cashier-top{
+  display:none!important;
+  height:0!important;min-height:0!important;
+  margin:0!important;padding:0!important;border:0!important;
+}
+body.cashier-app .cashier-main{padding-top:12px!important}
