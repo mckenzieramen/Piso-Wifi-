@@ -436,3 +436,47 @@ body.cashier-support-active .cashier-service-heading{align-items:center;}
  body.cashier-support-active .cashier-service-layout.chat.mobile-thread-active .cashier-support-thread .cashier-mobile-back{flex:0 0 auto!important;margin:0 0 6px!important;min-height:32px!important}
  body.cashier-support-active .cashier-support-thread .bubble{font-size:12px!important;line-height:1.4!important;max-width:90%!important}
 }
+
+
+/* FINAL MOBILE CHAT GEOMETRY: use the whole phone viewport for the conversation */
+@media (max-width:900px){
+ html:has(body.cashier-support-active),body.cashier-support-active{
+   height:100%!important;min-height:100%!important;overflow:hidden!important
+ }
+ body.cashier-support-active .cashier-app{height:100dvh!important;min-height:0!important;overflow:hidden!important}
+ body.cashier-support-active .cashier-main{
+   height:calc(100dvh - 48px)!important;min-height:0!important;max-height:none!important;
+   padding:4px 6px!important;margin:0!important;overflow:hidden!important;box-sizing:border-box!important
+ }
+ body.cashier-support-active .cashier-main #view{
+   height:100%!important;min-height:0!important;max-height:none!important;overflow:hidden!important
+ }
+ body.cashier-support-active .cashier-main #view>.panel{
+   height:100%!important;min-height:0!important;max-height:none!important;
+   display:flex!important;flex-direction:column!important;overflow:hidden!important;
+   padding:8px!important;box-sizing:border-box!important;margin:0!important
+ }
+ body.cashier-support-active .cashier-service-heading{
+   flex:0 0 auto!important;margin:0 0 6px!important;padding:4px 2px 7px!important
+ }
+ body.cashier-support-active .cashier-service-layout.chat{
+   flex:1 1 0!important;height:0!important;min-height:0!important;max-height:none!important;
+   width:100%!important;display:flex!important;overflow:hidden!important;margin:0!important
+ }
+ body.cashier-support-active .cashier-service-layout.chat.mobile-thread-active .cashier-support-thread{
+   flex:1 1 0!important;width:100%!important;height:100%!important;min-height:0!important;
+   max-height:none!important;display:flex!important;flex-direction:column!important;
+   overflow:hidden!important;padding:8px!important;box-sizing:border-box!important
+ }
+ body.cashier-support-active .cashier-service-layout.chat.mobile-thread-active .cashier-support-thread>.admin-chat-head{
+   flex:0 0 auto!important;margin:0 0 6px!important
+ }
+ body.cashier-support-active .cashier-service-layout.chat.mobile-thread-active .cashier-support-thread .messages{
+   flex:1 1 0!important;height:0!important;min-height:0!important;max-height:none!important;
+   display:flex!important;flex-direction:column!important;overflow-y:auto!important;overflow-x:hidden!important;
+   -webkit-overflow-scrolling:touch!important;overscroll-behavior:contain!important
+ }
+ body.cashier-support-active .cashier-service-layout.chat.mobile-thread-active .cashier-support-thread .chat-compose{
+   flex:0 0 auto!important;position:static!important;bottom:auto!important;margin:6px 0 0!important
+ }
+}
