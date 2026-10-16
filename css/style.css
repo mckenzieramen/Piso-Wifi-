@@ -482,3 +482,47 @@ body:has(> .app){background:#eef3f9;color:#17243a}
 .nav button[data-route]{cursor:pointer;font-family:inherit;}
 
 .nav-button-like{border-radius:10px;margin:2px 0}.nav-button-like:hover{background:rgba(255,255,255,.08)}
+
+
+/* Piso Net premium Admin Customer Support workspace */
+.admin-support-layout{grid-template-columns:minmax(300px,340px) minmax(0,1fr);gap:18px;height:min(780px,calc(100vh - 220px));min-height:600px}
+.admin-support-list,.admin-support-window{border:1px solid #dce7f2;border-radius:22px;box-shadow:0 14px 40px rgba(15,42,75,.09);background:#fff}
+.admin-support-list-head{padding:20px 18px;background:linear-gradient(135deg,#f8fcff 0%,#eef7ff 100%);border-bottom:1px solid #e4edf7}
+.admin-support-list-head b{font-size:15px;font-weight:800;color:#123454;letter-spacing:-.02em}
+.admin-support-list-head small{font-size:11px;color:#72869b;margin-top:5px}
+.admin-support-list-head .secondary-btn{border-radius:12px;min-height:40px;padding:0 14px;font-weight:750;border:1px solid #cfe0f2;background:#fff;color:#1769b2;box-shadow:0 3px 10px rgba(16,75,130,.06)}
+.admin-support-filters{display:flex;gap:6px;padding:12px 14px;background:#fff;border-bottom:1px solid #edf2f8}
+.admin-support-filters button{flex:1;display:flex;align-items:center;justify-content:center;gap:5px;min-height:34px;padding:0 8px;border:1px solid #e2eaf3;border-radius:11px;background:#f8fafc;color:#64758a;font-size:11px;font-weight:750;transition:all .18s ease}
+.admin-support-filters button span{display:inline-grid;place-items:center;min-width:17px;height:17px;padding:0 4px;border-radius:6px;background:#e9eff6;color:#60758b;font-size:9px}
+.admin-support-filters button:hover{border-color:#a8c9ec;background:#f1f8ff;color:#155e9b}
+.admin-support-filters button.active{border-color:#1678d2;background:linear-gradient(135deg,#1685e5,#0868bd);color:#fff;box-shadow:0 5px 13px rgba(8,104,189,.2)}
+.admin-support-filters button.active span{background:rgba(255,255,255,.2);color:#fff}
+.admin-support-search{padding:12px 14px;border-bottom:1px solid #edf2f8}
+.admin-support-search input{height:42px;border-radius:12px;padding:0 13px;font-size:12px;background:#fbfdff;border-color:#dce7f2}
+.admin-support-search input:focus{border-color:#5ca7e8;box-shadow:0 0 0 4px rgba(22,120,210,.10)}
+.admin-support-item{grid-template-columns:42px minmax(0,1fr) auto;gap:11px;padding:15px 13px;border-bottom:1px solid #eff3f8;transition:background .16s ease,box-shadow .16s ease}
+.admin-support-item:hover{background:#f7fbff}
+.admin-support-item.active{background:linear-gradient(100deg,#edf7ff,#f8fbff);box-shadow:inset 4px 0 #1280d7}
+.support-item-avatar{width:42px;height:42px;border-radius:14px;font-size:12px;background:linear-gradient(145deg,#13a8d8,#0874d1);box-shadow:0 5px 12px rgba(8,116,209,.18)}
+.support-item-copy b{font-size:12px;font-weight:800;color:#193b5b}
+.support-item-copy small{font-size:10px;color:#7c8fa3;margin-top:4px}
+.support-item-copy em{font-size:10px;color:#61788e;margin-top:6px}
+.support-item-side i{font-size:9px;padding:5px 8px;border:1px solid #d7f2e4}
+.support-item-side i.solved{border-color:#d8e7ff}.support-item-side i.closed{border-color:#e2e8ef}
+.support-item-side strong{font-size:9px;padding:4px 6px;border-radius:6px;background:#fff0f2}
+.admin-chat-head{position:relative;gap:12px;padding:19px 22px;background:linear-gradient(120deg,#f8fcff 0%,#eef7ff 100%);border-bottom:1px solid #e0eaf4}
+.admin-chat-head h3{font-size:15px;font-weight:850;letter-spacing:-.02em;color:#123454}
+.admin-chat-head p{font-size:11px;color:#71869a;margin-top:5px}
+.support-admin-avatar{width:44px;height:44px;border-radius:15px;font-size:12px;background:linear-gradient(145deg,#10a9d3,#1268c7);box-shadow:0 5px 14px rgba(18,104,199,.2)}
+.admin-chat-status{font-size:9px;padding:7px 10px;border:1px solid #cceedd;letter-spacing:.05em}
+.admin-chat-actions{display:flex;align-items:center;gap:7px;margin-left:8px}
+.admin-chat-actions button{min-height:36px;padding:0 12px;border-radius:11px;font-size:11px;font-weight:750}
+.admin-support-messages{padding:22px;background:linear-gradient(180deg,#fbfdff,#f7faff);scroll-behavior:smooth}
+.admin-support-compose{padding:14px 18px;border-top:1px solid #e4edf6;background:#fff;gap:10px}
+.admin-support-compose textarea{min-height:46px;border:1px solid #dce7f2;border-radius:14px;padding:12px 14px;font-size:14px;line-height:1.5;background:#fbfdff;resize:vertical}
+.admin-support-compose textarea:focus{outline:0;border-color:#5ba6e8;box-shadow:0 0 0 4px rgba(22,120,210,.10)}
+.admin-support-compose .primary-btn{min-width:88px;min-height:44px;border-radius:13px;background:linear-gradient(135deg,#1685e5,#0868bd);box-shadow:0 6px 16px rgba(8,104,189,.2);font-weight:800}
+.admin-support-typing{padding:0 22px 8px;background:#fff;font-size:11px;color:#1179cb;font-weight:700}
+.admin-support-empty{background:radial-gradient(ellipse at top,#eef7ff 0%,#fff 65%)}
+.support-admin-empty-icon{width:64px;height:64px;border-radius:20px;background:linear-gradient(135deg,#e0f2fe,#dbeafe);color:#0877c9;box-shadow:0 10px 24px rgba(8,119,201,.12)}
+@media(max-width:900px){.admin-support-layout{grid-template-columns:1fr;height:auto;min-height:0}.admin-support-list{max-height:440px}.admin-support-window{min-height:560px}.admin-chat-head{flex-wrap:wrap}.admin-chat-actions{width:100%;margin-left:56px}}

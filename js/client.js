@@ -3,7 +3,7 @@ import {
   onAuthStateChanged, signOut, signInWithEmailAndPassword
 } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-auth.js";
 import {
-  collection, doc, getDoc, getDocs, query, where, updateDoc, setDoc, onSnapshot, arrayUnion,
+  collection, doc, getDoc, getDocs, query, where, updateDoc, setDoc, addDoc, onSnapshot, arrayUnion, orderBy,
   serverTimestamp, writeBatch
 } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-firestore.js";
 import { calculateFinancialRecord } from "./finance.js";
@@ -236,16 +236,18 @@ let supportChatUnsub=null;
 let supportChat=null;
 let supportChatOpen=false;
 let supportChatSending=false;
+let supportMessageUnsub=null;
+let supportThreadMessages=[];
 let supportTypingTimer=null;
 let supportChatDocId="";
 let supportChatHistory=[];
-const supportChatId=()=>String(supportChatDocId||currentUser?.uid||"");
+const supportChatId=()=>String(supportChatDocId||"");
 const supportStatusValue=chat=>{const s=String(chat?.status||"Open").trim().toLowerCase(); if(s==="closed") return "Closed"; if(s==="solved") return "Solved"; return "Open";};
 const supportChatRef=()=>supportChatId()?doc(db,"supportChats",supportChatId()):null;
 function supportNow(){return new Date().toISOString();}
 function supportMessageHtml(m){
   const type=m?.senderType==="customer"?"customer":(m?.senderType==="admin"||m?.senderType==="cashier")?"admin":"system";
-  const who=type==="customer"?clientName():m?.senderType==="cashier"?(m?.senderName||supportChat?.assignedCashierName||"PISO NET Support"):m?.senderType==="admin"?"PISO NETY Admin":"PISO NET Support";
+  const who=type==="customer"?clientName():m?.senderType==="cashier"?(m?.senderName||supportChat?.assignedCashierName||"Piso Net Support"):m?.senderType==="admin"?"Piso Net Admin":"Piso Net Support";
   return `<div class="piso-chat-message ${type}"><div class="piso-chat-bubble">${esc(m?.text||"")}</div><div class="piso-chat-meta">${esc(who)} · ${esc(dateTime(m?.createdAt||""))}</div></div>`;
 }
 function renderSupportConversation(){
@@ -255,10 +257,13 @@ function renderSupportConversation(){
   const clientHeight=host.clientHeight;
   const hadContent=host.children.length>0;
   const wasAtBottom=!hadContent || previousHeight-previousTop-clientHeight<32;
-  const msgs=Array.isArray(supportChat?.messages)?supportChat.messages:[];
+  const legacy=Array.isArray(supportChat?.messages)?supportChat.messages:[];
+  const merged=new Map();
+  [...legacy,...supportThreadMessages].forEach((m,i)=>merged.set(String(m.id||`${m.senderType||"system"}|${m.createdAt||""}|${m.text||""}|${i}`),m));
+  const msgs=[...merged.values()].sort((a,b)=>String(a.createdAt||"").localeCompare(String(b.createdAt||"")));
   host.innerHTML=msgs.length?msgs.map(supportMessageHtml).join(""):`<div class="piso-chat-empty"><div class="support-icon">${icons.mail}</div><b>Start a conversation</b><span>Tell us what you need help with and our support team can reply here.</span></div>`;
   const typing=$("#supportTyping");
-  if(typing){const staffTyping=!!supportChat?.typingBy?.admin||!!supportChat?.typingBy?.cashier;typing.classList.toggle("show",staffTyping);typing.textContent=staffTyping?"PISO NET Support is typing…":"";}
+  if(typing){const staffTyping=!!supportChat?.typingBy?.admin||!!supportChat?.typingBy?.cashier;typing.classList.toggle("show",staffTyping);typing.textContent=staffTyping?"Customer Support is typing…":"";}
   requestAnimationFrame(()=>{
     if(wasAtBottom)host.scrollTop=host.scrollHeight;
     else host.scrollTop=previousTop;
@@ -287,9 +292,9 @@ function renderSupportLobby(){
     const last=msgs.length?msgs[msgs.length-1]?.text:"No messages yet";
     const created=formatSupportTicketDate(chat?.createdAt||chat?.updatedAt);
     const selected=chat?.id===supportChat?.id;
-    return `<button type="button" class="piso-ticket-history-item ${selected?"selected":""}" data-support-ticket-id="${esc(chat?.id||"")}"><span class="piso-ticket-history-main"><b>${esc(chat?.subject||"Support Concern")}</b><small>${esc(last||"No messages yet")}</small><em>${esc(created)}</em></span><span class="piso-ticket-status ${st.toLowerCase()}">${esc(st)}</span></button>`;
+    return `<button type="button" class="piso-ticket-history-item ${selected?"selected":""}" data-support-ticket-id="${esc(chat?.id||"")}"><span class="piso-ticket-history-main"><b><span class="piso-history-support-icon" aria-hidden="true">${icons.headset||icons.bell}</span>Customer Support</b><em>${esc(created)}</em></span><span class="piso-ticket-status ${st.toLowerCase()}">${esc(st)}</span></button>`;
   }).join("")}</div></div>`:`<div class="piso-ticket-history empty"><div><b>Ticket History</b><small>Your support history will appear here after you open a concern.</small></div></div>`;
-  lobby.innerHTML=`<div class="piso-support-hero"><div class="support-icon">${icons.bell}</div><span class="eyebrow">PISO WIFI CUSTOMER SUPPORT</span><h2>How can we help?</h2><p>Chat with PISO NET Support. A cashier will assist first, and your conversation can be transferred to Admin when needed.</p></div><div class="piso-ticket-card"><div><b>Customer Support</b><small>${closed?"This concern was solved. You can open a new chat anytime.":active?"Your active support conversation.":"No active conversation. Start a new concern anytime."}</small></div><span class="piso-ticket-status ${status.toLowerCase()}">${esc(status)}</span></div>${historyHtml}<button id="startSupportChat" class="client-primary piso-support-start">${actionLabel}</button>`;
+  lobby.innerHTML=`<div class="piso-support-hero"><div class="support-icon">${icons.bell}</div><span class="eyebrow">PISO WIFI CUSTOMER SUPPORT</span><h2>How can we help?</h2><p>Chat with Piso Net Support. A cashier will assist first, and your conversation can be transferred to Admin when needed.</p></div>${historyHtml}<button id="startSupportChat" class="client-primary piso-support-start">${actionLabel}</button>`;
   lobby.querySelectorAll("[data-support-ticket-id]").forEach(btn=>btn.onclick=async()=>{
     const id=btn.getAttribute("data-support-ticket-id");
     const found=supportChatHistory.find(chat=>chat.id===id);
@@ -306,7 +311,7 @@ function renderSupportChat(){
   lobby.classList.add("hidden"); convo.classList.remove("hidden");
   const status=supportStatusValue(supportChat);
   $("#supportStatus").textContent=status;
-  $("#supportChatCustomer").textContent="PISO NET Support";
+  $("#supportChatCustomer").textContent="Piso Net Support";
   renderSupportConversation();
   const closed=["Solved","Closed"].includes(status);
   const input=$("#supportChatInput"), send=$("#supportSend");
@@ -339,22 +344,32 @@ async function createSupportChat(forceNew=false){
   supportChatDocId=`${currentUser.uid}_${Date.now()}`;
   const ref=supportChatRef();
   const unit=primaryUnit();
-  const greeting={senderType:"system",text:"Hi! Welcome to PISO NET Support. Our cashier support team will assist you first. If your concern needs Admin assistance, the cashier can transfer this conversation.",createdAt:supportNow()};
-  const payload={authUserId:currentUser.uid,unitId:unit.id||"",clientCode:unit.clientCode||"",customerName:clientName(),customerEmail:clientEmail(),subject:"PISO NET Support",status:"Open",assignedRole:"cashier",assignedCashierId:"",assignedCashierName:"",transferredToAdmin:false,messages:[greeting],typingBy:{customer:false,admin:false,cashier:false},unreadForCashier:true,unreadForAdmin:false,unreadForCustomer:false,createdAt:serverTimestamp(),updatedAt:supportNow()};
+  const greeting={senderType:"admin",senderName:"Piso Net Admin",text:"Hi! Welcome to Piso Net Customer Service. Our support team will assist you, as soon as possible. Kindly state your concern here.",createdAt:supportNow(),automatedWelcome:true};
+  const payload={authUserId:currentUser.uid,unitId:unit.id||"",clientCode:unit.clientCode||"",customerName:clientName(),customerEmail:clientEmail(),subject:"Piso Net Support",status:"Open",assignedRole:"cashier",assignedCashierId:"",assignedCashierName:"",transferredToAdmin:false,messages:[greeting],typingBy:{customer:false,admin:false,cashier:false},unreadForCashier:true,unreadForAdmin:false,unreadForCustomer:false,createdAt:serverTimestamp(),updatedAt:supportNow()};
   await setDoc(ref,payload);
   supportChat={id:ref.id,...payload,createdAt:new Date(),updatedAt:supportNow()};
   supportChatHistory=[supportChat,...(supportChatHistory||[])];
   return supportChat;
 }
 function subscribeSupportChat(){
-  if(supportChatUnsub) supportChatUnsub();
-  const ref=supportChatRef(); if(!ref)return;
+  if(supportChatUnsub){try{supportChatUnsub();}catch(e){} supportChatUnsub=null;}
+  // Do not listen to /supportChats/{customerUid} when the customer has no ticket.
+  // Support chat documents use their own generated IDs; an empty ticket ID must
+  // not fall back to the user's UID and trigger a denied Firestore listener.
+  const ref=supportChatRef();
+  if(!ref)return;
   supportChatUnsub=onSnapshot(ref,snap=>{
     supportChat=snap.exists()?{id:snap.id,...snap.data()}:null;
     if(snap.exists()){
       supportChatDocId=snap.id;
       const idx=supportChatHistory.findIndex(c=>c.id===snap.id);
       if(idx>=0)supportChatHistory[idx]=supportChat; else supportChatHistory=[supportChat,...supportChatHistory];
+      if(supportMessageUnsub){supportMessageUnsub();supportMessageUnsub=null;}
+      supportThreadMessages=[];
+      supportMessageUnsub=onSnapshot(query(collection(db,"supportChats",snap.id,"messages"),orderBy("createdAt","asc")),messageSnap=>{
+        supportThreadMessages=messageSnap.docs.map(d=>({id:d.id,...d.data()}));
+        if(supportChatOpen && !$("#supportConversationView")?.classList.contains("hidden"))renderSupportConversation();
+      },err=>console.warn("Support message stream failed",err));
     }
     updateSupportBadge();
     if(supportChatOpen){
@@ -398,12 +413,14 @@ async function sendSupportMessage(){
   supportChatSending=true;
   try{
     await createSupportChat();
-    const existingMessages=Array.isArray(supportChat?.messages)?supportChat.messages:[];
+    try{await updateDoc(supportChatRef(),{"typingBy.customer":false});}catch(e){}
+    const existingMessages=[...(Array.isArray(supportChat?.messages)?supportChat.messages:[]),...supportThreadMessages];
     const firstCustomerMessage=!existingMessages.some(m=>String(m?.senderType||"").toLowerCase()==="customer");
     const customerMessage={senderType:"customer",text,createdAt:supportNow()};
-    const acknowledgement={senderType:"system",text:"Thank you for contacting PISO NET Support. A cashier will review your concern shortly. If needed, they can transfer the conversation to Admin.",createdAt:supportNow(),kind:"auto-acknowledgement"};
+    const acknowledgement={senderType:"system",text:"Thank you for letting us know about this. Let me notify our support team, and we will get in touch with you as soon as possible.",createdAt:supportNow(),kind:"auto-acknowledgement"};
+    await addDoc(collection(db,"supportChats",supportChat.id,"messages"),customerMessage);
+    if(firstCustomerMessage)await addDoc(collection(db,"supportChats",supportChat.id,"messages"),acknowledgement);
     await updateDoc(supportChatRef(),{
-      messages:firstCustomerMessage?arrayUnion(customerMessage,acknowledgement):arrayUnion(customerMessage),
       lastMessage:text,
       lastMessageSender:"customer",
       lastMessageAt:supportNow(),
@@ -428,11 +445,15 @@ async function sendSupportMessage(){
 async function setSupportTyping(isTyping){
   const typing=$("#supportTyping");
   if(typing){
-    typing.textContent=isTyping?"You are typing…":"";
-    typing.classList.toggle("show",!!isTyping);
+    const staffTyping=!!supportChat?.typingBy?.admin||!!supportChat?.typingBy?.cashier;
+    typing.textContent=staffTyping?"Customer Support is typing…":"";
+    typing.classList.toggle("show",staffTyping);
   }
+  const ref=supportChatRef();
+  if(!ref||!supportChat)return;
+  try{await updateDoc(ref,{"typingBy.customer":!!isTyping,updatedAt:supportNow()});}catch(e){}
 }
-function bindSupportTyping(){const input=$("#supportChatInput");if(!input)return;input.oninput=()=>{clearTimeout(supportTypingTimer);setSupportTyping(true);supportTypingTimer=setTimeout(()=>setSupportTyping(false),1200);};input.onkeydown=e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();sendSupportMessage();}};}
+function bindSupportTyping(){const input=$("#supportChatInput");if(!input)return;input.oninput=()=>{clearTimeout(supportTypingTimer);setSupportTyping(true);supportTypingTimer=setTimeout(()=>setSupportTyping(false),1200);};input.onblur=()=>{clearTimeout(supportTypingTimer);setSupportTyping(false);};input.onkeydown=e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();sendSupportMessage();}};}
 async function openSupportModal(){
   const modal=$("#clientSupportModal");if(!modal)return;modal.classList.remove("hidden");modal.setAttribute("aria-hidden","false");supportChatOpen=false;renderSupportLobby();
   try{
@@ -443,7 +464,7 @@ async function openSupportModal(){
     console.warn("Unable to restore PISO WIFI support conversation",e);
     window.pisoDebug?.capture(e?.message||e,{type:"firebase.support.load",source:`client.js → getDoc(supportChats/${currentUser?.uid||"uid"})`,stack:e?.stack});
     // Keep the lobby usable so Start Chat remains available even while Firebase rules are being debugged.
-    supportChat=null; supportChatDocId=currentUser?.uid||""; renderSupportLobby();
+    supportChat=null; supportChatDocId=""; renderSupportLobby();
   }
   bindSupportTyping();
 }
@@ -807,11 +828,22 @@ async function bootstrap(user){
   }
   currentUser=user;
   try{
-    const userSnap=await withTimeout(getDoc(doc(db,"users",user.uid)),8000,"Firebase user profile request timed out.");
-    if(userSnap.exists() && userSnap.data().role==="admin"){
-      bootstrapFinished=true; clearTimeout(bootTimer);
-      location.replace("/admin/dashboard.html");
-      return;
+    // The user profile is used only to redirect an admin account from the customer portal.
+    // If reading this optional profile is denied, do not block a customer from loading;
+    // the actual data access remains enforced by Firestore rules in loadClientData().
+    try{
+      const userSnap=await withTimeout(getDoc(doc(db,"users",user.uid)),8000,"Firebase user profile request timed out.");
+      if(userSnap.exists() && userSnap.data().role==="admin"){
+        bootstrapFinished=true; clearTimeout(bootTimer);
+        location.replace("/admin/dashboard.html");
+        return;
+      }
+    }catch(profileError){
+      const profileMessage=String(profileError?.message||"").toLowerCase();
+      const permissionDenied=profileError?.code==="permission-denied" || profileMessage.includes("missing or insufficient permissions");
+      if(!permissionDenied) throw profileError;
+      console.warn("Customer bootstrap: optional /users profile read was denied; continuing with normal client data access.",profileError);
+      window.pisoDebug?.capture(profileError?.message||profileError,{type:"firebase.profile.optional-read",source:"client.js → bootstrap /users/{uid}; continuing as customer",stack:profileError?.stack});
     }
     await withTimeout(loadClientData(),8000,"Client records request timed out. Please check Firebase rules and your connection.");
     $("#clientAuthLoading").classList.add("hidden");
