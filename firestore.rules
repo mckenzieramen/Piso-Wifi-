@@ -233,25 +233,6 @@ service cloud.firestore {
           ]));
 
       allow delete: if isAdmin();
-
-      // Individual message documents keep long conversations from hitting the
-      // 1 MiB limit of a single supportChats document.
-      match /messages/{messageId} {
-        function parentChat() {
-          return get(/databases/$(database)/documents/supportChats/$(chatId)).data;
-        }
-        allow read: if isAdmin()
-          || (isSignedIn() && parentChat().authUserId == request.auth.uid)
-          || (isCashier() && parentChat().assignedRole == "cashier"
-            && (parentChat().assignedCashierId == "" || parentChat().assignedCashierId == request.auth.uid));
-        allow create: if isAdmin()
-          || (isSignedIn() && parentChat().authUserId == request.auth.uid
-            && request.resource.data.senderType == "customer")
-          || (isCashier() && parentChat().assignedRole == "cashier"
-            && (parentChat().assignedCashierId == "" || parentChat().assignedCashierId == request.auth.uid)
-            && request.resource.data.senderType in ["cashier", "system"]);
-        allow update, delete: if isAdmin();
-      }
     }
 
     // ACTIVITIES
