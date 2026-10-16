@@ -344,3 +344,61 @@ body.cashier-support-active .cashier-top{display:none!important;}
 body.cashier-support-active .cashier-main{padding-top:10px;}
 body.cashier-support-active .cashier-service-heading p{display:none!important;}
 body.cashier-support-active .cashier-service-heading{align-items:center;}
+
+
+/* FIX: burger menu must overlay the current page, never resize/push the content */
+@media(max-width:900px){
+  body.cashier-app .cashier-sidebar{position:sticky!important;top:0!important;z-index:100!important;overflow:visible!important}
+  body.cashier-app.cashier-menu-open:after{
+    content:"";position:fixed;inset:62px 0 0;background:rgba(2,12,8,.58);
+    -webkit-backdrop-filter:blur(2px);backdrop-filter:blur(2px);
+    z-index:90;pointer-events:none;animation:cashierOverlayFade .18s ease-out both
+  }
+  body.cashier-app .cashier-sidebar .cashier-nav{
+    display:flex!important;flex-direction:column!important;gap:6px!important;
+    position:fixed!important;top:62px!important;left:10px!important;right:10px!important;
+    width:auto!important;max-height:calc(100dvh - 82px)!important;overflow-y:auto!important;
+    box-sizing:border-box!important;padding:10px!important;margin:0!important;
+    background:linear-gradient(180deg,#0b2419,#071910)!important;
+    border:1px solid #28523c!important;border-radius:15px!important;
+    box-shadow:0 18px 45px rgba(0,0,0,.38)!important;
+    opacity:0!important;visibility:hidden!important;pointer-events:none!important;
+    transform:translateY(-8px)!important;transform-origin:top center;
+    transition:opacity .18s ease,transform .18s ease,visibility .18s!important;z-index:110!important
+  }
+  body.cashier-app.cashier-menu-open .cashier-sidebar .cashier-nav{
+    opacity:1!important;visibility:visible!important;pointer-events:auto!important;
+    transform:translateY(0)!important
+  }
+  body.cashier-app .cashier-sidebar .cashier-nav button{width:100%!important;min-height:44px!important;text-align:left!important}
+  body.cashier-app .cashier-sidebar .cashier-logout{
+    display:block!important;position:fixed!important;left:10px!important;right:10px!important;
+    top:auto!important;bottom:12px!important;width:auto!important;margin:0!important;
+    z-index:111!important;opacity:0!important;visibility:hidden!important;pointer-events:none!important;
+    transform:translateY(6px)!important;transition:opacity .18s ease,transform .18s ease,visibility .18s!important
+  }
+  body.cashier-app.cashier-menu-open .cashier-sidebar .cashier-logout{
+    opacity:1!important;visibility:visible!important;pointer-events:auto!important;transform:translateY(0)!important
+  }
+}
+@keyframes cashierOverlayFade{from{opacity:0}to{opacity:1}}
+@media(prefers-reduced-motion:reduce){
+ body.cashier-app .cashier-sidebar .cashier-nav,body.cashier-app .cashier-sidebar .cashier-logout,
+ body.cashier-app.cashier-menu-open:after{animation:none!important;transition:none!important}
+}
+
+
+/* Compact cashier page heading and contained mobile conversation scroll */
+.cashier-main>.cashier-top{display:none!important}
+.cashier-main{padding-top:10px!important;min-width:0}
+@media(max-width:900px){
+ body.cashier-support-active{height:100dvh!important;min-height:0!important;overflow:hidden!important}
+ body.cashier-support-active .cashier-main,body.cashier-support-active #view{height:calc(100dvh - 64px)!important;min-height:0!important;overflow:hidden!important}
+ body.cashier-support-active .cashier-main{padding:8px 10px!important;box-sizing:border-box}
+ body.cashier-support-active .cashier-service-layout.chat{height:100%!important;min-height:0!important;max-height:100%!important;overflow:hidden!important;align-items:stretch}
+ body.cashier-support-active .cashier-service-layout.chat.mobile-thread-active .cashier-support-thread{display:flex!important;flex-direction:column!important;height:100%!important;min-height:0!important;max-height:100%!important;overflow:hidden!important;box-sizing:border-box}
+ body.cashier-support-active .cashier-service-layout.chat.mobile-thread-active .cashier-support-thread .messages{display:flex!important;flex:1 1 0!important;height:0!important;min-height:0!important;max-height:none!important;overflow-y:auto!important;overflow-x:hidden!important;overscroll-behavior:contain!important;-webkit-overflow-scrolling:touch!important}
+ body.cashier-support-active .cashier-service-layout.chat.mobile-thread-active .cashier-support-thread .chat-compose{flex:0 0 auto!important;position:static!important;bottom:auto!important;max-height:none!important}
+ body.cashier-support-active .cashier-support-thread .bubble{font-size:12px!important;line-height:1.38!important;overflow-wrap:anywhere}
+ body.cashier-support-active .cashier-support-thread .chat-compose textarea{font-size:13px!important;max-height:88px!important}
+}
