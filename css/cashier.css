@@ -288,3 +288,9 @@
   white-space:nowrap!important;line-height:1.35!important;
   font-size:12px!important;opacity:.86!important;
 }
+
+
+/* Customer Service: hide the unrelated global tab header so Support Center is the only heading. */
+.cashier-app.cashier-service-active .cashier-top{display:none!important}
+.cashier-app.cashier-service-active .cashier-main{padding-top:12px}
+@media(max-width:600px){.cashier-app.cashier-service-active .cashier-main{padding:8px 8px 18px!important}.cashier-app.cashier-service-active #view{margin-top:0!important}.cashier-app.cashier-service-active .cashier-service-panel{margin-top:0!important}}
