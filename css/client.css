@@ -209,3 +209,6 @@ input,select,textarea{font-size:16px}
 
 /* Chat stability: keep live customer conversation pinned predictably without browser scroll anchoring. */
 #supportConversation.piso-chat-messages{overflow-anchor:none!important;scroll-behavior:auto!important;overscroll-behavior:contain}
+
+/* Closed support tickets remain readable but no longer show a reply composer. */
+.support-closed-ticket-notice{margin:12px 0;padding:12px 14px;border:1px solid #dbe4ef;border-radius:12px;background:#f8fafc;color:#475569;font-size:13px;font-weight:700;text-align:center}
