@@ -163,3 +163,60 @@
   .receipt-actions button{width:100%;min-height:42px}
 }
 
+
+
+/* Cashier Chat Support: keep customer identity panel dark and readable. */
+.cashier-support-thread > .admin-chat-head.piso-support-chat-head,
+.cashier-support-thread .admin-chat-head.piso-support-chat-head {
+  background: linear-gradient(135deg, #0c281b 0%, #102f21 100%) !important;
+  color: #eafff1 !important;
+  border: 1px solid #24543a !important;
+  border-radius: 15px !important;
+  padding: 14px 16px !important;
+  margin-bottom: 14px !important;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.025) !important;
+}
+.cashier-support-thread .piso-support-customer-title,
+.cashier-support-thread .piso-support-customer-title * {
+  color: #eafff1 !important;
+}
+.cashier-support-thread .piso-support-customer-title h3 {
+  color: #f3fff7 !important;
+  font-weight: 800 !important;
+  line-height: 1.35 !important;
+  margin: 0 0 5px !important;
+}
+.cashier-support-thread .piso-support-customer-title p {
+  color: #b9d9c4 !important;
+  margin: 0 0 5px !important;
+  overflow-wrap: anywhere !important;
+}
+.cashier-support-thread .piso-support-customer-title small,
+.cashier-support-thread .piso-support-customer-title small b {
+  color: #91c9a6 !important;
+  overflow-wrap: anywhere !important;
+}
+.cashier-support-thread .piso-support-chat-head .piso-ticket-status {
+  color: #c8f7d7 !important;
+  background: #123d29 !important;
+  border: 1px solid #2c7048 !important;
+}
+.cashier-support-thread .piso-support-chat-head .piso-ticket-action {
+  color: #eafff1 !important;
+  border-color: #326748 !important;
+}
+@media (max-width: 600px) {
+  .cashier-support-thread > .admin-chat-head.piso-support-chat-head,
+  .cashier-support-thread .admin-chat-head.piso-support-chat-head {
+    padding: 12px !important;
+    gap: 10px !important;
+  }
+  .cashier-support-thread .piso-support-customer-title {
+    flex: 1 1 100% !important;
+    min-width: 0 !important;
+  }
+  .cashier-support-thread .piso-support-head-actions {
+    justify-content: flex-start !important;
+    width: 100% !important;
+  }
+}
