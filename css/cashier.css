@@ -402,3 +402,37 @@ body.cashier-support-active .cashier-service-heading{align-items:center;}
  body.cashier-support-active .cashier-support-thread .bubble{font-size:12px!important;line-height:1.38!important;overflow-wrap:anywhere}
  body.cashier-support-active .cashier-support-thread .chat-compose textarea{font-size:13px!important;max-height:88px!important}
 }
+
+
+/* Chat conversation should fill the available phone screen, not become a tiny preview */
+@media(max-width:900px){
+ body.cashier-support-active .cashier-main{height:calc(100dvh - 48px)!important;padding:6px 8px!important;overflow:hidden!important;box-sizing:border-box!important}
+ body.cashier-support-active #view{height:100%!important;min-height:0!important;overflow:hidden!important}
+ body.cashier-support-active .cashier-service-heading{margin:0 0 6px!important;padding:8px 10px!important;min-height:0!important}
+ body.cashier-support-active .cashier-service-heading h2{font-size:17px!important;margin:0!important}
+ body.cashier-support-active .cashier-service-layout.chat{height:calc(100% - 48px)!important;min-height:0!important;max-height:none!important;overflow:hidden!important;display:flex!important}
+ body.cashier-support-active .cashier-service-layout.chat.mobile-thread-active .cashier-support-thread{
+  display:flex!important;flex:1 1 auto!important;flex-direction:column!important;
+  height:100%!important;min-height:0!important;max-height:100%!important;
+  overflow:hidden!important;padding:8px!important;box-sizing:border-box!important
+ }
+ body.cashier-support-active .cashier-service-layout.chat.mobile-thread-active .cashier-support-thread>.admin-chat-head{
+  flex:0 0 auto!important;margin:0 0 8px!important;padding:8px!important
+ }
+ body.cashier-support-active .cashier-service-layout.chat.mobile-thread-active .cashier-support-thread .messages{
+  display:flex!important;flex:1 1 0!important;height:auto!important;min-height:0!important;
+  max-height:none!important;overflow-y:auto!important;overflow-x:hidden!important;
+  padding:10px!important;margin:0!important;overscroll-behavior:contain!important;
+  -webkit-overflow-scrolling:touch!important
+ }
+ body.cashier-support-active .cashier-service-layout.chat.mobile-thread-active .cashier-support-thread .chat-compose{
+  display:grid!important;flex:0 0 auto!important;grid-template-columns:minmax(0,1fr) auto!important;
+  gap:7px!important;position:static!important;margin:8px 0 0!important;padding:0!important
+ }
+ body.cashier-support-active .cashier-service-layout.chat.mobile-thread-active .cashier-support-thread .chat-compose textarea{
+  min-height:44px!important;max-height:80px!important;font-size:13px!important
+ }
+ body.cashier-support-active .cashier-service-layout.chat.mobile-thread-active .cashier-support-thread .chat-compose button{min-width:58px!important;min-height:44px!important}
+ body.cashier-support-active .cashier-service-layout.chat.mobile-thread-active .cashier-support-thread .cashier-mobile-back{flex:0 0 auto!important;margin:0 0 6px!important;min-height:32px!important}
+ body.cashier-support-active .cashier-support-thread .bubble{font-size:12px!important;line-height:1.4!important;max-width:90%!important}
+}
