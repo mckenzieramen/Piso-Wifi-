@@ -260,37 +260,80 @@
 }
 
 
-/* Cashier Support inbox: compact Messenger-style previews (targeted fix) */
-.cashier-service-panel .cashier-messenger-row{
-  display:flex!important;align-items:flex-start!important;gap:10px!important;
-  min-width:0!important;overflow:hidden!important;padding:12px!important;
+/* Compact Cashier Support conversation header: name + assignee + tidy status/actions. */
+.cashier-support-thread .piso-support-chat-head,
+.cashier-service-layout .piso-support-chat-head {
+  box-sizing: border-box !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 10px !important;
+  padding: 10px 12px !important;
+  min-height: 0 !important;
+  border: 1px solid #1e4b35 !important;
+  border-radius: 12px !important;
+  background: linear-gradient(135deg, #0b2117 0%, #102b1e 100%) !important;
+  color: #effff4 !important;
+  box-shadow: none !important;
 }
-.cashier-service-panel .cashier-messenger-row-content{
-  display:flex!important;flex:1 1 0!important;flex-direction:column!important;
-  min-width:0!important;max-width:100%!important;overflow:hidden!important;gap:4px!important;
+.cashier-support-thread .piso-support-customer-title,
+.cashier-service-layout .piso-support-customer-title { min-width: 0 !important; flex: 1 1 auto !important; }
+.cashier-support-thread .piso-support-customer-title h3,
+.cashier-service-layout .piso-support-customer-title h3 {
+  margin: 0 0 3px !important; color: #f2fff6 !important; font-size: 13px !important;
+  line-height: 1.25 !important; font-weight: 800 !important; overflow-wrap: anywhere;
 }
-.cashier-service-panel .cashier-messenger-row-content .cashier-chat-item-top{
-  display:flex!important;align-items:center!important;gap:8px!important;
-  min-width:0!important;width:100%!important;
+.cashier-support-thread .piso-support-assignee,
+.cashier-service-layout .piso-support-assignee {
+  display: block !important; margin: 0 !important; color: #a9cdb7 !important;
+  font-size: 10px !important; line-height: 1.35 !important;
 }
-.cashier-service-panel .cashier-messenger-row-content .cashier-chat-item-top b{
-  display:block!important;flex:0 1 auto!important;min-width:0!important;
-  max-width:100%!important;overflow:hidden!important;text-overflow:ellipsis!important;
-  white-space:nowrap!important;
+.cashier-support-thread .piso-support-assignee b,
+.cashier-service-layout .piso-support-assignee b { color: #76e3a1 !important; font-weight: 750 !important; }
+.cashier-support-thread .piso-support-head-actions,
+.cashier-service-layout .piso-support-head-actions {
+  display: flex !important; align-items: center !important; justify-content: flex-end !important;
+  flex: 0 0 auto !important; flex-wrap: wrap !important; gap: 5px !important; margin: 0 !important;
 }
-.cashier-service-panel .cashier-messenger-row-content small{
-  display:block!important;min-width:0!important;overflow:hidden!important;
-  text-overflow:ellipsis!important;white-space:nowrap!important;
+.cashier-support-thread .piso-ticket-status,
+.cashier-service-layout .piso-ticket-status {
+  display: inline-flex !important; align-items: center !important; justify-content: center !important;
+  min-height: 27px !important; padding: 0 9px !important; border-radius: 8px !important;
+  border: 1px solid #2d6848 !important; background: #123b27 !important; color: #aaf0c4 !important;
+  font-size: 10px !important; font-weight: 800 !important; line-height: 1 !important; white-space: nowrap;
 }
-.cashier-service-panel .cashier-messenger-preview{
-  display:block!important;width:100%!important;max-width:100%!important;
-  min-width:0!important;overflow:hidden!important;text-overflow:ellipsis!important;
-  white-space:nowrap!important;line-height:1.35!important;
-  font-size:12px!important;opacity:.86!important;
+.cashier-support-thread .piso-ticket-action,
+.cashier-service-layout .piso-ticket-action,
+.cashier-support-thread .piso-transfer-premium,
+.cashier-service-layout .piso-transfer-premium {
+  box-sizing: border-box !important; display: inline-flex !important; align-items: center !important;
+  justify-content: center !important; gap: 5px !important; min-height: 28px !important;
+  padding: 0 8px !important; border-radius: 8px !important; font-size: 10px !important;
+  font-weight: 750 !important; line-height: 1 !important; box-shadow: none !important; white-space: nowrap;
 }
-
-
-/* Customer Service: hide the unrelated global tab header so Support Center is the only heading. */
-.cashier-app.cashier-service-active .cashier-top{display:none!important}
-.cashier-app.cashier-service-active .cashier-main{padding-top:12px}
-@media(max-width:600px){.cashier-app.cashier-service-active .cashier-main{padding:8px 8px 18px!important}.cashier-app.cashier-service-active #view{margin-top:0!important}.cashier-app.cashier-service-active .cashier-service-panel{margin-top:0!important}}
+.cashier-support-thread .piso-ticket-action.solved,
+.cashier-service-layout .piso-ticket-action.solved { background: #103c29 !important; border: 1px solid #238454 !important; color: #9af0bc !important; }
+.cashier-support-thread .piso-ticket-action.closed,
+.cashier-service-layout .piso-ticket-action.closed { background: #1b2520 !important; border: 1px solid #42554a !important; color: #d2e2d7 !important; }
+.cashier-support-thread .piso-transfer-premium,
+.cashier-service-layout .piso-transfer-premium { background: #123b29 !important; border: 1px solid #278657 !important; color: #b8f5ce !important; }
+.cashier-support-thread .piso-transfer-logo,
+.cashier-service-layout .piso-transfer-logo { width: 20px !important; height: 20px !important; border-radius: 6px !important; background: #148451 !important; }
+.cashier-support-thread .piso-transfer-logo svg,
+.cashier-service-layout .piso-transfer-logo svg { width: 13px !important; height: 13px !important; }
+.cashier-support-thread .piso-ticket-action svg,
+.cashier-service-layout .piso-ticket-action svg { width: 12px !important; height: 12px !important; }
+@media (max-width: 600px) {
+  .cashier-support-thread .piso-support-chat-head,
+  .cashier-service-layout .piso-support-chat-head { align-items: flex-start !important; padding: 9px !important; gap: 7px !important; }
+  .cashier-support-thread .piso-support-head-actions,
+  .cashier-service-layout .piso-support-head-actions { max-width: 58%; gap: 4px !important; }
+  .cashier-support-thread .piso-ticket-action span,
+  .cashier-service-layout .piso-ticket-action span { display: inline !important; }
+  .cashier-support-thread .piso-ticket-action,
+  .cashier-service-layout .piso-ticket-action,
+  .cashier-support-thread .piso-transfer-premium,
+  .cashier-service-layout .piso-transfer-premium { min-height: 27px !important; padding: 0 6px !important; font-size: 9px !important; }
+  .cashier-support-thread .piso-transfer-label,
+  .cashier-service-layout .piso-transfer-label { display: inline !important; }
+}
