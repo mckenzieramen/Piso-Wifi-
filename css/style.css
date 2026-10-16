@@ -526,3 +526,7 @@ body:has(> .app){background:#eef3f9;color:#17243a}
 .admin-support-empty{background:radial-gradient(ellipse at top,#eef7ff 0%,#fff 65%)}
 .support-admin-empty-icon{width:64px;height:64px;border-radius:20px;background:linear-gradient(135deg,#e0f2fe,#dbeafe);color:#0877c9;box-shadow:0 10px 24px rgba(8,119,201,.12)}
 @media(max-width:900px){.admin-support-layout{grid-template-columns:1fr;height:auto;min-height:0}.admin-support-list{max-height:440px}.admin-support-window{min-height:560px}.admin-chat-head{flex-wrap:wrap}.admin-chat-actions{width:100%;margin-left:56px}}
+
+/* Action-required indicators: dots clear only when the underlying item is actioned. */
+.nav-red-dot{display:inline-block!important;width:9px;height:9px;min-width:9px;padding:0;margin-left:auto;border-radius:50%;background:#dc2626;box-shadow:0 0 0 3px rgba(220,38,38,.12);vertical-align:middle;flex:0 0 9px}.nav-red-dot.hidden{display:none!important}
+.action-required-dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:#dc2626;box-shadow:0 0 0 3px rgba(220,38,38,.12);vertical-align:middle;margin-left:7px}

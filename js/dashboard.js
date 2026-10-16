@@ -336,6 +336,20 @@ function updateNotificationBadge(){
   el.textContent=count>99?"99+":String(count);
   el.classList.toggle("hidden",count===0);
 }
+function updateActionBadges(){
+  // Payment/due indicators reflect real outstanding balances, never page views.
+  let hasDue=false;
+  try{hasDue=normalizeRows().some(x=>Number(x.c?.balance||0)>0.009);}catch(_e){}
+  const paymentDot=$("#adminPaymentsDot");
+  if(paymentDot)paymentDot.classList.toggle("hidden",!hasDue);
+  const remittanceDot=$("#adminRemittanceDot");
+  const pendingRemittances=(cashierRemittances||[]).filter(r=>["PENDING ADMIN AUTHORIZATION","PENDING","PENDING ADMIN APPROVAL"].includes(String(r.status||"PENDING ADMIN AUTHORIZATION").toUpperCase())).length;
+  if(remittanceDot)remittanceDot.classList.toggle("hidden",pendingRemittances===0);
+  const supportDot=$("#adminSupportBadge");
+  const pendingSupport=(supportChats||[]).filter(c=>c.transferredToAdmin===true && c.adminActioned!==true && !["Solved","Closed"].includes(String(c.status||"Open"))).length;
+  if(supportDot){supportDot.textContent="";supportDot.classList.toggle("hidden",pendingSupport===0);supportDot.classList.add("nav-red-dot");supportDot.classList.remove("nav-badge");}
+  document.querySelectorAll('[data-route="payments"] .kpi-action-dot').forEach(el=>el.classList.toggle("hidden",!hasDue));
+}
 function navigateTo(next){
   const target=String(next||"dashboard").replace(/^#/,"").split("?")[0]||"dashboard";
   route=target;
@@ -350,10 +364,11 @@ function pageLoader(){ view.innerHTML=`<div class="loading-panel"><div class="lo
 
 function render(){
   nav();
-  const renderers={dashboard:renderDashboard,units:renderUnits,reports:renderReports,payments:renderPayments,statements:renderStatements,notifications:renderNotifications,activity:renderActivity,settings:renderSettings,profile:renderProfile,support:renderSupport,"wifi-subscription":renderWiFiSubscriptions,"cashier-management":renderCashierManagement};
+  const renderers={dashboard:renderDashboard,units:renderUnits,reports:renderReports,payments:renderPayments,statements:renderStatements,notifications:renderNotifications,settings:renderSettings,profile:renderProfile,support:renderSupport,"wifi-subscription":renderWiFiSubscriptions,"cashier-management":renderCashierManagement};
   (renderers[route]||renderDashboard)();
   closeMenu();
   updateNotificationBadge();
+  updateActionBadges();
   window.scrollTo({top:0,behavior:"smooth"});
 }
 
@@ -365,7 +380,6 @@ function renderDashboard(){
   const openTickets=supportChats.filter(c=>String(c.status||"Open")==="Open").length;
   const solvedTickets=supportChats.filter(c=>String(c.status||"")==="Solved").length;
   const closedTickets=supportChats.filter(c=>String(c.status||"")==="Closed").length;
-  const recent=[...activities].sort((a,b)=>timeValue(b.createdAt)-timeValue(a.createdAt)).slice(0,6);
   const supportRecent=[...supportChats].sort((a,b)=>timeValue(b.updatedAt||b.createdAt)-timeValue(a.updatedAt||a.createdAt)).slice(0,4);
 
   view.innerHTML=baseHead("Dashboard","Overview of your Piso WiFi business.",`<div class="dashboard-head-actions"><button class="secondary-btn" data-route="reports">Monthly Report</button><button class="primary-btn" data-route="support">Support Tickets <span class="inline-count">${openTickets}</span></button></div>`)+`
@@ -374,7 +388,7 @@ function renderDashboard(){
       ${kpi(metricIcons.money,"Gross Sales",money(t.gross),monthLabel(selectedMonth),"orange", "#reports")}
       ${kpi(metricIcons.client,"Customer Earnings",money(customerEarnings),settings.clientPercent+"% customer share","customer-net", "#reports")}
       ${kpi(metricIcons.money,"Amount Collected",money(t.paid),"Recorded payments","green", "#payments")}
-      ${kpi(metricIcons.due,"Outstanding",money(t.balance),"Remaining customer balance","red", "#payments")}
+      ${kpi(metricIcons.due,`Outstanding ${t.balance>0.009?'<i class="action-required-dot" aria-label="Outstanding balance needs action"></i>':''}`,money(t.balance),"Remaining customer balance","red", "#payments")}
       ${kpi(metricIcons.tag,"Miscellaneous Fees",money(t.misc||0),"Custom admin fees","purple", "#reports")}
       ${kpi(metricIcons.bolt,"Electricity",money(t.elec),"Electricity share","gold", "#reports")}
       ${kpi(metricIcons.units,"Total Units",units.length,active+" active","", "#units")}
@@ -392,17 +406,13 @@ function renderDashboard(){
         <div class="rank-list accumulating-list" id="topUnits">${topUnitsHtml(top)}</div>
         <button class="dashboard-link" data-route="units">View all units →</button>
       </div>
-      <div class="panel">
-        <div class="panel-head"><div><h3>Recent Activities</h3><p>Latest system actions.</p></div><button class="link-btn" data-route="activity">View All</button></div>
-        <div class="dashboard-activity-list">${recent.length?recent.map(a=>`<button class="dashboard-activity-row" data-route="activity"><span class="activity-dot"></span><span><b>${esc(a.description||a.activityType||"Activity")}</b><small>${dateTimeLabel(a.createdAt)}</small></span></button>`).join(""):empty("No recent activity yet.")}</div>
-      </div>
     </div>
 
     <div class="panel" style="margin:18px 0"><div class="panel-head"><div><h3>WiFi Subscription</h3><p>Track subscription payments and upcoming expiry dates.</p></div><button class="primary-btn" data-route="wifi-subscription">Manage Subscriptions</button></div><div id="wifiSubscriptionSummary" style="padding:14px 18px;color:#52637a">Open WiFi Subscription to view total paid and reminders.</div></div>
 
     <div class="dashboard-lower-grid">
       <div class="panel">
-        <div class="panel-head"><div><h3>Outstanding Payments</h3><p>Customers with an unpaid balance.</p></div><button class="link-btn" data-route="payments">View All</button></div>
+        <div class="panel-head"><div><h3>Outstanding Payments ${t.balance>0.009?'<i class="action-required-dot" aria-label="Outstanding balance needs action"></i>':''}</h3><p>Customers with an unpaid balance.</p></div><button class="link-btn" data-route="payments">View All</button></div>
         <div class="outstanding-list accumulating-list">${outstanding.length?outstanding.map(x=>`<button class="outstanding-row" data-pay-unit="${x.u.id}"><span><b>${esc(x.u.unitCode)}</b><small>${esc(x.u.name)}</small></span><strong>${money(x.c.balance)}</strong></button>`).join(""):empty("No outstanding payments.")}</div>
       </div>
       <div class="panel dashboard-support-card">
@@ -679,6 +689,7 @@ function watchCashierRemittances(){
       return bt - at;
     });
     renderCashierRemittanceRows();
+    updateActionBadges();
   }, error => {
     console.error("Could not load cashier remittance approvals", error);
     const target = $("#cashierRemittanceBody");
@@ -820,7 +831,7 @@ async function saveSettings(){
 
 
 function supportStatusClass(status){return String(status||"Open").toLowerCase();}
-function updateSupportBadge(){const el=$("#adminSupportBadge");if(!el)return;const n=supportChats.filter(c=>c.unreadForAdmin===true&&(c.assignedRole==="admin"||c.transferredToAdmin===true||!c.assignedRole)).length;el.textContent=n>99?"99+":String(n);el.classList.toggle("hidden",n===0);}
+function updateSupportBadge(){const el=$("#adminSupportBadge");if(!el)return;const n=supportChats.filter(c=>c.transferredToAdmin===true&&c.adminActioned!==true&&!["Solved","Closed"].includes(String(c.status||"Open"))).length;el.textContent="";el.classList.toggle("hidden",n===0);el.classList.add("nav-red-dot");el.classList.remove("nav-badge");updateActionBadges();}
 let adminSupportThreadMessages=[];
 function supportMessagesHtml(chat){const legacy=Array.isArray(chat?.messages)?chat.messages:[];const merged=new Map();[...legacy,...adminSupportThreadMessages].forEach((m,i)=>merged.set(String(m.id||`${m.senderType||"system"}|${m.createdAt||""}|${m.text||""}|${i}`),m));const msgs=[...merged.values()].sort((a,b)=>String(a.createdAt||"").localeCompare(String(b.createdAt||"")));return msgs.map(m=>{const t=m.senderType==="customer"?"customer":m.senderType==="admin"?"admin":m.senderType==="cashier"?"cashier":"system";const who=t==="customer"?(chat.customerName||"Customer"):t==="admin"?"Piso Net Admin":t==="cashier"?(m.senderName||chat.assignedCashierName||"Cashier"):"Piso Net Customer Service";return `<div class="piso-admin-chat-msg ${t}"><div class="piso-admin-chat-bubble">${esc(m.text||"")}</div><small>${esc(who)} · ${esc(dateTimeLabel(m.createdAt))}</small></div>`}).join("")||`<div class="piso-admin-chat-empty">No messages yet.</div>`;}
 function startSupportRealtime(){
@@ -882,7 +893,7 @@ function renderSupport(){
   bindSupportList(); bindAdminChatEvents(selected);
   if(selected)subscribeSelectedSupport(selected.id);
 }
-function renderSupportList(list){return list.length?list.map(c=>`<button type="button" class="admin-support-item ${c.id===selectedSupportChatId?"active":""}" data-support-id="${esc(c.id)}"><span class="support-item-avatar">${esc(String(c.customerName||"CU").trim().split(/\s+/).slice(0,2).map(x=>x[0]).join("").toUpperCase())}</span><span class="support-item-copy"><b>${esc(c.customerName||"Customer")}</b><small>${esc(c.customerEmail||c.clientCode||"Customer Account")}</small><em>${esc((Array.isArray(c.messages)&&c.messages.length?c.messages[c.messages.length-1].text:"No messages yet").slice(0,55))}</em></span><span class="support-item-side"><i class="${supportStatusClass(c.status)}">${esc(c.status||"Open")}</i>${c.unreadForAdmin?'<strong>NEW</strong>':''}</span></button>`).join(""):`<div class="admin-support-no-chats">No customer conversations yet.</div>`;}
+function renderSupportList(list){return list.length?list.map(c=>`<button type="button" class="admin-support-item ${c.id===selectedSupportChatId?"active":""}" data-support-id="${esc(c.id)}"><span class="support-item-avatar">${esc(String(c.customerName||"CU").trim().split(/\s+/).slice(0,2).map(x=>x[0]).join("").toUpperCase())}</span><span class="support-item-copy"><b>${esc(c.customerName||"Customer")}</b><small>${esc(c.customerEmail||c.clientCode||"Customer Account")}</small><em>${esc((Array.isArray(c.messages)&&c.messages.length?c.messages[c.messages.length-1].text:"No messages yet").slice(0,55))}</em></span><span class="support-item-side"><i class="${supportStatusClass(c.status)}">${esc(c.status||"Open")}</i>${c.transferredToAdmin===true&&c.adminActioned!==true?'<strong>NEW</strong>':''}</span></button>`).join(""):`<div class="admin-support-no-chats">No customer conversations yet.</div>`;}
 function bindSupportList(){document.querySelectorAll("[data-support-id]").forEach(b=>b.onclick=()=>{selectedSupportChatId=b.dataset.supportId;renderSupport();const c=supportChats.find(x=>x.id===selectedSupportChatId);if(c?.unreadForAdmin===true){updateDoc(doc(db,"supportChats",selectedSupportChatId),{unreadForAdmin:false,updatedAt:new Date().toISOString()}).catch(()=>{});}});}
 function renderAdminChatWindow(chat){const status=String(chat.status||"Open");const disabled="";return `<div class="admin-chat-head"><div class="support-admin-avatar">${esc(String(chat.customerName||"CU").trim().split(/\s+/).slice(0,2).map(x=>x[0]).join("").toUpperCase())}</div><div><h3>${esc(chat.customerName||"Customer")}</h3><p>${esc(chat.customerEmail||"")} · ${esc(chat.clientCode||"")}</p></div><span class="admin-chat-status ${supportStatusClass(status)}">${esc(status)}</span><div class="admin-chat-actions"><button class="secondary-btn" id="supportOpenBtn" ${status==="Open"?"disabled":""}>Open</button><button class="secondary-btn" id="supportSolveBtn" ${status!=="Open"?"disabled":""}>Solve</button><button class="danger-outline-btn" id="supportCloseBtn" ${status==="Closed"?"disabled":""}>Close</button></div></div><div id="adminSupportMessages" class="admin-support-messages">${supportMessagesHtml(chat)}</div><div id="adminSupportTyping" class="admin-support-typing ${chat.typingBy?.customer?"show":""}">${chat.typingBy?.customer?"Customer is typing…":(chat.typingBy?.cashier?"Customer Support is typing…":"")}</div><div class="admin-support-compose"><textarea id="adminSupportInput" placeholder="Reply to customer…" ${disabled}></textarea><button id="adminSupportSend" class="primary-btn" ${disabled}>Send</button></div>`;}
 let selectedSupportUnsub=null;
@@ -944,9 +955,9 @@ async function setAdminSupportTyping(id,on){
   }
   try{await updateDoc(doc(db,"supportChats",id),{"typingBy.admin":!!on,updatedAt:new Date().toISOString()});}catch(e){}
 }
-async function sendAdminSupportMessage(id){const input=$("#adminSupportInput");const text=String(input?.value||"").trim();if(!text)return;try{const now=new Date().toISOString();await addDoc(collection(db,"supportChats",id,"messages"),{senderType:"admin",text,createdAt:now});await updateDoc(doc(db,"supportChats",id),{lastMessage:text,lastMessageSender:"admin",lastMessageAt:now,updatedAt:now,unreadForAdmin:false,unreadForCustomer:true,"typingBy.admin":false,"typingBy.customer":false,status:"Open"});input.value="";}catch(e){notify(e?.message||"Unable to send support reply.","error");}}
+async function sendAdminSupportMessage(id){const input=$("#adminSupportInput");const text=String(input?.value||"").trim();if(!text)return;try{const now=new Date().toISOString();await addDoc(collection(db,"supportChats",id,"messages"),{senderType:"admin",text,createdAt:now});await updateDoc(doc(db,"supportChats",id),{lastMessage:text,lastMessageSender:"admin",lastMessageAt:now,updatedAt:now,unreadForAdmin:false,adminActioned:true,adminActionedAt:now,unreadForCustomer:true,"typingBy.admin":false,"typingBy.customer":false,status:"Open"});input.value="";}catch(e){notify(e?.message||"Unable to send support reply.","error");}}
 async function setSupportStatus(id,status){try{
-  const patch={status,updatedAt:new Date().toISOString(),unreadForAdmin:false};
+  const patch={status,updatedAt:new Date().toISOString(),unreadForAdmin:false,adminActioned:true,adminActionedAt:new Date().toISOString()};
   if(status==="Solved"){
     patch.messages=arrayUnion({senderType:"system",text:"Thank you for contacting PISO WIFI Support. We’re glad we could assist you. This ticket has been closed. If you need further assistance, please contact us again.",createdAt:new Date().toISOString(),kind:"ticket-closed"});
     patch.unreadForCustomer=true;
@@ -1138,6 +1149,7 @@ function openPrintWindow(html){const w=window.open("","_blank","width=1200,heigh
 
 function stopCoreRealtime(){coreRealtimeUnsubs.forEach(fn=>{try{fn()}catch(e){}});coreRealtimeUnsubs=[];}
 function scheduleDashboardRealtime(){
+  updateActionBadges();
   if(route!=="dashboard")return;
   clearTimeout(dashboardRealtimeTimer);
   const scrollY=window.scrollY;
