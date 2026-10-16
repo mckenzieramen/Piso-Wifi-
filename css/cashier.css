@@ -337,3 +337,10 @@
   .cashier-support-thread .piso-transfer-label,
   .cashier-service-layout .piso-transfer-label { display: inline !important; }
 }
+
+
+/* Cashier Chat Support: remove the stale global tab header and keep the support card as the only heading. */
+body.cashier-support-active .cashier-top{display:none!important;}
+body.cashier-support-active .cashier-main{padding-top:10px;}
+body.cashier-support-active .cashier-service-heading p{display:none!important;}
+body.cashier-support-active .cashier-service-heading{align-items:center;}
