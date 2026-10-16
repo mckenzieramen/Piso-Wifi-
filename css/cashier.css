@@ -344,3 +344,24 @@ body.cashier-support-active .cashier-top{display:none!important;}
 body.cashier-support-active .cashier-main{padding-top:10px;}
 body.cashier-support-active .cashier-service-heading p{display:none!important;}
 body.cashier-support-active .cashier-service-heading{align-items:center;}
+
+/* Compact cashier pages and phone-sized support thread */
+.cashier-main{min-width:0}
+.cashier-main .cashier-top{display:none!important}
+.cashier-service-layout.chat,.cashier-support-thread,.cashier-support-inbox{min-width:0;min-height:0}
+.cashier-support-thread .bubble{font-size:12.5px!important;line-height:1.4!important;max-width:88%;overflow-wrap:anywhere}
+.cashier-support-thread .bubble small{font-size:10px!important}
+.cashier-support-thread .chat-compose textarea{font-size:13px!important;line-height:1.4;min-height:40px;max-height:96px}
+.cashier-support-thread .messages{overflow-y:auto!important;overscroll-behavior:contain;min-height:0!important;scrollbar-width:thin}
+@media(max-width:900px){
+  body.cashier-support-active{overflow:hidden}
+  body.cashier-support-active .cashier-main{height:calc(100dvh - 65px);overflow:hidden;padding-bottom:0!important}
+  body.cashier-support-active #view,body.cashier-support-active .cashier-service-panel{height:100%;min-height:0;overflow:hidden}
+  body.cashier-support-active .cashier-service-layout.chat{height:calc(100% - 58px);min-height:0;overflow:hidden}
+  .cashier-service-layout.chat.mobile-thread-active .cashier-support-thread{height:100%!important;min-height:0!important;max-height:100%!important;overflow:hidden!important;display:flex!important;flex-direction:column}
+  .cashier-service-layout.chat.mobile-thread-active .cashier-support-thread .messages{flex:1 1 auto!important;height:0!important;min-height:0!important;max-height:none!important;overflow-y:auto!important}
+  .cashier-service-layout.chat.mobile-thread-active .cashier-support-thread .chat-compose{flex:0 0 auto;position:static!important;margin-top:5px!important}
+  .cashier-service-layout.chat.mobile-inbox-active .cashier-support-inbox{height:100%;max-height:100%!important;overflow-y:auto!important}
+  .cashier-support-thread .piso-support-customer-title h3{font-size:14px!important}
+  .cashier-support-thread .piso-support-assignee{font-size:10px!important}
+}

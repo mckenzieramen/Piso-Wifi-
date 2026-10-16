@@ -364,12 +364,15 @@ function subscribeSupportChat(){
       supportChatDocId=snap.id;
       const idx=supportChatHistory.findIndex(c=>c.id===snap.id);
       if(idx>=0)supportChatHistory[idx]=supportChat; else supportChatHistory=[supportChat,...supportChatHistory];
+      if(window.__customerSupportMessageTicketId!==snap.id){
       if(supportMessageUnsub){supportMessageUnsub();supportMessageUnsub=null;}
+      window.__customerSupportMessageTicketId=snap.id;
       supportThreadMessages=[];
       supportMessageUnsub=onSnapshot(query(collection(db,"supportChats",snap.id,"messages"),orderBy("createdAt","asc")),messageSnap=>{
         supportThreadMessages=messageSnap.docs.map(d=>({id:d.id,...d.data()}));
         if(supportChatOpen && !$("#supportConversationView")?.classList.contains("hidden"))renderSupportConversation();
       },err=>console.warn("Support message stream failed",err));
+      }
     }
     updateSupportBadge();
     if(supportChatOpen){
