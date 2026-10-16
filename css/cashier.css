@@ -479,3 +479,6 @@ body.cashier-app .cashier-main .cashier-top{
   margin:0!important;padding:0!important;border:0!important;
 }
 body.cashier-app .cashier-main{padding-top:12px!important}
+
+/* Chat stability: disable browser scroll anchoring so live messages cannot pull the thread upward. */
+.cashier-support-thread .messages{overflow-anchor:none!important;scroll-behavior:auto!important;overscroll-behavior:contain}

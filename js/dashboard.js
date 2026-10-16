@@ -833,7 +833,7 @@ async function saveSettings(){
 function supportStatusClass(status){return String(status||"Open").toLowerCase();}
 function updateSupportBadge(){const el=$("#adminSupportBadge");if(!el)return;const n=supportChats.filter(c=>c.transferredToAdmin===true&&c.adminActioned!==true&&!["Solved","Closed"].includes(String(c.status||"Open"))).length;el.textContent="";el.classList.toggle("hidden",n===0);el.classList.add("nav-red-dot");el.classList.remove("nav-badge");updateActionBadges();}
 let adminSupportThreadMessages=[];
-function supportMessagesHtml(chat){const legacy=Array.isArray(chat?.messages)?chat.messages:[];const merged=new Map();[...legacy,...adminSupportThreadMessages].forEach((m,i)=>merged.set(String(m.id||`${m.senderType||"system"}|${m.createdAt||""}|${m.text||""}|${i}`),m));const msgs=[...merged.values()].sort((a,b)=>String(a.createdAt||"").localeCompare(String(b.createdAt||"")));return msgs.map(m=>{const t=m.senderType==="customer"?"customer":m.senderType==="admin"?"admin":m.senderType==="cashier"?"cashier":"system";const who=t==="customer"?(chat.customerName||"Customer"):t==="admin"?"Piso Net Admin":t==="cashier"?(m.senderName||chat.assignedCashierName||"Cashier"):"Piso Net Customer Service";return `<div class="piso-admin-chat-msg ${t}"><div class="piso-admin-chat-bubble">${esc(m.text||"")}</div><small>${esc(who)} · ${esc(dateTimeLabel(m.createdAt))}</small></div>`}).join("")||`<div class="piso-admin-chat-empty">No messages yet.</div>`;}
+function supportMessagesHtml(chat){const legacy=Array.isArray(chat?.messages)?chat.messages:[];const merged=new Map();[...legacy,...adminSupportThreadMessages].forEach((m,i)=>merged.set(String(m.id||`${m.senderType||"system"}|${m.createdAt||""}|${m.text||""}|${i}`),m));const msgs=[...merged.values()].sort((a,b)=>String(a.createdAt||"").localeCompare(String(b.createdAt||"")));return msgs.map(m=>{const t=m.senderType==="customer"?"customer":m.senderType==="admin"?"admin":m.senderType==="cashier"?"cashier":"system";const who=t==="customer"?(chat.customerName||"Customer"):t==="admin"?"Piso Net Admin":t==="cashier"?(m.senderName||chat.assignedCashierName||"Cashier"):"Piso Net Customer Service";const stableId=String(m.id||`${m.senderType||"system"}|${m.createdAt||""}|${m.text||""}`);return `<div class="piso-admin-chat-msg ${t}" data-support-message-id="${esc(stableId)}"><div class="piso-admin-chat-bubble">${esc(m.text||"")}</div><small>${esc(who)} · ${esc(dateTimeLabel(m.createdAt))}</small></div>`}).join("")||`<div class="piso-admin-chat-empty">No messages yet.</div>`;}
 function startSupportRealtime(){
   if(supportUnsub)supportUnsub();
   supportUnsub=onSnapshot(collection(db,"supportChats"),snap=>{
@@ -902,7 +902,7 @@ function subscribeSelectedSupport(id){
   if(selectedSupportUnsub)selectedSupportUnsub();
   if(selectedSupportMessagesUnsub)selectedSupportMessagesUnsub();
   adminSupportThreadMessages=[];
-  selectedSupportMessagesUnsub=onSnapshot(query(collection(db,"supportChats",id,"messages"),orderBy("createdAt","asc")),snap=>{if(selectedSupportChatId!==id)return;adminSupportThreadMessages=snap.docs.map(d=>({id:d.id,...d.data()}));const c=supportChats.find(x=>x.id===id);const box=$("#adminSupportMessages");if(c&&box){box.innerHTML=supportMessagesHtml(c);requestAnimationFrame(()=>{box.scrollTop=box.scrollHeight;});}},err=>console.error("Admin support message stream failed",err));
+  selectedSupportMessagesUnsub=onSnapshot(query(collection(db,"supportChats",id,"messages"),orderBy("createdAt","asc")),snap=>{if(selectedSupportChatId!==id)return;adminSupportThreadMessages=snap.docs.map(d=>({id:d.id,...d.data()}));const c=supportChats.find(x=>x.id===id);const box=$("#adminSupportMessages");if(c&&box){const oldTop=box.scrollTop,oldHeight=box.scrollHeight,clientHeight=box.clientHeight;const atBottom=true;const temp=document.createElement("div");temp.innerHTML=supportMessagesHtml(c);const wantedNodes=[...temp.querySelectorAll("[data-support-message-id]")];const wanted=new Set(wantedNodes.map(el=>el.dataset.supportMessageId));box.querySelectorAll("[data-support-message-id]").forEach(el=>{if(!wanted.has(el.dataset.supportMessageId))el.remove();});const have=new Set([...box.querySelectorAll("[data-support-message-id]")].map(el=>el.dataset.supportMessageId));wantedNodes.forEach(el=>{if(!have.has(el.dataset.supportMessageId))box.appendChild(el.cloneNode(true));});const empty=box.querySelector(".piso-admin-chat-empty");if(wantedNodes.length&&empty)empty.remove();requestAnimationFrame(()=>{box.scrollTop=atBottom?box.scrollHeight:oldTop;});}},err=>console.error("Admin support message stream failed",err));
   const ref=doc(db,"supportChats",id);
   selectedSupportUnsub=onSnapshot(ref,snap=>{
     if(!snap.exists())return;
@@ -913,14 +913,8 @@ function subscribeSelectedSupport(id){
 
     if(route==="support"&&selectedSupportChatId===id){
       const box=$("#adminSupportMessages");
-      if(box){
-        // Preserve the exact scroll position across realtime updates.
-        // If the admin is already at the bottom, keep them at the bottom;
-        // otherwise never force the conversation back to the top.
-        box.innerHTML=supportMessagesHtml(c);
-        // Keep the active conversation pinned to the newest messages.
-        requestAnimationFrame(()=>{box.scrollTop=box.scrollHeight;});
-      }
+      // Do not rebuild the message DOM on ticket/typing snapshots.
+      // The dedicated messages subcollection listener updates only new bubbles.
       const typ=$("#adminSupportTyping");
       if(typ){
         typ.textContent=c.typingBy?.customer?"Customer is typing…":"";
@@ -943,7 +937,7 @@ function subscribeSelectedSupport(id){
   });
 }
 let adminSupportTypingTimer=null;
-function bindAdminChatEvents(chat){if(!chat)return;const input=$("#adminSupportInput"),send=$("#adminSupportSend");if(send)send.onclick=()=>sendAdminSupportMessage(chat.id);if(input){input.oninput=()=>{clearTimeout(adminSupportTypingTimer);setAdminSupportTyping(chat.id,true);adminSupportTypingTimer=setTimeout(()=>setAdminSupportTyping(chat.id,false),1200);};input.onblur=()=>{clearTimeout(adminSupportTypingTimer);setAdminSupportTyping(chat.id,false);};input.onkeydown=e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();sendAdminSupportMessage(chat.id);}};}$("#supportOpenBtn")?.addEventListener("click",()=>setSupportStatus(chat.id,"Open"));$("#supportSolveBtn")?.addEventListener("click",()=>setSupportStatus(chat.id,"Solved"));$("#supportCloseBtn")?.addEventListener("click",()=>setSupportStatus(chat.id,"Closed"));}
+function bindAdminChatEvents(chat){if(!chat)return;const input=$("#adminSupportInput"),send=$("#adminSupportSend");if(send)send.onclick=()=>sendAdminSupportMessage(chat.id);if(input){const pinLatest=()=>{const box=$("#adminSupportMessages");if(box)requestAnimationFrame(()=>{box.scrollTop=box.scrollHeight;});};input.addEventListener("focus",pinLatest);input.addEventListener("click",pinLatest);input.oninput=()=>{clearTimeout(adminSupportTypingTimer);setAdminSupportTyping(chat.id,true);adminSupportTypingTimer=setTimeout(()=>setAdminSupportTyping(chat.id,false),1200);};input.onblur=()=>{clearTimeout(adminSupportTypingTimer);setAdminSupportTyping(chat.id,false);};input.onkeydown=e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();sendAdminSupportMessage(chat.id);}};}$("#supportOpenBtn")?.addEventListener("click",()=>setSupportStatus(chat.id,"Open"));$("#supportSolveBtn")?.addEventListener("click",()=>setSupportStatus(chat.id,"Solved"));$("#supportCloseBtn")?.addEventListener("click",()=>setSupportStatus(chat.id,"Closed"));}
 async function setAdminSupportTyping(id,on){
   const typ=$("#adminSupportTyping");
   if(typ){
@@ -953,9 +947,9 @@ async function setAdminSupportTyping(id,on){
     typ.textContent=customerTyping?"Customer is typing…":(cashierTyping?"Customer Support is typing…":"");
     typ.classList.toggle("show",customerTyping||cashierTyping);
   }
-  try{await updateDoc(doc(db,"supportChats",id),{"typingBy.admin":!!on,updatedAt:new Date().toISOString()});}catch(e){}
+  try{await updateDoc(doc(db,"supportChats",id),{"typingBy.admin":!!on});}catch(e){}
 }
-async function sendAdminSupportMessage(id){const input=$("#adminSupportInput");const text=String(input?.value||"").trim();if(!text)return;try{const now=new Date().toISOString();await addDoc(collection(db,"supportChats",id,"messages"),{senderType:"admin",text,createdAt:now});await updateDoc(doc(db,"supportChats",id),{lastMessage:text,lastMessageSender:"admin",lastMessageAt:now,updatedAt:now,unreadForAdmin:false,adminActioned:true,adminActionedAt:now,unreadForCustomer:true,"typingBy.admin":false,"typingBy.customer":false,status:"Open"});input.value="";}catch(e){notify(e?.message||"Unable to send support reply.","error");}}
+async function sendAdminSupportMessage(id){const input=$("#adminSupportInput");const text=String(input?.value||"").trim();if(!text)return;try{const now=new Date().toISOString();await addDoc(collection(db,"supportChats",id,"messages"),{senderType:"admin",text,createdAt:now});await updateDoc(doc(db,"supportChats",id),{lastMessage:text,lastMessageSender:"admin",lastMessageAt:now,updatedAt:now,unreadForAdmin:false,adminActioned:true,adminActionedAt:now,unreadForCustomer:true,"typingBy.admin":false,"typingBy.customer":false,status:"Open"});input.value="";requestAnimationFrame(()=>{const box=$("#adminSupportMessages");if(box)box.scrollTop=box.scrollHeight;input.focus({preventScroll:true});});}catch(e){notify(e?.message||"Unable to send support reply.","error");}}
 async function setSupportStatus(id,status){try{
   const patch={status,updatedAt:new Date().toISOString(),unreadForAdmin:false,adminActioned:true,adminActionedAt:new Date().toISOString()};
   if(status==="Solved"){

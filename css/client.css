@@ -206,3 +206,6 @@ input,select,textarea{font-size:16px}
 #clientSupportModal .piso-support-lobby::-webkit-scrollbar,#clientSupportModal .piso-ticket-history-list::-webkit-scrollbar{width:7px}
 #clientSupportModal .piso-support-lobby::-webkit-scrollbar-thumb,#clientSupportModal .piso-ticket-history-list::-webkit-scrollbar-thumb{background:#c5d5e5;border-radius:99px}
 @media(max-width:480px){#clientSupportModal .piso-support-shell{height:min(760px,calc(100dvh - 16px));width:calc(100vw - 16px);border-radius:20px}#clientSupportModal .piso-support-lobby{padding:12px}#clientSupportModal .piso-support-hero{padding:17px 14px;border-radius:17px}#clientSupportModal .piso-ticket-history{max-height:250px}}
+
+/* Chat stability: keep live customer conversation pinned predictably without browser scroll anchoring. */
+#supportConversation.piso-chat-messages{overflow-anchor:none!important;scroll-behavior:auto!important;overscroll-behavior:contain}

@@ -530,3 +530,6 @@ body:has(> .app){background:#eef3f9;color:#17243a}
 /* Action-required indicators: dots clear only when the underlying item is actioned. */
 .nav-red-dot{display:inline-block!important;width:9px;height:9px;min-width:9px;padding:0;margin-left:auto;border-radius:50%;background:#dc2626;box-shadow:0 0 0 3px rgba(220,38,38,.12);vertical-align:middle;flex:0 0 9px}.nav-red-dot.hidden{display:none!important}
 .action-required-dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:#dc2626;box-shadow:0 0 0 3px rgba(220,38,38,.12);vertical-align:middle;margin-left:7px}
+
+/* Support chat stability: prevent browser scroll anchoring from bouncing live conversations. */
+#adminSupportMessages,.admin-support-messages{overflow-anchor:none!important;scroll-behavior:auto!important;overscroll-behavior:contain}

@@ -237,6 +237,7 @@ let supportChat=null;
 let supportChatOpen=false;
 let supportChatSending=false;
 let supportMessageUnsub=null;
+let supportSubscribedMessageTicketId="";
 let supportThreadMessages=[];
 let supportTypingTimer=null;
 let supportChatDocId="";
@@ -248,26 +249,36 @@ function supportNow(){return new Date().toISOString();}
 function supportMessageHtml(m){
   const type=m?.senderType==="customer"?"customer":(m?.senderType==="admin"||m?.senderType==="cashier")?"admin":"system";
   const who=type==="customer"?clientName():m?.senderType==="cashier"?(m?.senderName||supportChat?.assignedCashierName||"Piso Net Support"):m?.senderType==="admin"?"Piso Net Admin":"Piso Net Support";
-  return `<div class="piso-chat-message ${type}"><div class="piso-chat-bubble">${esc(m?.text||"")}</div><div class="piso-chat-meta">${esc(who)} · ${esc(dateTime(m?.createdAt||""))}</div></div>`;
+  const stableId=String(m?.id||`${m?.senderType||"system"}|${m?.createdAt||""}|${m?.text||""}`); return `<div class="piso-chat-message ${type}" data-support-message-id="${esc(stableId)}"><div class="piso-chat-bubble">${esc(m?.text||"")}</div><div class="piso-chat-meta">${esc(who)} · ${esc(dateTime(m?.createdAt||""))}</div></div>`;
 }
 function renderSupportConversation(){
   const host=$("#supportConversation"); if(!host)return;
-  const previousTop=host.scrollTop;
-  const previousHeight=host.scrollHeight;
-  const clientHeight=host.clientHeight;
+  const previousTop=host.scrollTop, previousHeight=host.scrollHeight, clientHeight=host.clientHeight;
   const hadContent=host.children.length>0;
-  const wasAtBottom=!hadContent || previousHeight-previousTop-clientHeight<32;
+  const wasAtBottom=!hadContent || previousHeight-previousTop-clientHeight<64;
+  const forceBottom=true;
   const legacy=Array.isArray(supportChat?.messages)?supportChat.messages:[];
   const merged=new Map();
   [...legacy,...supportThreadMessages].forEach((m,i)=>merged.set(String(m.id||`${m.senderType||"system"}|${m.createdAt||""}|${m.text||""}|${i}`),m));
   const msgs=[...merged.values()].sort((a,b)=>String(a.createdAt||"").localeCompare(String(b.createdAt||"")));
-  host.innerHTML=msgs.length?msgs.map(supportMessageHtml).join(""):`<div class="piso-chat-empty"><div class="support-icon">${icons.mail}</div><b>Start a conversation</b><span>Tell us what you need help with and our support team can reply here.</span></div>`;
+  if(!host.dataset.supportInitialized){
+    host.innerHTML=msgs.length?msgs.map(supportMessageHtml).join(""):`<div class="piso-chat-empty"><div class="support-icon">${icons.mail}</div><b>Start a conversation</b><span>Tell us what you need help with and our support team can reply here.</span></div>`;
+    host.dataset.supportInitialized="1";
+  }else{
+    const wanted=new Set(msgs.map(m=>String(m.id||`${m.senderType||"system"}|${m.createdAt||""}|${m.text||""}`)));
+    host.querySelectorAll("[data-support-message-id]").forEach(el=>{if(!wanted.has(el.dataset.supportMessageId))el.remove();});
+    const empty=host.querySelector(".piso-chat-empty"); if(msgs.length&&empty)empty.remove();
+    const existing=new Set([...host.querySelectorAll("[data-support-message-id]")].map(el=>el.dataset.supportMessageId));
+    for(const m of msgs){
+      const id=String(m.id||`${m.senderType||"system"}|${m.createdAt||""}|${m.text||""}`);
+      if(existing.has(id))continue;
+      const holder=document.createElement("div");holder.innerHTML=supportMessageHtml(m);
+      if(holder.firstElementChild)host.appendChild(holder.firstElementChild);
+    }
+  }
   const typing=$("#supportTyping");
   if(typing){const staffTyping=!!supportChat?.typingBy?.admin||!!supportChat?.typingBy?.cashier;typing.classList.toggle("show",staffTyping);typing.textContent=staffTyping?"Customer Support is typing…":"";}
-  requestAnimationFrame(()=>{
-    if(wasAtBottom)host.scrollTop=host.scrollHeight;
-    else host.scrollTop=previousTop;
-  });
+  requestAnimationFrame(()=>{if(forceBottom)host.scrollTop=host.scrollHeight;else host.scrollTop=previousTop;});
 }
 function hasRealSupportConversation(chat){
   const messages=Array.isArray(chat?.messages)?chat.messages:[];
@@ -364,12 +375,15 @@ function subscribeSupportChat(){
       supportChatDocId=snap.id;
       const idx=supportChatHistory.findIndex(c=>c.id===snap.id);
       if(idx>=0)supportChatHistory[idx]=supportChat; else supportChatHistory=[supportChat,...supportChatHistory];
-      if(supportMessageUnsub){supportMessageUnsub();supportMessageUnsub=null;}
-      supportThreadMessages=[];
-      supportMessageUnsub=onSnapshot(query(collection(db,"supportChats",snap.id,"messages"),orderBy("createdAt","asc")),messageSnap=>{
-        supportThreadMessages=messageSnap.docs.map(d=>({id:d.id,...d.data()}));
-        if(supportChatOpen && !$("#supportConversationView")?.classList.contains("hidden"))renderSupportConversation();
-      },err=>console.warn("Support message stream failed",err));
+      if(supportSubscribedMessageTicketId!==snap.id){
+        if(supportMessageUnsub){supportMessageUnsub();supportMessageUnsub=null;}
+        supportSubscribedMessageTicketId=snap.id;
+        supportThreadMessages=[];
+        supportMessageUnsub=onSnapshot(query(collection(db,"supportChats",snap.id,"messages"),orderBy("createdAt","asc")),messageSnap=>{
+          supportThreadMessages=messageSnap.docs.map(d=>({id:d.id,...d.data()}));
+          if(supportChatOpen && !$("#supportConversationView")?.classList.contains("hidden"))renderSupportConversation();
+        },err=>console.warn("Support message stream failed",err));
+      }
     }
     updateSupportBadge();
     if(supportChatOpen){
