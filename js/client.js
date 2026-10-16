@@ -325,16 +325,7 @@ function renderSupportChat(){
   $("#supportChatCustomer").textContent="Piso Net Support";
   renderSupportConversation();
   const closed=["Solved","Closed"].includes(status);
-  const composer=document.querySelector(".piso-chat-composer, .piso-support-compose, .support-chat-compose, #supportChatComposer");
   const input=$("#supportChatInput"), send=$("#supportSend");
-  if(composer){
-    composer.style.display=closed?"none":"";
-    let notice=document.getElementById("supportClosedTicketNotice");
-    if(closed){
-      if(!notice){notice=document.createElement("div");notice.id="supportClosedTicketNotice";notice.className="support-closed-ticket-notice";notice.textContent="Closed Ticket · This conversation is read-only.";composer.insertAdjacentElement("afterend",notice);}
-      notice.style.display="";
-    }else if(notice){notice.remove();}
-  }
   if(input){input.disabled=closed;input.placeholder=closed?"Ticket was closed.":"Type your concern…";}
   if(send)send.disabled=closed;
 }

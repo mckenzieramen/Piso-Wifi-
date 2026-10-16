@@ -533,6 +533,3 @@ body:has(> .app){background:#eef3f9;color:#17243a}
 
 /* Support chat stability: prevent browser scroll anchoring from bouncing live conversations. */
 #adminSupportMessages,.admin-support-messages{overflow-anchor:none!important;scroll-behavior:auto!important;overscroll-behavior:contain}
-
-/* Closed support ticket: keep history visible and hide reply controls. */
-.support-closed-ticket-notice{margin:12px 0;padding:12px 14px;border:1px solid #dbe4ef;border-radius:12px;background:#f8fafc;color:#475569;font-size:13px;font-weight:700;text-align:center}
