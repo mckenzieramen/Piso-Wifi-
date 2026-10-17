@@ -298,7 +298,7 @@ async function createSupportChat(){
   const ref=supportChatRef();
   const unit=primaryUnit();
   const greeting={senderType:"admin",text:"Hi! I’m PISO WIFI Customer Support. Let us know what you need help with, and our Admin will assist you here.",createdAt:supportNow()};
-  const payload={authUserId:currentUser.uid,unitId:unit.id||"",clientCode:unit.clientCode||"",customerName:clientName(),customerEmail:clientEmail(),status:"Open",messages:[greeting],typingBy:{customer:false,admin:false},unreadForAdmin:true,unreadForCustomer:false,createdAt:serverTimestamp(),updatedAt:supportNow()};
+  const payload={authUserId:currentUser.uid,unitId:unit.id||"",clientCode:unit.clientCode||"",customerName:clientName(),customerEmail:clientEmail(),status:"Open",assignedRole:"cashier",assignedCashierId:"",assignedCashierName:"",messages:[greeting],typingBy:{customer:false,cashier:false,admin:false},unreadForAdmin:true,unreadForCashier:true,unreadForCustomer:false,createdAt:serverTimestamp(),updatedAt:supportNow()};
   await setDoc(ref,payload);
   supportChat={id:ref.id,...payload,createdAt:new Date()};
   return supportChat;
