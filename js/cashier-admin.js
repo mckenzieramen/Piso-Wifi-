@@ -139,7 +139,7 @@ async function bootCashierAdmin(){
     }
     if(!u) return deny();
     const email=String(u.email||"").trim().toLowerCase();
-    if(email!=="admin@pisonet.com") return deny();
+    if(email!=="pisonet@admin.com") return deny();
     setLoading("Opening Cashier Management…");
     await load();
   }catch(e){ await showAuthFailure(e?.message||"Firebase Authentication could not be initialized."); }
