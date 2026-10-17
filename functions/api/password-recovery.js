@@ -13,7 +13,7 @@ export async function onRequestPost(context) {
     // Use the Cloudflare secret first; fallback matches the latest Apps Script URL previously supplied.
     const appsScriptOtpUrl = String(
       context.env?.APPS_SCRIPT_PASSWORD_RESET_URL ||
-      'https://script.google.com/macros/s/AKfycbziRdnywiBqCJoBqJwXElHEGWdgyljApiYAhOvDJEyKJ_rzLWPP_GgYSmsfR1IE3_Fe/exec'
+      'https://script.google.com/macros/s/AKfycbzJcIf9rpdunJ8-1kDvgePWTT1L-cQOFzZLQHFQMaqBYTlviovyxjz4JOX-FpvUrjFu/exec'
     ).trim();
     const body = await context.request.text();
 
