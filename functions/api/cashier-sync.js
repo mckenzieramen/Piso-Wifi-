@@ -77,7 +77,7 @@ async function commit(access,project,writes,transaction) {
   if(transaction)body.transaction=transaction;
   const r=await fetch(`${base(project)}:commit`,{method:"POST",headers:{authorization:`Bearer ${access}`,"content-type":"application/json"},body:JSON.stringify(body)});
   const d=await r.json().catch(()=>({}));
-  if(!r.ok)throw new Error(`Could not commit dashboard sync (${r.status}): ${d.error?.message||d.message||"Firestore rejected the write."}`);
+  if(!r.ok)throw new Error(`Could not commit dashboard sync (${r.status}).`);
   return d;
 }
 async function beginTransaction(access,project) {
@@ -110,30 +110,13 @@ async function syncSale(access,project,transactionDocId,callerUid) {
 
   const transaction=await beginTransaction(access,project);
   const docs=await runQuery(access,project,"monthlyRecords",[["unitId",String(sale.unitId)],["month",month]],transaction);
-  const canonicalId=`cashier_${String(sale.unitId).replace(/[^A-Za-z0-9_-]/g,"_")}_${month}`;
-  // Find the already-synced sale across all matching monthly rows before writing.
-  // This makes retries idempotent even if legacy data contains duplicate month rows.
-  const alreadySyncedDoc=docs.find(d=>{
-    const f=docFields(d);return Array.isArray(f.cashierTransactionIds)&&f.cashierTransactionIds.includes(transactionDocId);
-  });
-  if(alreadySyncedDoc) {
-    await setSyncStatus(access,project,transactionDocId,"dashboardSalesSyncStatus");
-    return {ok:true,alreadySynced:true,month,unitId:sale.unitId};
-  }
-  // Prefer the row already used for cashier accumulation; otherwise prefer the
-  // deterministic cashier row, then a stable document name. Customer/Admin use
-  // the same priority when selecting a monthly row for display.
-  const prior=[...docs].sort((a,b)=>{
-    const af=docFields(a),bf=docFields(b);
-    const ar=Array.isArray(af.cashierTransactionIds)&&af.cashierTransactionIds.length?1:0;
-    const br=Array.isArray(bf.cashierTransactionIds)&&bf.cashierTransactionIds.length?1:0;
-    if(ar!==br)return br-ar;
-    const aid=a.name?.split("/").pop()||"",bid=b.name?.split("/").pop()||"";
-    if((aid===canonicalId)!==(bid===canonicalId))return aid===canonicalId?-1:1;
-    return aid.localeCompare(bid);
-  })[0]||null;
+  const prior=docs[0];
   const priorFields=docFields(prior);
   const already=Array.isArray(priorFields.cashierTransactionIds)?priorFields.cashierTransactionIds:[];
+  if(prior && already.includes(transactionDocId)) {
+    await setSyncStatus(access,project,transactionDocId,"dashboardSalesSyncStatus");
+    return {ok:true,alreadySynced:true,month};
+  }
   const ids=[...already,transactionDocId];
   const now=new Date().toISOString();
   if(prior) {
@@ -142,7 +125,7 @@ async function syncSale(access,project,transactionDocId,callerUid) {
       grossSales:num(gross),cashierTransactionIds:{arrayValue:{values:ids.map(str)}},updatedAt:stamp(now)
     }},updateMask:{fieldPaths:["grossSales","cashierTransactionIds","updatedAt"]}}],transaction);
   } else {
-    const id=canonicalId;
+    const id=`cashier_${String(sale.unitId).replace(/[^A-Za-z0-9_-]/g,"_")}_${month}`;
     const name=resourceName(project,`monthlyRecords/${id}`);
     await commit(access,project,[{update:{name,fields:{
       unitId:str(sale.unitId),month:str(month),grossSales:num(sale.grossSales),miscellaneousFee:num(0),

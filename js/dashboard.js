@@ -239,17 +239,7 @@ function setupMonthSelector(){
 }
 function normalizeRows(month=selectedMonth){
   return units.map(u=>{
-    const matches=records.filter(x=>String(x.unitId)===String(u.id)&&String(x.month)===String(month));
-    const r=matches.sort((a,b)=>{
-      const ar=Array.isArray(a.cashierTransactionIds)&&a.cashierTransactionIds.length?1:0;
-      const br=Array.isArray(b.cashierTransactionIds)&&b.cashierTransactionIds.length?1:0;
-      if(ar!==br)return br-ar;
-      const aid=String(a.id||""),bid=String(b.id||"");
-      const ac=aid===`cashier_${String(u.id).replace(/[^A-Za-z0-9_-]/g,"_")}_${month}`;
-      const bc=bid===`cashier_${String(u.id).replace(/[^A-Za-z0-9_-]/g,"_")}_${month}`;
-      if(ac!==bc)return ac?-1:1;
-      return aid.localeCompare(bid);
-    })[0] || {unitId:u.id,month,grossSales:0};
+    const r=records.find(x=>x.unitId===u.id && x.month===month) || {unitId:u.id,month,grossSales:0};
     return {u,r,c:calc(r)};
   });
 }

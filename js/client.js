@@ -95,20 +95,7 @@ function filteredUnits(){
   return selectedUnitId==="all"?clientUnits:clientUnits.filter(u=>u.id===selectedUnitId);
 }
 function recordFor(unitId,month){
-  const matches=records.filter(r=>String(r.unitId)===String(unitId)&&String(r.month)===String(month));
-  if(!matches.length)return {unitId,month,grossSales:0};
-  // Prefer the monthly record that the cashier-sync endpoint is accumulating.
-  // This avoids showing a stale duplicate legacy row while live updates arrive.
-  return matches.sort((a,b)=>{
-    const ar=Array.isArray(a.cashierTransactionIds)&&a.cashierTransactionIds.length?1:0;
-    const br=Array.isArray(b.cashierTransactionIds)&&b.cashierTransactionIds.length?1:0;
-    if(ar!==br)return br-ar;
-    const aid=String(a.id||""),bid=String(b.id||"");
-    const ac=aid===`cashier_${String(unitId).replace(/[^A-Za-z0-9_-]/g,"_")}_${month}`;
-    const bc=bid===`cashier_${String(unitId).replace(/[^A-Za-z0-9_-]/g,"_")}_${month}`;
-    if(ac!==bc)return ac?-1:1;
-    return aid.localeCompare(bid);
-  })[0];
+  return records.find(r=>r.unitId===unitId&&r.month===month) || {unitId,month,grossSales:0};
 }
 function calc(r){
   return calculateFinancialRecord(r,settings,payments);
