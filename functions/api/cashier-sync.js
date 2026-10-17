@@ -43,7 +43,7 @@ function login(){
     if(passwordField)passwordField.disabled=!!pending;
   };
   const clearAdminAutofill=()=>{
-    if(emailField.value.trim().toLowerCase()==="pisonet@admin.com"){
+    if(emailField.value.trim().toLowerCase()==="admin@pisonet.com"){
       emailField.value="";passwordField.value="";
       msg("Please sign in with your Cashier account. Admin accounts cannot sign in here.");
     }
@@ -56,7 +56,7 @@ function login(){
     e.preventDefault();
     if(submitButton?.disabled)return;
     const email=emailField.value.trim().toLowerCase();
-    if(email==="pisonet@admin.com"){
+    if(email==="admin@pisonet.com"){
       passwordField.value="";
       msg("Admin login is not available on the Cashier portal. Use your Cashier email and password.");
       return;
