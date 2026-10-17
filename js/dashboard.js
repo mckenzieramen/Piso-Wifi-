@@ -763,6 +763,42 @@ function renderCashierManagement(){
   if (cashierRemittanceUnsub) { cashierRemittanceUnsub(); cashierRemittanceUnsub = null; }
   view.innerHTML=baseHead("Cashier Management","Create cashier accounts and review remittance requests submitted by Cashiers.",'<button class="primary-btn" id="addAdminCashier">+ Create Cashier Account</button>')+
     `<style>
+      /* Scoped premium blue styling for Admin > Cashier Management only. */
+      .piso-cashier-premium{--pc-bg:#06142b;--pc-panel:#0a1d39;--pc-line:#173e70;color:#eaf3ff;padding:2px;border-radius:20px;background:linear-gradient(145deg,#07162e,#041126)}
+      .piso-cashier-premium .piso-remit-panel,.piso-cashier-premium>.panel{background:linear-gradient(145deg,#0b2141,#07172e)!important;border:1px solid #164578!important;border-radius:18px!important;box-shadow:0 14px 35px rgba(0,25,70,.18)!important;color:#eaf3ff}
+      .piso-cashier-premium .panel-head h3,.piso-cashier-premium .piso-remit-history-head h3{color:#f5f9ff;font-size:17px;letter-spacing:-.02em}
+      .piso-cashier-premium .panel-head p,.piso-cashier-premium .piso-remit-history-head p{color:#a9c2e5}
+      .piso-cashier-premium .piso-remit-scroll{max-height:350px;border-top:1px solid #173e70;scrollbar-color:#2878d9 #07172e}
+      .piso-cashier-premium .piso-remit-scroll table{min-width:940px}
+      .piso-cashier-premium .piso-remit-scroll thead th{background:#102b50!important;color:#dceaff!important;box-shadow:0 1px 0 #214c7c}
+      .piso-cashier-premium .piso-remit-scroll th,.piso-cashier-premium .piso-remit-scroll td{border-bottom:1px solid rgba(72,126,190,.19);color:#dceaff}
+      .piso-cashier-premium .piso-remit-scroll tbody tr:nth-child(even){background:rgba(24,59,103,.24)}
+      .piso-cashier-premium .piso-remit-scroll tbody tr:hover{background:rgba(24,112,226,.16)}
+      .piso-cashier-premium .piso-remit-scroll .secondary-btn,.piso-cashier-premium .secondary-btn{background:#102d53;border:1px solid #2b5b91;color:#eaf3ff}
+      .piso-cashier-premium .primary-btn{background:linear-gradient(135deg,#1688ff,#0758d8);color:white;border:1px solid #369bff;box-shadow:0 5px 16px rgba(0,106,255,.2)}
+      .piso-cashier-premium .badge{background:#102e55;color:#bfe0ff;border:1px solid #2a5d95}
+      .piso-cashier-premium .table-wrap{overflow:auto;border-radius:14px;scrollbar-color:#2878d9 #07172e}
+      .piso-cashier-premium .table-wrap thead th{position:sticky;top:0;background:#102b50;color:#dceaff;z-index:2}
+      .piso-cashier-premium .table-wrap th,.piso-cashier-premium .table-wrap td{border-bottom:1px solid rgba(72,126,190,.2)}
+      .piso-cashier-premium .piso-remit-panel:first-of-type .panel-head:before{content:"↗";display:grid;place-items:center;width:42px;height:42px;flex:0 0 42px;border-radius:13px;background:linear-gradient(135deg,#167cff,#0648bb);color:white;font-size:22px;font-weight:900;box-shadow:0 7px 18px rgba(0,105,255,.25)}
+      .piso-cashier-premium .piso-remit-history-head:before{content:"◷";display:grid;place-items:center;width:42px;height:42px;flex:0 0 42px;border-radius:13px;background:linear-gradient(135deg,#643cff,#3820c5);color:white;font-size:25px;font-weight:900}
+      .piso-cashier-premium .piso-remit-history-head{justify-content:flex-start}
+      .piso-cashier-premium .piso-remit-history-head>div{flex:1}
+      .piso-cashier-premium .piso-remit-panel .panel-head{border-bottom:1px solid rgba(72,126,190,.2)}
+      .piso-cashier-premium .piso-remit-actions button{border-radius:10px;font-weight:800}
+      .piso-cashier-premium .piso-remit-modal{color:#eaf3ff;background:linear-gradient(145deg,#0b2141,#06142b);border-color:#2b5b91}
+      .piso-cashier-premium .piso-remit-modal h2,.piso-cashier-premium .piso-remit-summary strong{color:#f5f9ff}
+      .piso-cashier-premium .piso-remit-modal-copy,.piso-cashier-premium .piso-remit-summary span,.piso-cashier-premium .piso-remit-note-label{color:#a9c2e5}
+      .piso-cashier-premium .piso-remit-summary{background:#081a33;border-color:#244b78}
+      .piso-cashier-premium .piso-remit-summary>div{border-color:#244b78}
+      .piso-cashier-premium .piso-remit-summary>div.wide{background:#0b2141}
+      .piso-cashier-premium .piso-remit-note{background:#07172e;border-color:#2b5b91;color:#eaf3ff}
+      .piso-cashier-premium .piso-remit-close{background:#17365c;color:#eaf3ff}
+      .piso-cashier-premium .piso-remit-modal-actions button{border:1px solid #2b5b91}
+      .piso-cashier-premium .piso-remit-modal-actions button[type="submit"],.piso-cashier-premium .piso-remit-modal-actions .primary-btn{background:linear-gradient(135deg,#1688ff,#0758d8);color:white}
+      @media(max-width:760px){.piso-cashier-premium{padding:0}.piso-cashier-premium .piso-remit-scroll{max-height:300px}.piso-cashier-premium .piso-remit-panel .panel-head{padding:16px}}
+    </style>
+    <div class="piso-cashier-premium">
       .piso-remit-panel{overflow:hidden;border:1px solid #e1e8f2;border-radius:18px;background:linear-gradient(145deg,#fff 0%,#f9fbff 100%);box-shadow:0 12px 34px rgba(15,35,70,.07)}
       .piso-remit-panel .panel-head{padding:20px 22px;display:flex;align-items:center;gap:12px;flex-wrap:wrap}
       .piso-remit-panel .panel-head>div{flex:1;min-width:220px}.piso-remit-panel .panel-head h3{margin:0 0 5px}.piso-remit-panel .panel-head p{margin:0;color:#64748b}
@@ -784,7 +820,7 @@ function renderCashierManagement(){
     </style>
     <div class="panel piso-remit-panel"><div class="panel-head"><div><h3>Remittance Approval</h3><p>Review new submissions here. Approved and rejected records move to the history below and are not deleted.</p></div><span id="cashierRemittanceCount" class="badge">Loading…</span><button type="button" class="secondary-btn" id="refreshCashierRemittances">Refresh</button></div><div class="piso-remit-scroll"><table><thead><tr><th>Date &amp; Time Remitted</th><th>Cashier</th><th>Remitted To</th><th>Expected Remit</th><th>Actual Remit</th><th>Short / Over</th><th>Admin Action</th></tr></thead><tbody id="cashierRemittanceBody"><tr><td colspan="7">Loading remittance requests…</td></tr></tbody></table></div></div>
     <div class="panel piso-remit-panel" style="margin-top:18px"><div class="piso-remit-history-head"><div><h3>Remittance History</h3><p>Previously reviewed remittances stay saved here for reference.</p></div><span id="cashierRemittanceHistoryCount" class="badge">Loading…</span></div><div class="piso-remit-scroll"><table><thead><tr><th>Date &amp; Time Remitted</th><th>Cashier</th><th>Remitted To</th><th>Expected Remit</th><th>Actual Remit</th><th>Short / Over</th><th>Final Status</th></tr></thead><tbody id="cashierRemittanceHistoryBody"><tr><td colspan="7">Loading history…</td></tr></tbody></table></div></div>
-    <div class="panel" style="margin-top:18px"><div class="panel-head"><div><h3>Cashier Accounts</h3><p>Only Admin can create cashier accounts. Deleting an account does not delete its sales/history.</p></div><button type="button" class="secondary-btn" id="refreshCashierAccounts">Refresh</button></div><div class="table-wrap"><table><thead><tr><th>Cashier Name</th><th>Email</th><th>Status</th><th>Created</th><th>Action</th></tr></thead><tbody id="cashierAccountsBody"><tr><td colspan="5">Loading cashier accounts…</td></tr></tbody></table></div></div>`;
+    <div class="panel" style="margin-top:18px"><div class="panel-head"><div><h3>Cashier Accounts</h3><p>Only Admin can create cashier accounts. Deleting an account does not delete its sales/history.</p></div><button type="button" class="secondary-btn" id="refreshCashierAccounts">Refresh</button></div><div class="table-wrap"><table><thead><tr><th>Cashier Name</th><th>Email</th><th>Status</th><th>Created</th><th>Action</th></tr></thead><tbody id="cashierAccountsBody"><tr><td colspan="5">Loading cashier accounts…</td></tr></tbody></table></div></div></div>`;
   $("#addAdminCashier")?.addEventListener("click",openAdminCashierModal);
   $("#refreshCashierAccounts")?.addEventListener("click",loadCashierAccounts);
   $("#refreshCashierRemittances")?.addEventListener("click",watchCashierRemittances);
@@ -950,7 +986,7 @@ function subscribeSelectedSupport(id){
   if(selectedSupportUnsub)selectedSupportUnsub();
   if(selectedSupportMessagesUnsub)selectedSupportMessagesUnsub();
   adminSupportThreadMessages=[];
-  selectedSupportMessagesUnsub=onSnapshot(query(collection(db,"supportChats",id,"messages"),orderBy("createdAt","asc")),snap=>{if(selectedSupportChatId!==id)return;const subcollectionMessages=snap.docs.map(d=>({id:d.id,...d.data()}));const parentChat=supportChats.find(x=>x.id===id);const legacyMessages=Array.isArray(parentChat?.messages)?parentChat.messages.map((m,i)=>({...m,id:m.id||`legacy-${i}`})):[];const seen=new Set(subcollectionMessages.map(m=>`${m.senderType||""}|${m.text||""}|${String(m.createdAt||"")}`));adminSupportThreadMessages=[...legacyMessages.filter(m=>!seen.has(`${m.senderType||""}|${m.text||""}|${String(m.createdAt||"")}`)),...subcollectionMessages].sort((a,b)=>timeValue(a.createdAt)-timeValue(b.createdAt));const c=supportChats.find(x=>x.id===id);const box=$("#adminSupportMessages");if(c&&box){const oldTop=box.scrollTop,oldHeight=box.scrollHeight,clientHeight=box.clientHeight;const atBottom=true;const temp=document.createElement("div");temp.innerHTML=supportMessagesHtml(c);const wantedNodes=[...temp.querySelectorAll("[data-support-message-id]")];const wanted=new Set(wantedNodes.map(el=>el.dataset.supportMessageId));box.querySelectorAll("[data-support-message-id]").forEach(el=>{if(!wanted.has(el.dataset.supportMessageId))el.remove();});const have=new Set([...box.querySelectorAll("[data-support-message-id]")].map(el=>el.dataset.supportMessageId));wantedNodes.forEach(el=>{if(!have.has(el.dataset.supportMessageId))box.appendChild(el.cloneNode(true));});const empty=box.querySelector(".piso-admin-chat-empty");if(wantedNodes.length&&empty)empty.remove();requestAnimationFrame(()=>{box.scrollTop=atBottom?box.scrollHeight:oldTop;});}},err=>console.error("Admin support message stream failed",err));
+  selectedSupportMessagesUnsub=onSnapshot(query(collection(db,"supportChats",id,"messages"),orderBy("createdAt","asc")),snap=>{if(selectedSupportChatId!==id)return;adminSupportThreadMessages=snap.docs.map(d=>({id:d.id,...d.data()}));const c=supportChats.find(x=>x.id===id);const box=$("#adminSupportMessages");if(c&&box){const oldTop=box.scrollTop,oldHeight=box.scrollHeight,clientHeight=box.clientHeight;const atBottom=true;const temp=document.createElement("div");temp.innerHTML=supportMessagesHtml(c);const wantedNodes=[...temp.querySelectorAll("[data-support-message-id]")];const wanted=new Set(wantedNodes.map(el=>el.dataset.supportMessageId));box.querySelectorAll("[data-support-message-id]").forEach(el=>{if(!wanted.has(el.dataset.supportMessageId))el.remove();});const have=new Set([...box.querySelectorAll("[data-support-message-id]")].map(el=>el.dataset.supportMessageId));wantedNodes.forEach(el=>{if(!have.has(el.dataset.supportMessageId))box.appendChild(el.cloneNode(true));});const empty=box.querySelector(".piso-admin-chat-empty");if(wantedNodes.length&&empty)empty.remove();requestAnimationFrame(()=>{box.scrollTop=atBottom?box.scrollHeight:oldTop;});}},err=>console.error("Admin support message stream failed",err));
   const ref=doc(db,"supportChats",id);
   selectedSupportUnsub=onSnapshot(ref,snap=>{
     if(!snap.exists())return;
