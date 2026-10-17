@@ -1,386 +1,217 @@
-import { initializeApp } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-app.js";
-import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut, updatePassword, EmailAuthProvider, reauthenticateWithCredential } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-auth.js";
-import { getFirestore, collection, doc, getDoc, getDocs, addDoc, updateDoc, query, where, orderBy, onSnapshot, serverTimestamp, arrayUnion } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-firestore.js";
-import { getStorage, ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-storage.js";
-import { firebaseConfig } from "./firebase-config.js";
-console.info("[PISO WIFI CASHIER] BUILD 2026-10-13-COMBINED-FIXES-1");
-const CASHIER_BUILD = "2026-10-13-COMBINED-FIXES-1";
-const CASHIER_AUTH_TIMEOUT_MS = 12000;
-function withCashierTimeout(promise, label){
-  return Promise.race([
-    promise,
-    new Promise((_,reject)=>setTimeout(()=>reject(new Error(`${label} is taking too long. Check your internet connection and Firestore access, then reload.`)),CASHIER_AUTH_TIMEOUT_MS))
-  ]);
+const headers = { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" };
+const json = (data, status = 200) => new Response(JSON.stringify(data), { status, headers });
+
+function encodePart(value) {
+  return btoa(String.fromCharCode(...new TextEncoder().encode(JSON.stringify(value))))
+    .replace(/=/g, "").replace(/\+/g, "-").replace(/\//g, "_");
 }
-const app=initializeApp(firebaseConfig,"cashierPortal");const auth=getAuth(app);const db=getFirestore(app);const storage=getStorage(app);
-const $=s=>document.querySelector(s);const money=n=>`₱${Number(n||0).toLocaleString("en-PH",{minimumFractionDigits:2,maximumFractionDigits:2})}`;const esc=v=>String(v??"").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#039;"}[m]));
-const CUSTOMER_CACHE_KEY="pisoWifi.cashier.registeredCustomers.v1";
-function readCustomerCache(){try{const raw=localStorage.getItem(CUSTOMER_CACHE_KEY);const value=raw?JSON.parse(raw):[];return Array.isArray(value)?value:[]}catch{return []}}
-function rememberCustomers(list){try{localStorage.setItem(CUSTOMER_CACHE_KEY,JSON.stringify(list.map(c=>({id:c.id,...c}))));}catch(error){console.warn("[Cashier] Customer cache not available",error)}}
-let user=null,profile=null,tab="sale",unsubs=[],customerUnsub=null,selectedReceiptTxnId="",remitUnlocked=false;let txns=[],chats=[],remittances=[],plans=[],customers=readCustomerCache(),customerLoadError="",customerLoadStatus=customers.length?"cached":"loading";
-function msg(t,error=true){const el=$("#loginMsg");if(el){el.textContent=t;el.style.color=error?"#d9384a":"#168a52";}}
-async function syncCashierRecord(action,transactionDocId){
-  const response=await fetch("/api/cashier-sync",{
-    method:"POST",
-    headers:{
-      "Content-Type":"application/json",
-      "Authorization":`Bearer ${await user.getIdToken()}`
-    },
-    body:JSON.stringify({action,transactionDocId})
+async function getGoogleAccessToken(sa) {
+  const now = Math.floor(Date.now() / 1000);
+  const claims = {
+    iss: sa.client_email,
+    scope: "https://www.googleapis.com/auth/datastore https://www.googleapis.com/auth/identitytoolkit",
+    aud: sa.token_uri || "https://oauth2.googleapis.com/token",
+    iat: now, exp: now + 3500
+  };
+  const unsigned = `${encodePart({alg:"RS256",typ:"JWT"})}.${encodePart(claims)}`;
+  const pem = String(sa.private_key || "").replace("-----BEGIN PRIVATE KEY-----","").replace("-----END PRIVATE KEY-----","").replace(/\s/g,"");
+  if (!pem) throw new Error("Service account private key is missing.");
+  const key = await crypto.subtle.importKey("pkcs8", Uint8Array.from(atob(pem),c=>c.charCodeAt(0)),
+    {name:"RSASSA-PKCS1-v1_5",hash:"SHA-256"}, false, ["sign"]);
+  const sig = new Uint8Array(await crypto.subtle.sign("RSASSA-PKCS1-v1_5",key,new TextEncoder().encode(unsigned)));
+  const assertion = `${unsigned}.${btoa(String.fromCharCode(...sig)).replace(/=/g,"").replace(/\+/g,"-").replace(/\//g,"_")}`;
+  const resp = await fetch(claims.aud,{method:"POST",headers:{"content-type":"application/x-www-form-urlencoded"},
+    body:new URLSearchParams({grant_type:"urn:ietf:params:oauth:grant-type:jwt-bearer",assertion})});
+  const data = await resp.json().catch(()=>({}));
+  if (!resp.ok || !data.access_token) throw new Error("Could not obtain a Firebase server access token.");
+  return data.access_token;
+}
+async function firebaseIdentity(idToken, apiKey) {
+  const r=await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=${encodeURIComponent(apiKey)}`,{
+    method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({idToken})});
+  const d=await r.json().catch(()=>({}));
+  return r.ok ? d.users?.[0] || null : null;
+}
+function field(doc,key) {
+  const f=doc?.fields?.[key];
+  if (!f) return undefined;
+  if ("stringValue" in f) return f.stringValue;
+  if ("integerValue" in f) return Number(f.integerValue);
+  if ("doubleValue" in f) return Number(f.doubleValue);
+  if ("booleanValue" in f) return f.booleanValue;
+  if ("arrayValue" in f) return (f.arrayValue.values||[]).map(v=>v.stringValue ?? v.integerValue ?? v.doubleValue ?? null);
+  if ("mapValue" in f) return Object.fromEntries(Object.entries(f.mapValue.fields||{}).map(([k,v])=>[k,field({fields:{[k]:v}},k)]));
+  return undefined;
+}
+const str = v => ({stringValue:String(v ?? "")});
+const num = v => ({doubleValue:Number(v || 0)});
+const stamp = v => ({timestampValue:new Date(v).toISOString()});
+function docFields(doc) { return Object.fromEntries(Object.keys(doc?.fields||{}).map(k=>[k,field(doc,k)])); }
+function base(project) { return `https://firestore.googleapis.com/v1/projects/${encodeURIComponent(project)}/databases/(default)/documents`; }
+function resourceName(project, path) { return `projects/${project}/databases/(default)/documents/${path}`; }
+async function getDoc(access, project, path) {
+  const r=await fetch(`${base(project)}/${path}`,{headers:{authorization:`Bearer ${access}`}});
+  if(r.status===404)return null;
+  const d=await r.json().catch(()=>({}));
+  if(!r.ok)throw new Error(`Could not read Firestore record (${r.status}).`);
+  return d;
+}
+async function patchDoc(access, project, path, fields, masks) {
+  const qs=masks.map(k=>`updateMask.fieldPaths=${encodeURIComponent(k)}`).join("&");
+  const r=await fetch(`${base(project)}/${path}?${qs}`,{method:"PATCH",headers:{authorization:`Bearer ${access}`,"content-type":"application/json"},body:JSON.stringify({fields})});
+  const d=await r.json().catch(()=>({}));
+  if(!r.ok)throw new Error(`Could not update Firestore record (${r.status}).`);
+  return d;
+}
+async function runQuery(access, project, collectionId, filters, transaction) {
+  const where={compositeFilter:{op:"AND",filters:filters.map(([fieldPath,value])=>({fieldFilter:{field:{fieldPath},op:"EQUAL",value:{stringValue:value}}}))}};
+  const body={structuredQuery:{from:[{collectionId}],where}};
+  if(transaction)body.transaction=transaction;
+  const r=await fetch(`${base(project)}:runQuery`,{method:"POST",headers:{authorization:`Bearer ${access}`,"content-type":"application/json"},body:JSON.stringify(body)});
+  const d=await r.json().catch(()=>[]);
+  if(!r.ok)throw new Error(`Could not query Firestore (${r.status}).`);
+  return d.map(x=>x.document).filter(Boolean);
+}
+async function commit(access,project,writes,transaction) {
+  const body={writes};
+  if(transaction)body.transaction=transaction;
+  const r=await fetch(`${base(project)}:commit`,{method:"POST",headers:{authorization:`Bearer ${access}`,"content-type":"application/json"},body:JSON.stringify(body)});
+  const d=await r.json().catch(()=>({}));
+  if(!r.ok)throw new Error(`Could not commit dashboard sync (${r.status}): ${d.error?.message||d.message||"Firestore rejected the write."}`);
+  return d;
+}
+async function beginTransaction(access,project) {
+  const r=await fetch(`${base(project)}:beginTransaction`,{method:"POST",headers:{authorization:`Bearer ${access}`,"content-type":"application/json"},body:JSON.stringify({options:{readWrite:{}}})});
+  const d=await r.json().catch(()=>({}));
+  if(!r.ok||!d.transaction)throw new Error("Could not start the Firestore sync transaction.");
+  return d.transaction;
+}
+async function setSyncStatus(access,project,transactionDocId,fieldName) {
+  try {
+    await patchDoc(access,project,`cashierTransactions/${encodeURIComponent(transactionDocId)}`,
+      {[fieldName]:str("SYNCED"),[fieldName.replace("Status","At")]:stamp(new Date())},
+      [fieldName,fieldName.replace("Status","At")]);
+  } catch(e) { console.warn("Sync completed but status badge update failed",e); }
+}
+async function syncSale(access,project,transactionDocId,callerUid) {
+  const tx=await getDoc(access,project,`cashierTransactions/${encodeURIComponent(transactionDocId)}`);
+  if(!tx)throw new Error("Cashier sale record was not found.");
+  const sale=docFields(tx);
+  if(sale.cashierId!==callerUid)throw new Error("You can only sync sales you entered.");
+  if(!sale.unitId || !sale.saleDate || !(Number(sale.grossSales)>0))throw new Error("Sale is missing a customer, date, or valid gross sales.");
+  const month=String(sale.saleDate).slice(0,7);
+  if(!/^\d{4}-\d{2}$/.test(month))throw new Error("Sale date is invalid.");
+  const unit=await getDoc(access,project,`units/${encodeURIComponent(sale.unitId)}`);
+  if(!unit)throw new Error("The selected Admin customer/unit no longer exists.");
+  const unitData=docFields(unit);
+  if(unitData.active===false)throw new Error("The selected customer account is inactive.");
+  if(unitData.clientCode && String(unitData.clientCode).toLowerCase()!==String(sale.customerId||"").toLowerCase())
+    throw new Error("The sale Customer ID does not match the registered Admin customer record.");
+
+  const transaction=await beginTransaction(access,project);
+  const docs=await runQuery(access,project,"monthlyRecords",[["unitId",String(sale.unitId)],["month",month]],transaction);
+  const canonicalId=`cashier_${String(sale.unitId).replace(/[^A-Za-z0-9_-]/g,"_")}_${month}`;
+  // Find the already-synced sale across all matching monthly rows before writing.
+  // This makes retries idempotent even if legacy data contains duplicate month rows.
+  const alreadySyncedDoc=docs.find(d=>{
+    const f=docFields(d);return Array.isArray(f.cashierTransactionIds)&&f.cashierTransactionIds.includes(transactionDocId);
   });
-  const result=await response.json().catch(()=>({}));
-  if(!response.ok||result.ok!==true)throw new Error(result.error||"Dashboard sync failed.");
-  return result;
-}
-async function audit(action,recordId,metadata={}){try{await addDoc(collection(db,"audit_logs"),{userId:user.uid,role:"cashier",action,recordId:String(recordId||""),metadata,createdAt:serverTimestamp()})}catch(e){console.warn("Audit log skipped",e)}}
-function login(){
-  const form=$("#loginForm"), emailField=$("#email"), passwordField=$("#password");
-  const submitButton=form?.querySelector('button[type="submit"]');
-  const originalButtonText=submitButton?.textContent||"Sign in to Cashier";
-  const setPending=(pending)=>{
-    if(submitButton){submitButton.disabled=!!pending;submitButton.textContent=pending?"Checking account…":originalButtonText;}
-    if(emailField)emailField.disabled=!!pending;
-    if(passwordField)passwordField.disabled=!!pending;
-  };
-  const clearAdminAutofill=()=>{
-    if(emailField.value.trim().toLowerCase()==="pisonet@admin.com"){
-      emailField.value="";passwordField.value="";
-      msg("Please sign in with your Cashier account. Admin accounts cannot sign in here.");
-    }
-  };
-  emailField.setAttribute("autocomplete","username");
-  passwordField.setAttribute("autocomplete","current-password");
-  clearAdminAutofill();
-  emailField.addEventListener("input",clearAdminAutofill);
-  form.onsubmit=async e=>{
-    e.preventDefault();
-    if(submitButton?.disabled)return;
-    const email=emailField.value.trim().toLowerCase();
-    if(email==="pisonet@admin.com"){
-      passwordField.value="";
-      msg("Admin login is not available on the Cashier portal. Use your Cashier email and password.");
-      return;
-    }
-    if(!email||!passwordField.value){msg("Enter your Cashier email and password.");return;}
-    setPending(true);
-    msg("Signing in…",false);
-    try{
-      await signInWithEmailAndPassword(auth,email,passwordField.value);
-      msg("Login verified. Opening Cashier portal…",false);
-      // The auth-state handler completes profile verification and renders the portal.
-      setTimeout(()=>{
-        if(document.body.classList.contains("cashier-login-page") && auth.currentUser){
-          setPending(false);
-          msg("Your password was accepted, but the Cashier portal did not finish opening. Check the account profile and connection, then try again.");
-        }
-      },CASHIER_AUTH_TIMEOUT_MS+1000);
-    }catch(error){
-      const code=String(error?.code||"");
-      let message="Unable to sign in. Please try again.";
-      if(["auth/invalid-credential","auth/wrong-password","auth/user-not-found","auth/invalid-email"].includes(code)){
-        message="Incorrect email or password. Please check your Cashier email and password, then try again.";
-      }else if(code==="auth/too-many-requests"){
-        message="Too many unsuccessful attempts. Please wait a few minutes before trying again.";
-      }else if(code==="auth/network-request-failed"){
-        message="Connection problem. Check your internet connection and try again.";
-      }else if(code==="auth/user-disabled"){
-        message="This Cashier account has been disabled. Please contact the Admin.";
-      }else if(code==="auth/operation-not-allowed"){
-        message="Email/password sign-in is disabled in Firebase Authentication. Enable it in Firebase Console.";
-      }else{
-        message=error?.message||message;
-      }
-      msg(message);
-      setPending(false);
-    }
-  };
-  window.__pisoCashierSetLoginPending=setPending;
-}
-async function loadProfile(u){
-  const snap=await withCashierTimeout(getDoc(doc(db,"users",u.uid)),"Cashier profile verification");
-  if(!snap.exists())throw new Error("Your login is valid, but the Admin-created Cashier profile was not found. Ask Admin to check this account.");
-  const account=snap.data()||{};
-  if(String(account.role||"").toLowerCase()!=="cashier")throw new Error("This account is not registered with the Cashier role. Please use the correct Cashier account.");
-  if(account.active===false)throw new Error("This Cashier account is inactive. Please contact the Admin.");
-  user=u;profile={id:snap.id,...snap.data()};
-  const passwordMarker=`pisoWifi.cashier.passwordChanged.${u.uid}`;
-  let locallyChanged=false;try{locallyChanged=localStorage.getItem(passwordMarker)==="true";}catch{}
-  if(profile.forcePasswordChange!==false && locallyChanged){
-    try{await updateDoc(doc(db,"users",u.uid),{forcePasswordChange:false,passwordChangedAt:serverTimestamp()});profile.forcePasswordChange=false;}
-    catch(error){console.warn("[Cashier] Password was changed previously; Firestore flag repair will retry later.",error);profile.forcePasswordChange=false;}
+  if(alreadySyncedDoc) {
+    await setSyncStatus(access,project,transactionDocId,"dashboardSalesSyncStatus");
+    return {ok:true,alreadySynced:true,month,unitId:sale.unitId};
   }
-  tab="sale";document.body.className="cashier-app";document.body.innerHTML=`<aside class="cashier-sidebar"><div class="cashier-brand">PISO WIFI<small>Cashier Portal</small></div><nav class="cashier-nav"><button data-tab="sale">Enter Sale</button><button data-tab="service">Customer Service</button><button data-tab="receipt">Receipt</button><button data-tab="remit">Remit</button></nav><button id="logout" class="secondary cashier-logout">Logout</button></aside><main class="cashier-main"><header class="cashier-top"><div><h1 id="title">Cashier Portal</h1><p>Cashier: <b>${esc(profile.name||profile.email||"Cashier")}</b></p><small id="cashierBuildStamp" style="display:block;color:#64748b;margin-top:4px">Build 2026-10-12-NAV-CUSTOMER-FIX-2</small></div><span class="cashier-status">ACTIVE</span></header><section id="view"></section></main>`;$("#logout").onclick=()=>signOut(auth).then(()=>location.reload());document.querySelectorAll("[data-tab]").forEach(b=>b.addEventListener("click",()=>{if(tab==="remit"&&b.dataset.tab!=="remit")remitUnlocked=false;tab=b.dataset.tab;render()}));if(profile.forcePasswordChange!==false){renderForcePasswordChange();return;}startRealtime();render();}
-function renderForcePasswordChange(){
-  const host=$("#view");
-  if(!host)return;
-  host.innerHTML=`<section class="panel" style="max-width:560px;margin:32px auto;padding:24px">
-    <h2>Set a New Password</h2>
-    <p>Your Admin-issued temporary password must be verified before you can use the Cashier Portal.</p>
-    <form id="cashierPasswordChange">
-      <label>Current temporary password<input id="currentCashierPassword" type="password" autocomplete="current-password" required></label>
-      <label style="display:block;margin-top:12px">New password<input id="newCashierPassword" type="password" minlength="8" autocomplete="new-password" required></label>
-      <label style="display:block;margin-top:12px">Confirm new password<input id="confirmCashierPassword" type="password" minlength="8" autocomplete="new-password" required></label>
-      <p id="cashierPasswordMsg" class="message" role="status"></p>
-      <button class="primary" type="submit">Save New Password</button>
-    </form>
-  </section>`;
-  $("#cashierPasswordChange").onsubmit=async e=>{
-    e.preventDefault();
-    const current=$("#currentCashierPassword").value;
-    const next=$("#newCashierPassword").value;
-    const confirmPassword=$("#confirmCashierPassword").value;
-    const msgEl=$("#cashierPasswordMsg");
-    const button=$("#cashierPasswordChange button[type=submit]");
-    if(next.length<8){msgEl.textContent="Use at least 8 characters for your new password.";return;}
-    if(next!==confirmPassword){msgEl.textContent="The passwords do not match.";return;}
-    if(!user?.email){msgEl.textContent="Your cashier session has expired. Please sign in again.";return;}
-    try{
-      button.disabled=true;
-      msgEl.textContent="Verifying your current password…";
-      const credential=EmailAuthProvider.credential(user.email,current);
-      await reauthenticateWithCredential(user,credential);
-      msgEl.textContent="Saving your new password…";
-      await updatePassword(user,next);
-      try{localStorage.setItem(`pisoWifi.cashier.passwordChanged.${user.uid}`,"true");}catch{}
-      profile.forcePasswordChange=false;
-      try{await updateDoc(doc(db,"users",user.uid),{forcePasswordChange:false,passwordChangedAt:serverTimestamp()});}
-      catch(ruleError){console.error("[PISO WIFI CASHIER] Password changed but profile flag could not be saved; local one-time marker retained.",ruleError);}
-      msgEl.textContent="Password updated. Opening Cashier Portal…";
-      startRealtime();
-      render();
-    }catch(error){
-      console.error("[PISO WIFI CASHIER] Password change failed",error);
-      if(error?.code==="auth/wrong-password"||error?.code==="auth/invalid-credential"){
-        msgEl.textContent="The current temporary password is incorrect. Please check it and try again.";
-      }else if(error?.code==="auth/too-many-requests"){
-        msgEl.textContent="Too many attempts. Wait a while before trying again.";
-      }else if(error?.code==="auth/requires-recent-login"){
-        msgEl.textContent="Firebase still requires a fresh sign-in. Log out, sign in again with your current password, then set your new password.";
-      }else{
-        msgEl.textContent=error?.message||"Could not update password. Please try again.";
-      }
-    }finally{
-      if(button)button.disabled=false;
-    }
-  };
+  // Prefer the row already used for cashier accumulation; otherwise prefer the
+  // deterministic cashier row, then a stable document name. Customer/Admin use
+  // the same priority when selecting a monthly row for display.
+  const prior=[...docs].sort((a,b)=>{
+    const af=docFields(a),bf=docFields(b);
+    const ar=Array.isArray(af.cashierTransactionIds)&&af.cashierTransactionIds.length?1:0;
+    const br=Array.isArray(bf.cashierTransactionIds)&&bf.cashierTransactionIds.length?1:0;
+    if(ar!==br)return br-ar;
+    const aid=a.name?.split("/").pop()||"",bid=b.name?.split("/").pop()||"";
+    if((aid===canonicalId)!==(bid===canonicalId))return aid===canonicalId?-1:1;
+    return aid.localeCompare(bid);
+  })[0]||null;
+  const priorFields=docFields(prior);
+  const already=Array.isArray(priorFields.cashierTransactionIds)?priorFields.cashierTransactionIds:[];
+  const ids=[...already,transactionDocId];
+  const now=new Date().toISOString();
+  if(prior) {
+    const gross=Number(priorFields.grossSales||0)+Number(sale.grossSales||0);
+    await commit(access,project,[{update:{name:prior.name,fields:{
+      grossSales:num(gross),cashierTransactionIds:{arrayValue:{values:ids.map(str)}},updatedAt:stamp(now)
+    }},updateMask:{fieldPaths:["grossSales","cashierTransactionIds","updatedAt"]}}],transaction);
+  } else {
+    const id=canonicalId;
+    const name=resourceName(project,`monthlyRecords/${id}`);
+    await commit(access,project,[{update:{name,fields:{
+      unitId:str(sale.unitId),month:str(month),grossSales:num(sale.grossSales),miscellaneousFee:num(0),
+      cashierTransactionIds:{arrayValue:{values:[str(transactionDocId)]}},createdAt:stamp(now),updatedAt:stamp(now)
+    }},currentDocument:{exists:false}}],transaction);
+  }
+  await setSyncStatus(access,project,transactionDocId,"dashboardSalesSyncStatus");
+  return {ok:true,month,unitId:sale.unitId,grossSales:Number(sale.grossSales)};
 }
-const automaticSyncInFlight = new Set();
-const automaticSyncLastAttempt = new Map();
-function queueAutomaticDashboardSync(snapshotTransactions){
-  for(const t of snapshotTransactions){
-    const actions=[];
-    if(t.dashboardSalesSyncStatus!=="SYNCED") actions.push("sale");
-    if(t.status==="CUSTOMER EARNINGS PAID" && t.customerEarningsPaid===true && t.dashboardPaymentSyncStatus!=="SYNCED") actions.push("payment");
-    for(const action of actions){
-      const key=`${action}:${t.id}`;
-      if(automaticSyncInFlight.has(key)) continue;
-      const last=automaticSyncLastAttempt.get(key)||0;
-      if(Date.now()-last<15000) continue;
-      automaticSyncLastAttempt.set(key,Date.now());
-      automaticSyncInFlight.add(key);
-      syncCashierRecord(action,t.id).then(()=>{
-        automaticSyncLastAttempt.delete(key);
-      }).catch(error=>{
-        console.error(`[PISO WIFI] Automatic ${action} dashboard sync failed for ${t.id}:`,error);
-        // Retry once the cooldown expires, without blocking Cashier operations or creating duplicate records.
-        setTimeout(()=>{
-          automaticSyncInFlight.delete(key);
-          const current=txns.find(x=>x.id===t.id);
-          if(current && ((action==="sale" && current.dashboardSalesSyncStatus!=="SYNCED") ||
-             (action==="payment" && current.status==="CUSTOMER EARNINGS PAID" && current.dashboardPaymentSyncStatus!=="SYNCED"))){
-            queueAutomaticDashboardSync([current]);
-          }
-        },15000);
-      }).finally(()=>{
-        if(automaticSyncLastAttempt.get(key)===0) automaticSyncLastAttempt.delete(key);
-        // On success, release the lock; the Firestore listener will confirm SYNCED.
-        if(!automaticSyncLastAttempt.has(key)) automaticSyncInFlight.delete(key);
-      });
-    }
+async function syncPayment(access,project,transactionDocId,callerUid) {
+  const tx=await getDoc(access,project,`cashierTransactions/${encodeURIComponent(transactionDocId)}`);
+  if(!tx)throw new Error("Cashier sale record was not found.");
+  const sale=docFields(tx);
+  if(sale.cashierId!==callerUid)throw new Error("You can only sync payments for sales you entered.");
+  if(sale.status!=="CUSTOMER EARNINGS PAID" || sale.customerEarningsPaid!==true)
+    throw new Error("The customer earnings payment has not been recorded yet.");
+  if(!sale.unitId || !sale.saleDate)throw new Error("Sale is missing its customer or date.");
+  const month=String(sale.saleDate).slice(0,7);
+  const paymentId=`cashier_${String(transactionDocId).replace(/[^A-Za-z0-9_-]/g,"_")}`;
+  const paymentPath=`payments/${paymentId}`;
+  const existing=await getDoc(access,project,paymentPath);
+  if(existing) {
+    await setSyncStatus(access,project,transactionDocId,"dashboardPaymentSyncStatus");
+    return {ok:true,alreadySynced:true,month};
+  }
+  const amount=Number(sale.totalCustomerEarnings||0);
+  if(!(amount>0))throw new Error("Customer earnings amount is invalid.");
+  const now=new Date().toISOString();
+  const write={update:{name:resourceName(project,paymentPath),fields:{
+    unitId:str(sale.unitId),month:str(month),amount:num(amount),paymentDate:str(now.slice(0,10)),
+    method:str("Cashier customer earnings payment"),reference:str(sale.receiptId||sale.transactionId||transactionDocId),
+    sourceTransactionId:str(transactionDocId),createdAt:stamp(now)
+  }},currentDocument:{exists:false}};
+  try { await commit(access,project,[write]); }
+  catch(e) {
+    const after=await getDoc(access,project,paymentPath);
+    if(!after)throw e;
+  }
+  await setSyncStatus(access,project,transactionDocId,"dashboardPaymentSyncStatus");
+  return {ok:true,month,amount};
+}
+
+export async function onRequestPost({request,env}) {
+  try {
+    if(!env.FIREBASE_PROJECT_ID || !env.FIREBASE_API_KEY || !env.FIREBASE_SERVICE_ACCOUNT_JSON)
+      return json({ok:false,error:"Cashier dashboard sync is not configured. Verify Firebase Cloudflare secrets."},503);
+    const token=(request.headers.get("authorization")||"").replace(/^Bearer\s+/i,"").trim();
+    if(!token)return json({ok:false,error:"Sign in as Cashier before syncing."},401);
+    const identity=await firebaseIdentity(token,env.FIREBASE_API_KEY);
+    if(!identity?.localId)return json({ok:false,error:"Your session expired. Sign in again."},401);
+    const serviceAccount=JSON.parse(env.FIREBASE_SERVICE_ACCOUNT_JSON);
+    if(serviceAccount.project_id!==env.FIREBASE_PROJECT_ID) return json({ok:false,error:"Firebase project and service account do not match."},500);
+    const access=await getGoogleAccessToken(serviceAccount);
+    const userDoc=await getDoc(access,env.FIREBASE_PROJECT_ID,`users/${encodeURIComponent(identity.localId)}`);
+    const userData=docFields(userDoc);
+    if(String(userData.role||"").toLowerCase()!=="cashier" || userData.active===false)
+      return json({ok:false,error:"Only an active Cashier account can sync its own sales."},403);
+    const body=await request.json().catch(()=>({}));
+    const action=String(body.action||"");
+    const transactionDocId=String(body.transactionDocId||"").trim();
+    if(!transactionDocId || transactionDocId.includes("/") || transactionDocId.length>180)
+      return json({ok:false,error:"A valid sale record ID is required."},400);
+    let result;
+    if(action==="sale") result=await syncSale(access,env.FIREBASE_PROJECT_ID,transactionDocId,identity.localId);
+    else if(action==="payment") result=await syncPayment(access,env.FIREBASE_PROJECT_ID,transactionDocId,identity.localId);
+    else return json({ok:false,error:"Unsupported sync action."},400);
+    return json(result,200);
+  } catch(error) {
+    console.error("[cashier-sync]",error);
+    return json({ok:false,error:error?.message||"Cashier dashboard sync failed."},500);
   }
 }
-function startRealtime(){unsubs.forEach(f=>f());unsubs=[];unsubs.push(onSnapshot(query(collection(db,"cashierTransactions"),where("cashierId","==",user.uid)),s=>{txns=s.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>String(b.createdAt||"").localeCompare(String(a.createdAt||"")));render();queueAutomaticDashboardSync(txns)}));unsubs.push(onSnapshot(query(collection(db,"customerChats"),where("cashierId","==",user.uid)),s=>{chats=s.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>String(b.updatedAt||"").localeCompare(String(a.updatedAt||"")));render()}));unsubs.push(onSnapshot(query(collection(db,"remittances"),where("cashierId","==",user.uid)),s=>{remittances=s.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>String(b.createdAt||"").localeCompare(String(a.createdAt||"")));render()}));unsubs.push(onSnapshot(collection(db,"wifi_plans"),s=>{plans=s.docs.map(d=>({id:d.id,...d.data()})).filter(x=>x.status==="ACTIVE").sort((a,b)=>Number(a.sortOrder||0)-Number(b.sortOrder||0));render()}));loadRegisteredCustomers().catch(error=>{customerLoadStatus="error";customerLoadError=error?.message||"Could not start customer loading.";console.error("[Cashier] Could not start customer loader:",error);render()});}
-async function loadRegisteredCustomers(){
-  if(customerUnsub){customerUnsub();customerUnsub=null;}
-  customerLoadStatus=customers.length?"cached":"loading";customerLoadError="";render();
-  let firstResult=false;
-  const timeout=setTimeout(()=>{
-    if(!firstResult && customerLoadStatus==="loading"){
-      customerLoadStatus="error";
-      customerLoadError="Timed out waiting for Firestore. Verify the deployed cashier.js and Firestore access.";
-      console.error("[Cashier] Customer loader timed out before first Firestore response.");
-      render();
-    }
-  },10000);
-  // Start realtime listener immediately so the customer dropdown is not blocked by a separate fetch.
-  customerUnsub=onSnapshot(collection(db,"units"),snapshot=>{
-    firstResult=true;clearTimeout(timeout);applyCustomerSnapshot(snapshot);
-  },error=>{
-    firstResult=true;clearTimeout(timeout);customerLoadStatus=customers.length?"cached":"error";
-    customerLoadError=error?.code ? `${error.code}: ${error.message||"Could not read registered customers."}` : (error?.message||"Realtime customer connection failed.");
-    console.error("[Cashier] Realtime units listener failed:",error);if(customers.length){customerLoadError="Using saved customer list; live refresh is unavailable.";}render();
-  });
-  // One-time fetch is supplemental. It has its own timeout and cannot leave the UI loading forever.
-  try{
-    const result=await Promise.race([
-      getDocs(collection(db,"units")),
-      new Promise((_,reject)=>setTimeout(()=>reject(new Error("Timed out contacting Firestore while loading units.")),10000))
-    ]);
-    if(!firstResult){firstResult=true;clearTimeout(timeout);applyCustomerSnapshot(result);}
-  }catch(error){
-    console.error("[Cashier] Initial units fetch failed:",error);
-    if(!firstResult){firstResult=true;clearTimeout(timeout);customerLoadStatus="error";customerLoadError=error?.code?`${error.code}: ${error.message||"Could not read units collection."}`:(error?.message||"Could not load registered customers.");render();}
-  }
-}
-function customerDisplayName(c){
-  const full=[c.firstName,c.lastName].filter(Boolean).join(" ").trim();
-  return String(c.name||c.fullName||full||c.customerName||c.clientName||c.ownerName||c.unitName||c.accountName||c.displayName||c.clientCode||c.clientId||c.customerId||"Customer").trim();
-}
-function applyCustomerSnapshot(snapshot){
-  customers=snapshot.docs.map(d=>({id:d.id,...d.data()}))
-    .filter(c=>c.active!==false && c.type!=="password-reset")
-    .sort((a,b)=>customerDisplayName(a).localeCompare(customerDisplayName(b)));
-  rememberCustomers(customers);
-  customerLoadStatus=customers.length?"loaded":"empty";
-  customerLoadError="";
-  console.info("[Cashier] Registered customers loaded from units:",customers.length);
-  render();
-}
-function shell(title,sub,body){$("#title").textContent=title;return `<div class="panel"><h2>${title}</h2><p>${sub}</p>${body}</div>`}
-function render(){document.querySelectorAll("[data-tab]").forEach(b=>b.classList.toggle("active",b.dataset.tab===tab));const v=$("#view");if(!v)return;const today=new Date().toISOString().slice(0,10);const todayTx=txns.filter(t=>String(t.createdAt?.toDate?t.createdAt.toDate().toISOString():t.createdAt||"").slice(0,10)===today);const pending=txns.filter(t=>t.status==="PENDING ADMIN REVIEW");if(tab==="sale"){const payable=txns.filter(t=>t.status!=="CUSTOMER EARNINGS PAID");const totalEarnings=txns.reduce((sum,t)=>sum+Number(t.totalCustomerEarnings||0),0);v.innerHTML=`<div class="panel"><h2>Enter Sale</h2><p>Choose the registered customer, enter the matching Customer ID and gross sales, then save.</p><form id="saleForm" class="grid"><div class="field"><label>Customer Account *</label><select id="customerAccount" required><option value="">${customerLoadStatus==="error"?`Customer load failed — see message below`:(customerLoadStatus==="loading"&&!customers.length)?"Loading registered customers…":customers.length?"Select customer":"No active registered customers found in units"}</option>${customers.map(c=>`<option value="${esc(c.id)}">${esc(customerDisplayName(c))}</option>`).join("")}</select>${customerLoadStatus==="error"?`<small role="alert" style="display:block;color:#c62828;margin-top:6px">${esc(customerLoadError)} <button type="button" id="retryCustomers" class="secondary" style="margin-left:8px">Retry loading customers</button></small>`:(customerLoadStatus==="loading"&&!customers.length)?`<small style="display:block;color:#b45309;margin-top:6px">Connecting to registered customer accounts…</small>`:""}</div><div class="field"><label>Unit Code</label><input id="unitCode" readonly placeholder="Auto-filled from account"></div><div class="field"><label>Customer ID *</label><input id="customerVerify" required autocomplete="off" placeholder="Enter Customer ID"></div><div class="field"><label>Gross Sales (₱) *</label><input id="gross" type="number" min="0.01" step="0.01" required></div><div class="field"><label>Date *</label><input id="saleDate" type="date" value="${new Date().toISOString().slice(0,10)}" required></div><div class="field full"><button class="primary" type="submit">SAVE SALE</button></div></form><div class="cards"><div class="card"><small>Total Customer Earnings (all records)</small><strong>${money(totalEarnings)}</strong></div><div class="card"><small>Awaiting Customer Payment</small><strong>${money(payable.filter(t=>t.status!=="CUSTOMER EARNINGS PAID").reduce((sum,t)=>sum+Number(t.totalCustomerEarnings||0),0))}</strong></div></div>${shell("Sales History","Pending customer earnings only. Paid transactions move to Receipt History.",`<div class="table-wrap"><table><thead><tr><th>Date / Time</th><th>Customer</th><th>Customer ID</th><th>Gross Sales</th><th>Customer Earnings</th><th>Status</th><th>Action</th></tr></thead><tbody>${txns.filter(t=>t.status!=="CUSTOMER EARNINGS PAID").map(t=>`<tr><td>${esc(t.saleDate||dateTime(t.createdAt))}<br>${esc(dateTime(t.createdAt))}</td><td>${esc(t.customerName||"Customer")}</td><td>${esc(t.customerId||"—")}</td><td>${money(t.grossSales)}</td><td>${money(t.totalCustomerEarnings)}</td><td>${esc(t.status||"SAVED")}</td><td><button class="primary" data-pay-earning="${esc(t.id)}">Send Payment</button>${t.dashboardSalesSyncStatus!=="SYNCED"?` <button class="secondary" data-sync-sale="${esc(t.id)}">Retry Dashboard Sync</button>`:""}</td></tr>`).join("")||`<tr><td colspan="7">No pending customer earnings payments.</td></tr>`}</tbody></table></div>`)}</div>`;const csel=$("#customerAccount");csel.onchange=()=>{const c=customers.find(x=>x.id===csel.value);$("#unitCode").value=c?.unitCode||c?.unit_code||c?.code||c?.clientCode||c?.clientId||"";$("#customerVerify").value=""};$("#retryCustomers")?.addEventListener("click",()=>loadRegisteredCustomers());$("#saleForm").onsubmit=saveSale;document.querySelectorAll("[data-pay-earning]").forEach(b=>b.onclick=()=>payCustomerEarnings(b.dataset.payEarning));document.querySelectorAll("[data-send-receipt]").forEach(b=>b.onclick=()=>openReceiptTab(b.dataset.sendReceipt));document.querySelectorAll("[data-sync-sale]").forEach(b=>b.onclick=async()=>{b.disabled=true;try{await syncCashierRecord("sale",b.dataset.syncSale);alert("Sale synced to Admin and Customer dashboards.");}catch(error){alert("Dashboard sync failed: "+error.message);}finally{b.disabled=false;}});document.querySelectorAll("[data-sync-payment]").forEach(b=>b.onclick=async()=>{b.disabled=true;try{await syncCashierRecord("payment",b.dataset.syncPayment);alert("Customer payment totals synced.");}catch(error){alert("Dashboard sync failed: "+error.message);}finally{b.disabled=false;}});return;}
-if(tab==="collection"){v.innerHTML=`<div class="panel"><h2>Collection</h2><p>This section has been removed. Use Remit to reconcile collected sales.</p></div>`;return;}
-if(tab==="receipt"){
-  const paid=txns.filter(t=>t.status==="CUSTOMER EARNINGS PAID"&&t.receiptSummary);
-  v.innerHTML=shell("Receipt History","Paid receipts. Use Resend Email to send the receipt to the customer's registered email.",`${paid.length?`<div class="receipt-list">${paid.map(t=>`<article class="receipt-row"><div class="receipt-meta"><strong>${esc(t.customerName||"Customer")}</strong><small>${esc(t.receiptSummary.receiptId||t.receiptId||t.transactionId||"")} · ${esc(dateTime(t.receiptSummary.paidAt||t.customerEarningsPaidAt))}</small><small>${esc(t.customerEmail||"No registered customer email saved on this sale")}</small></div><div class="receipt-amount"><strong>${money(t.receiptSummary.amount)}</strong></div><div class="receipt-actions"><button class="primary" data-send-receipt="${esc(t.id)}">Resend Email</button>${t.dashboardPaymentSyncStatus!=="SYNCED"?`<button class="secondary" data-sync-payment="${esc(t.id)}">Retry Admin Sync</button>`:""}</div></article>`).join("")}</div>`:`<div class="empty">No paid receipts yet. Receipts appear here after a customer earnings payment is recorded.</div>`}`);
-  document.querySelectorAll("[data-send-receipt]").forEach(b=>b.onclick=()=>sendReceipt(b.dataset.sendReceipt));
-  document.querySelectorAll("[data-sync-payment]").forEach(b=>b.onclick=async()=>{b.disabled=true;try{await syncCashierRecord("payment",b.dataset.syncPayment);alert("Admin payment sync completed.");}catch(error){alert("Dashboard sync failed: "+error.message);}finally{b.disabled=false;}});
-  return;
-}
-if(tab==="service"){v.innerHTML=`<div class="chat"><div class="panel chat-list"><h3>Customer Service</h3>${chats.length?chats.map(c=>`<div class="chat-item ${c.id===window.selectedChat?"active":""}" data-chat="${c.id}"><b>${esc(c.customerName||"Customer")}</b><small>${esc(c.status||"OPEN")}</small><div>${esc(c.lastMessage||"")}</div></div>`).join(""):"<div class=empty>No conversations yet.</div>"}</div><div class="panel">${renderChat()}</div></div>`;document.querySelectorAll("[data-chat]").forEach(b=>b.onclick=()=>{window.selectedChat=b.dataset.chat;render()});$("#chatSend")?.addEventListener("click",sendChat);$("#transferChat")?.addEventListener("click",transferChat);return;}
-if(tab==="remit"){const pendingRemit=remittances.find(r=>String(r.cashierId||"")===String(user.uid)&&["PENDING ADMIN AUTHORIZATION","PENDING"].includes(String(r.status||"").toUpperCase()));const eligible=pendingRemit?[]:txns.filter(t=>!t.remittanceId&&!t.remittanceApproved&&!t.remittanceFinalized&&!remittances.some(r=>(r.transactionIds||[]).includes(t.id)&&["PENDING ADMIN AUTHORIZATION","PENDING","APPROVED","REMITTED"].includes(String(r.status||"").toUpperCase())));const remitCustomers=new Set(eligible.map(t=>String(t.unitId||t.customerId||t.id)));const totalCustomer=remitCustomers.size;const grossCollected=eligible.reduce((sum,t)=>sum+Number(t.grossSales||0),0);const internetShare=totalCustomer*1000;const ownerElectricityShare=totalCustomer*100;const customerEarnings=(grossCollected*.30)+ownerElectricityShare;const expected=Math.max(0,grossCollected-customerEarnings);v.innerHTML=shell("Remit","Internet and electricity shares are charged once per customer per remittance batch. A batch closes only after Admin approval. Enter the Remit password to unlock this page.",`${remitUnlocked?`${pendingRemit?`<div class="notice">A remittance is awaiting Admin approval. This batch remains open and cannot be submitted again until Admin approves or rejects it.</div>`:""}<div class="remit-sensitive"><div class="cards"><div class="card"><small>Total Customer</small><strong>${totalCustomer}</strong></div><div class="card"><small>Total Gross</small><strong>${money(grossCollected)}</strong></div><div class="card"><small>Total Internet Share (₱1,000/customer)</small><strong>${money(internetShare)}</strong></div><div class="card"><small>Owner Electricity Share (₱100/customer)</small><strong>${money(ownerElectricityShare)}</strong></div><div class="card"><small>Accumulated Customer Earnings (30% + electricity share)</small><strong>${money(customerEarnings)}</strong></div><div class="card"><small>Total Cash on Hand (Expected)</small><strong>${money(expected)}</strong></div></div><form id="remitForm" class="grid"><div class="field"><label>Exact Cash Amount in Hand (₱) *</label><input id="actualRemit" type="number" min="0" step="0.01" required placeholder="Enter exact amount"></div><div class="field"><label>Remitted To / Recipient Name *</label><input id="remittedTo" required placeholder="Name of person receiving cash"></div><div class="field full"><p id="remitVariance" class="notice">Enter the cash amount to calculate Short / Over.</p></div><div class="actions full"><button class="primary" type="submit" ${pendingRemit?"disabled":""}>REMIT NOW</button></div></form>`:`<div class="remit-locked"><div class="remit-blur"><div class="cards"><div class="card"><small>Remittance totals</small><strong>₱••••••</strong></div></div><button class="primary">REMIT NOW</button><h3>Remittance History</h3></div><div class="remit-unlock"><h3>🔒 Unlock Remittance</h3><p>Enter the Remit password to view totals and submit a remittance.</p><form id="remitUnlockForm"><label>Remit Password<input id="remitPassword" type="password" autocomplete="current-password" required></label><button class="primary" type="submit">Unlock</button><p id="remitUnlockMsg" class="message"></p></form></div></div>`}<h3>Cashier Remittance History</h3><p class="muted">Submitted remittances appear here immediately. Admin approval status updates automatically when Admin approves or rejects a request.</p>${remittances.length?`<div class="table-wrap"><table><thead><tr><th>Date & Time Remitted</th><th>Remitted To</th><th>Expected Remit</th><th>Actual Remit</th><th>Short / Over</th><th>Admin Approval</th></tr></thead><tbody>${remittances.map(r=>{const expected=Number(r.expectedCollection||0);const actual=Number(r.actualRemittance||0);const variance=Number(r.variance??(actual-expected));const varianceLabel=variance<0?`Short ${money(Math.abs(variance))}`:variance>0?`Over ${money(variance)}`:"Balanced";const tone=variance<0?"#dc2626":variance>0?"#2563eb":"#64748b";const approval=String(r.status||"PENDING ADMIN AUTHORIZATION").toUpperCase();const approvalLabel=approval==="APPROVED"?"APPROVED":approval==="REJECTED"?"REJECTED":"PENDING ADMIN APPROVAL";const approvalTone=approval==="APPROVED"?"#15803d":approval==="REJECTED"?"#dc2626":"#b45309";return `<tr><td>${esc(dateTime(r.createdAt))}</td><td>${esc(r.remittedTo||r.recipientName||"—")}</td><td>${money(expected)}</td><td>${money(actual)}</td><td><strong style="color:${tone}">${varianceLabel}</strong></td><td><strong style="color:${approvalTone}">${approvalLabel}</strong>${r.approvedAt?`<br><small>Approved: ${esc(dateTime(r.approvedAt))}</small>`:""}${r.rejectionNote?`<br><small>Admin note: ${esc(r.rejectionNote)}</small>`:""}</td></tr>`}).join("")}</tbody></table></div>`:`<div class="empty">No remittance history yet. After you submit a remittance, it will appear here with the expected amount, actual amount, short/over difference, and Admin approval status.</div>`}`);if(!remitUnlocked){$("#remitUnlockForm").onsubmit=async e=>{e.preventDefault();const msgEl=$("#remitUnlockMsg"),password=$("#remitPassword").value;if(password!=="Admin@owner123"){msgEl.textContent="Incorrect Remit password.";return;}remitUnlocked=true;render()};return;}const amountInput=$("#actualRemit");amountInput.oninput=()=>{const diff=Number(amountInput.value||0)-expected;$("#remitVariance").textContent=amountInput.value===""?"Enter the cash amount to calculate Short / Over.":diff<0?`Short: ${money(Math.abs(diff))}`:diff>0?`Over: ${money(diff)}`:"Balanced: exact amount."};$("#remitForm").onsubmit=async e=>{e.preventDefault();if(pendingRemit){alert("This remittance batch is already awaiting Admin approval. Do not submit it again.");return;}if(!eligible.length){alert("There are no unremitted sales in this batch.");return;}const actual=Number(amountInput.value),recipient=$("#remittedTo").value.trim(),variance=actual-expected;if(!recipient||!Number.isFinite(actual)||actual<0)return;if(!confirm(`Are you sure you want to submit this remittance?\n\nExpected: ${money(expected)}\nActual cash: ${money(actual)}\nShort / Over: ${variance<0?"Short ":variance>0?"Over ":""}${money(Math.abs(variance))}\nRemitted to: ${recipient}`))return;const id=`REM-${Date.now()}-${Math.random().toString(36).slice(2,7).toUpperCase()}`;const ref=await addDoc(collection(db,"remittances"),{remittanceId:id,cashierId:user.uid,cashierName:profile.name||profile.email,transactionIds:eligible.map(t=>t.id),expectedCollection:expected,customerEarningsTotal:customerEarnings,grossCollected,actualRemittance:actual,variance,remittedTo:recipient,recipientName:recipient,status:"PENDING ADMIN AUTHORIZATION",createdAt:serverTimestamp()});await audit("REMIT_REQUESTED",ref.id,{expectedCollection:expected,actualRemittance:actual,variance,remittedTo:recipient});remitUnlocked=false;alert("Remittance request sent to Admin for authorization. Sales will be marked remitted only after Admin approval.");render();};return;}
-}
-function todayTxGross(){return txns.filter(t=>String(t.createdAt?.toDate?t.createdAt.toDate().toISOString():t.createdAt||"").slice(0,10)===new Date().toISOString().slice(0,10)).reduce((s,t)=>s+Number(t.grossSales||0),0)}
-function table(rows,cols){if(!rows.length)return `<div class="empty">No records.</div>`;return `<div class="table-wrap"><table><thead><tr>${cols.map(c=>`<th>${c}</th>`).join("")}</tr></thead><tbody>${rows.map(r=>`<tr><td>${esc(r.transactionId||r.remittanceId||r.receiptNumber||r.id)}</td><td>${esc(r.customerName||r.cashierName||"—")}</td><td>${money(r.grossSales??r.expectedCollection??r.amount)}</td><td>${money(r.amountReceived??r.actualRemittance??r.paid??0)}</td><td>${esc(r.paymentMethod||r.variance||r.status||"—")}</td><td>${esc(r.status||"")}</td></tr>`).join("")}</tbody></table></div>`}
-function bindTabs(){document.querySelectorAll("[data-tab]").forEach(b=>b.addEventListener("click",()=>{if(tab==="remit"&&b.dataset.tab!=="remit")remitUnlocked=false;tab=b.dataset.tab;render()}))}
-function dateTime(value){try{const d=value?.toDate?value.toDate():value instanceof Date?value:new Date(value);return Number.isNaN(d.getTime())?"—":d.toLocaleString("en-PH")}catch{return "—"}}
-function showSaleConfirmation({customerName,customerId,gross,onConfirm,onCancel}){return new Promise(resolve=>{const prior=document.getElementById("saleConfirmOverlay");prior?.remove();const overlay=document.createElement("div");overlay.id="saleConfirmOverlay";overlay.innerHTML=`<style>#saleConfirmOverlay{position:fixed;inset:0;z-index:99999;display:flex;align-items:center;justify-content:center;padding:18px;background:rgba(15,23,42,.48);backdrop-filter:blur(5px);animation:scFade .18s ease-out}#saleConfirmOverlay .sc-card{width:min(100%,460px);background:#fff;border-radius:20px;padding:25px;box-shadow:0 24px 70px rgba(15,23,42,.28);animation:scPop .22s cubic-bezier(.2,.8,.2,1)}#saleConfirmOverlay .sc-head{display:flex;align-items:center;gap:12px;margin-bottom:8px}#saleConfirmOverlay .sc-icon{width:44px;height:44px;border-radius:14px;display:grid;place-items:center;background:#e8f1ff;color:#185abd;font-size:23px}#saleConfirmOverlay h2{margin:0;font-size:21px;color:#132238}#saleConfirmOverlay .sc-sub{margin:6px 0 18px;color:#64748b;line-height:1.5}#saleConfirmOverlay .sc-row{display:flex;justify-content:space-between;gap:16px;padding:12px 0;border-bottom:1px solid #e8edf4;color:#64748b}#saleConfirmOverlay .sc-row strong{color:#17243a;text-align:right;overflow-wrap:anywhere}#saleConfirmOverlay .sc-total{font-size:20px;color:#167447!important}#saleConfirmOverlay .sc-question{margin:18px 0;color:#334155;line-height:1.5}#saleConfirmOverlay .sc-actions{display:flex;gap:10px;margin-top:22px}#saleConfirmOverlay button{flex:1;border:0;border-radius:11px;padding:12px 14px;font-weight:700;cursor:pointer}#saleConfirmOverlay .sc-cancel{background:#eef2f7;color:#334155}#saleConfirmOverlay .sc-confirm{background:#175cd3;color:white}#saleConfirmOverlay button:disabled{opacity:.6;cursor:wait}@keyframes scFade{from{opacity:0}to{opacity:1}}@keyframes scPop{from{opacity:0;transform:translateY(8px) scale(.97)}to{opacity:1;transform:translateY(0) scale(1)}}@media(prefers-reduced-motion:reduce){#saleConfirmOverlay,#saleConfirmOverlay .sc-card{animation:none}}</style><div class="sc-card" role="dialog" aria-modal="true" aria-labelledby="scTitle"><div class="sc-head"><div class="sc-icon">✓</div><div><h2 id="scTitle">Are you sure?</h2><div style="color:#64748b;font-size:13px;margin-top:3px">Review the sale before saving</div></div></div><p class="sc-sub">Please verify the registered customer and the gross sales amount.</p><div class="sc-row"><span>Customer Name</span><strong>${esc(customerName)}</strong></div><div class="sc-row"><span>Customer ID</span><strong>${esc(customerId)}</strong></div><div class="sc-row"><span>Total Gross Sales</span><strong class="sc-total">${money(gross)}</strong></div><p class="sc-question">Save this sale with the details shown above?</p><div class="sc-actions"><button type="button" class="sc-cancel">Cancel</button><button type="button" class="sc-confirm">Confirm Sale</button></div><p class="sc-error" role="alert" style="display:none;color:#b42318;margin:12px 0 0"></p></div>`;document.body.appendChild(overlay);const cancel=()=>{overlay.remove();resolve(false)};overlay.querySelector('.sc-cancel').onclick=cancel;overlay.addEventListener('click',e=>{if(e.target===overlay)cancel()});overlay.querySelector('.sc-confirm').onclick=async()=>{const btn=overlay.querySelector('.sc-confirm'),err=overlay.querySelector('.sc-error');btn.disabled=true;btn.textContent='Saving…';overlay.querySelector('.sc-cancel').disabled=true;try{await onConfirm();overlay.remove();resolve(true)}catch(e){err.style.display='block';err.textContent=e?.message||'Could not save this sale. Please try again.';btn.disabled=false;btn.textContent='Try Again';overlay.querySelector('.sc-cancel').disabled=false}};overlay.querySelector('.sc-cancel').focus()})}
-async function saveSale(e){e.preventDefault();const customer=customers.find(c=>c.id===$("#customerAccount").value);if(!customer){alert("Select a customer account created by Admin.");return;}const customerName=customerDisplayName(customer);const expectedId=String(customer.clientCode||customer.clientId||customer.customerId||customer.customerCode||customer.clientID||customer.customerID||"").trim();if(!expectedId){alert("This customer record has no registered Customer ID. Ask Admin to correct the customer profile before recording a sale.");return;}const enteredRaw=$("#customerVerify").value.trim();if(!enteredRaw||enteredRaw.toLowerCase()!==expectedId.toLowerCase()){alert("Customer ID does not match the selected customer. Please verify the ID before continuing.");$("#customerVerify").focus();return;}const gross=Number($("#gross").value);if(!(gross>0)){alert("Gross sales must be greater than zero.");return;}const saleDate=$("#saleDate").value;if(!saleDate){alert("Please select the sale date.");return;}await showSaleConfirmation({customerName,customerId:expectedId,gross,onConfirm:async()=>{const id=`TXN-${Date.now()}-${Math.random().toString(36).slice(2,7).toUpperCase()}`;const clientShare=gross*.30,openBatchTxns=txns.filter(t=>!t.remittanceApproved&&!t.remittanceFinalized&&!t.remittanceId&&!remittances.some(r=>(r.transactionIds||[]).includes(t.id)&&["APPROVED","REMITTED"].includes(String(r.status||"").toUpperCase()))),electricity=openBatchTxns.some(t=>String(t.unitId||t.customerId)===String(customer.id))?0:100,customerTotal=clientShare+electricity;const now=new Date();const saleRef=await addDoc(collection(db,"cashierTransactions"),{transactionId:id,cashierId:user.uid,cashierName:profile.name||profile.email,customerId:expectedId,unitId:customer.id,unitCode:customer.unitCode||"",customerName,customerEmail:customer.email||customer.emailAddress||customer.contactEmail||customer.gmail||"",grossSales:gross,internetFee:1000,ownerPercent:70,clientPercent:30,ownerShare:gross*.70,clientShare,electricityShare:electricity,totalCustomerEarnings:customerTotal,saleDate,recordedAt:now.toISOString(),status:"AWAITING CUSTOMER EARNINGS PAYMENT",cashierLocked:true,dashboardSalesSyncStatus:"PENDING",createdAt:serverTimestamp()});await audit("SALE_CREATED",id,{grossSales:gross,customerId:expectedId,totalCustomerEarnings:customerTotal,saleDate});try{await syncCashierRecord("sale",saleRef.id);alert("Sale saved. Admin and Customer monthly dashboards have been updated.");}catch(syncError){console.error("[PISO WIFI CASHIER] Sale saved but dashboard sync failed",syncError);alert("Sale was saved, but Admin/Customer dashboard sync failed: "+syncError.message+" You can use Retry Dashboard Sync in Sales History.");}render()}})}
-function confirmEarningsPayment(t){return new Promise(resolve=>{document.getElementById("earningsPaymentOverlay")?.remove();const overlay=document.createElement("div");overlay.id="earningsPaymentOverlay";overlay.style.cssText="position:fixed;inset:0;z-index:100000;display:grid;place-items:center;padding:18px;background:rgba(15,23,42,.58)";overlay.innerHTML=`<div role="dialog" aria-modal="true" style="width:min(100%,480px);background:#fff;border-radius:18px;padding:24px;box-shadow:0 24px 70px #0003;color:#132238"><h2 style="margin:0 0 8px">Confirm Customer Earnings Payment</h2><p style="color:#64748b;margin:0 0 18px">Review the amount and enter the customer's full registered name as acknowledgment.</p><div style="display:flex;justify-content:space-between;padding:12px 0;border-bottom:1px solid #e5e7eb"><span>Customer</span><strong id="epExpected">${esc(t.customerName||"")}</strong></div><div style="display:flex;justify-content:space-between;padding:12px 0;border-bottom:1px solid #e5e7eb"><span>Customer Earnings</span><strong style="color:#16834a;font-size:20px">${money(t.totalCustomerEarnings)}</strong></div><label style="display:block;margin-top:18px;font-weight:700">Customer full name signature<input id="epSignature" autocomplete="off" style="display:block;width:100%;box-sizing:border-box;margin-top:7px;padding:12px;border:1px solid #cbd5e1;border-radius:10px" placeholder="Type registered full name" required></label><p id="epError" style="display:none;color:#b42318;margin:8px 0 0" role="alert"></p><div style="display:flex;gap:10px;margin-top:20px"><button id="epCancel" type="button" style="flex:1;padding:12px;border:0;border-radius:10px;background:#eef2f7;font-weight:700">Cancel</button><button id="epConfirm" type="button" style="flex:1;padding:12px;border:0;border-radius:10px;background:#175cd3;color:#fff;font-weight:700">Confirm Payment</button></div><small style="display:block;color:#64748b;margin-top:12px">Typed name is an acknowledgment and is not identity-verified.</small></div>`;document.body.appendChild(overlay);const finish=v=>{overlay.remove();resolve(v)};overlay.querySelector("#epCancel").onclick=()=>finish(null);overlay.addEventListener("click",e=>{if(e.target===overlay)finish(null)});overlay.querySelector("#epConfirm").onclick=()=>{const value=overlay.querySelector("#epSignature").value.trim(),expected=String(t.customerName||"").trim(),err=overlay.querySelector("#epError");if(!value||value.localeCompare(expected,undefined,{sensitivity:"accent"})!==0){err.textContent="Please enter the customer's registered full name exactly as shown.";err.style.display="block";return;}finish(value)};overlay.querySelector("#epSignature").focus()})}
-async function payCustomerEarnings(id){
-  const t=txns.find(x=>x.id===id);
-  if(!t||t.status==="CUSTOMER EARNINGS PAID")return;
-  const signatureName=await confirmEarningsPayment(t);if(!signatureName)return;
-  const button=document.querySelector(`[data-pay-earning="${CSS.escape(id)}"]`);
-  if(button){button.disabled=true;button.textContent="Saving payment…";}
-  const receiptId=`REC-${Date.now()}`;
-  const receipt={receiptId,transactionId:t.transactionId,customerName:t.customerName,customerId:t.customerId||"",unitCode:t.unitCode,amount:Number(t.totalCustomerEarnings||0),grossSales:Number(t.grossSales||0),status:"PAID",paidAt:new Date().toISOString(),cashierId:user.uid,cashierName:profile.name||profile.email};
-  try{
-    // Persist the transaction first. If Firestore rejects it, do not show a success message.
-    await updateDoc(doc(db,"cashierTransactions",id),{
-      status:"CUSTOMER EARNINGS PAID",
-      customerEarningsPaid:true,
-      customerEarningsPaidAt:serverTimestamp(),
-      customerEarningsPaidBy:user.uid,
-      customerEarningsAcknowledgedBy:signatureName,
-      customerEarningsAcknowledgedAt:serverTimestamp(),
-      receiptId,
-      receiptSummary:receipt
-    });
-    try{
-      await addDoc(collection(db,"receipts"),{...receipt,createdAt:serverTimestamp(),receiptType:"CUSTOMER_EARNINGS",visibility:"SUMMARY_ONLY"});
-    }catch(receiptError){
-      console.error("[PISO WIFI CASHIER] Payment saved but receipt document creation failed",receiptError);
-      alert("Payment status was saved, but the receipt record could not be created: "+(receiptError?.message||receiptError));
-    }
-    await audit("CUSTOMER_EARNINGS_PAID",id,{amount:receipt.amount,receiptId});
-    const receiptTxn={...t,id,receiptId,receiptSummary:receipt,status:"CUSTOMER EARNINGS PAID"};
-    let dashboardSyncError=null;
-    try{await syncCashierRecord("payment",id);}catch(error){dashboardSyncError=error;console.error("[PISO WIFI CASHIER] Customer payment dashboard sync failed",error);}
-    let emailError=null;
-    try{await sendReceiptEmailForTransaction(receiptTxn);}catch(error){emailError=error;console.error("[PISO WIFI CASHIER] Receipt email failed",error);}
-    let message=`Payment status saved for ${t.customerName}. Receipt: ${receiptId}.`;
-    if(!emailError)message+=` Email sent to ${receiptTxn.customerEmail}.`;
-    else message+=` EMAIL NOT SENT: ${emailError.message}`;
-    if(dashboardSyncError)message+=` ADMIN/CUSTOMER SYNC FAILED: ${dashboardSyncError.message}`;
-    else message+=" Admin payment sync completed.";
-    alert(message);
-    render();
-  }catch(error){
-    console.error("[PISO WIFI CASHIER] Could not save customer earnings payment",error);
-    const code=String(error?.code||"");
-    let detail=error?.message||String(error);
-    if(code==="permission-denied")detail="Firebase rejected the payment update (permission-denied). Confirm that the updated firestore.rules is published to the same Firebase project and that this Cashier account is active and owns this sale.";
-    alert("PAYMENT WAS NOT CONFIRMED. "+detail);
-  }finally{
-    if(button){button.disabled=false;button.textContent="Send Payment";}
-  }
-}
-function openReceiptTab(id){selectedReceiptTxnId=id;tab="receipt";render();}
-function receiptHtml(t){const r=t.receiptSummary||{};return `<!doctype html><html><body style="margin:0;background:#f2f5fa;font-family:Arial,sans-serif;color:#18243a;padding:24px"><div style="max-width:560px;margin:auto;background:#fff;border-radius:16px;overflow:hidden;border:1px solid #dce4ef"><div style="background:#0b2345;color:#fff;padding:24px"><h1 style="margin:0;font-size:22px">PISO WIFI</h1><p style="margin:6px 0 0;color:#c8dcfa">Payment Receipt</p></div><div style="padding:24px"><p>Hello ${esc(t.customerName||"Customer")},</p><p>Your customer earnings payment has been recorded. Please keep this receipt for your records.</p><table style="width:100%;border-collapse:collapse"><tr><td style="padding:10px;border-bottom:1px solid #eee">Receipt No.</td><td style="padding:10px;border-bottom:1px solid #eee;text-align:right"><b>${esc(r.receiptId||t.receiptId||"")}</b></td></tr><tr><td style="padding:10px;border-bottom:1px solid #eee">Customer</td><td style="padding:10px;border-bottom:1px solid #eee;text-align:right">${esc(t.customerName||"")}</td></tr><tr><td style="padding:10px;border-bottom:1px solid #eee">Customer ID</td><td style="padding:10px;border-bottom:1px solid #eee;text-align:right">${esc(t.customerId||"")}</td></tr><tr><td style="padding:10px;border-bottom:1px solid #eee">Amount Paid</td><td style="padding:10px;border-bottom:1px solid #eee;text-align:right"><b>${money(r.amount)}</b></td></tr><tr><td style="padding:10px;border-bottom:1px solid #eee">Payment Date</td><td style="padding:10px;border-bottom:1px solid #eee;text-align:right">${esc(dateTime(r.paidAt||t.customerEarningsPaidAt))}</td></tr><tr><td style="padding:10px">Status</td><td style="padding:10px;text-align:right;color:#168a52"><b>PAID</b></td></tr></table><p style="margin-top:24px">Thank you,<br><b>PISO WIFI Team</b></p></div></div></body></html>`}
-function viewReceipt(id){const t=txns.find(x=>x.id===id);if(!t||!t.receiptSummary)return alert("Receipt is not available.");const w=window.open("","_blank","noopener,noreferrer,width=700,height=800");if(!w)return alert("Please allow pop-ups to view the receipt.");w.document.write(receiptHtml(t));w.document.close()}
-async function sendReceiptEmailForTransaction(t){
-  if(!t||!t.receiptSummary)throw new Error("Receipt is not available.");
-  if(!t.customerEmail||!String(t.customerEmail).includes("@"))throw new Error("No valid registered customer email is saved on this sale. Admin must correct the customer email before sending.");
-  const response=await fetch("/api/send-receipt",{
-    method:"POST",
-    headers:{"Content-Type":"application/json","Authorization":`Bearer ${await user.getIdToken()}`},
-    body:JSON.stringify({
-      to:t.customerEmail,
-      subject:`PISO WIFI Payment Receipt ${t.receiptSummary.receiptId||t.receiptId||""}`,
-      html:receiptHtml(t),
-      receiptId:t.receiptSummary.receiptId||t.receiptId||"",
-      transactionId:t.transactionId||""
-    })
-  });
-  const result=await response.json().catch(()=>({}));
-  if(!response.ok||result.ok!==true)throw new Error(result.error||"Receipt email service is not configured.");
-  await audit("RECEIPT_EMAIL_SENT",t.id||t.transactionId,{to:t.customerEmail,receiptId:t.receiptSummary.receiptId||t.receiptId||""});
-  return true;
-}
-async function sendReceipt(id){
-  const t=txns.find(x=>x.id===id);
-  if(!t||!t.receiptSummary)return alert("Receipt is not available.");
-  const button=document.querySelector(`[data-send-receipt="${CSS.escape(id)}"]`);
-  if(button){button.disabled=true;button.textContent="Sending…";}
-  try{
-    await sendReceiptEmailForTransaction(t);
-    alert(`Receipt sent to ${t.customerEmail}.`);
-  }catch(e){
-    alert(`Receipt email was not sent. ${e.message}`);
-  }finally{
-    if(button){button.disabled=false;button.textContent="Send Receipt";}
-  }
-}
-async function saveReceipt(e){e.preventDefault();const file=$("#rFile").files[0];if(!file)throw new Error("Receipt file is required.");const id=`REC-${Date.now()}-${Math.random().toString(36).slice(2,7).toUpperCase()}`;const path=`receipts/${user.uid}/${id}/${file.name}`;const snap=await uploadBytes(ref(storage,path),file);const url=await getDownloadURL(snap.ref);await addDoc(collection(db,"receipts"),{receiptId:id,receiptNumber:$("#rNumber").value.trim(),transactionId:$("#rTxn").value.trim(),customerName:$("#rCustomer").value.trim(),amount:Number($("#rAmount").value),paymentMethod:$("#rMethod").value,referenceNumber:$("#rRef").value.trim(),storagePath:path,receiptUrl:url,cashierId:user.uid,cashierName:profile.name||profile.email,notes:$("#rNotes").value.trim(),createdAt:serverTimestamp()});await audit("RECEIPT_UPLOADED",id,{amount:Number($("#rAmount").value)});alert("Receipt registered.");tab="receipt";render()}
-function renderChat(){const c=chats.find(x=>x.id===window.selectedChat)||chats[0];if(!c)return `<div class="empty">Start a customer service conversation by selecting a customer.</div>`;return `<h3>${esc(c.customerName||"Customer")}</h3><div class="messages">${(c.messages||[]).map(m=>`<div class="bubble ${m.senderId===user.uid?"me":""}">${esc(m.text)}<small>${esc(m.senderRole||"")}</small></div>`).join("")}</div><div class="chat-compose"><textarea id="chatInput" placeholder="Reply…"></textarea><button class="primary" id="chatSend">Send</button><button class="danger" id="transferChat">Transfer to Admin</button></div>`}
-async function sendChat(){const c=chats.find(x=>x.id===window.selectedChat);const text=$("#chatInput").value.trim();if(!c||!text)return;await updateDoc(doc(db,"customerChats",c.id),{messages:arrayUnion({senderId:user.uid,senderRole:"cashier",text,createdAt:new Date().toISOString()}),lastMessage:text,lastMessageSender:"cashier",updatedAt:serverTimestamp(),status:"IN PROGRESS"});await audit("CHAT_MESSAGE",c.id);$("#chatInput").value=""}
-async function transferChat(){const c=chats.find(x=>x.id===window.selectedChat);if(!c)return;if(!confirm("Transfer this concern to Admin?"))return;await updateDoc(doc(db,"customerChats",c.id),{status:"TRANSFERRED TO ADMIN",transferredAt:serverTimestamp(),transferredBy:user.uid,updatedAt:serverTimestamp()});await audit("CHAT_TRANSFERRED",c.id);alert("Conversation transferred to Admin.")}
-async function requestRemit(eligible,total){if(!confirm(`Request Admin authorization for ${money(total)}?`))return;const id=`REM-${Date.now()}-${Math.random().toString(36).slice(2,7).toUpperCase()}`;const ref=await addDoc(collection(db,"remittances"),{remittanceId:id,cashierId:user.uid,cashierName:profile.name||profile.email,transactionIds:eligible.map(t=>t.id),expectedCollection:total,actualRemittance:0,variance:0,status:"PENDING ADMIN AUTHORIZATION",createdAt:serverTimestamp()});await Promise.all(eligible.map(t=>updateDoc(doc(db,"cashierTransactions",t.id),{remittanceId:ref.id})));await audit("REMIT_STARTED",ref.id,{expectedCollection:total});alert("Remittance sent to Admin for authorization. It cannot be finalized by the cashier.");render()}
-document.addEventListener("visibilitychange",()=>{if(document.hidden&&tab==="remit"&&remitUnlocked){remitUnlocked=false;}});
-login();
-let cashierAuthHandling=false;
-const cashierAuthTimer=setTimeout(()=>{
-  if(!cashierAuthHandling && !auth.currentUser){
-    msg("Authentication is taking too long. Check your connection and reload the Cashier portal.");
-  }
-},CASHIER_AUTH_TIMEOUT_MS);
-onAuthStateChanged(auth,async u=>{
-  if(!u){clearTimeout(cashierAuthTimer);window.__pisoCashierSetLoginPending?.(false);return;}
-  if(cashierAuthHandling)return;
-  cashierAuthHandling=true;
-  clearTimeout(cashierAuthTimer);
-  try{
-    await loadProfile(u);
-  }catch(e){
-    console.error("[PISO WIFI CASHIER] Portal initialization failed",e);
-    try{await signOut(auth)}catch{}
-    const el=$("#loginMsg");
-    if(el)msg(e?.message||"Could not open Cashier portal. Please reload and try again.");
-    window.__pisoCashierSetLoginPending?.(false);
-    cashierAuthHandling=false;
-  }
-});
-// Syntax fix: close render() before todayTxGross(). Build 2026-10-12-2
-// Customer name mapping, automatic receipt email, and Admin-authorized remittance fixes.
-// Password-change fix: reauthenticate with current temporary password before updatePassword.
-// Integrated sync: cashier sales/payments -> shared monthlyRecords/payments for Admin and Customer.
