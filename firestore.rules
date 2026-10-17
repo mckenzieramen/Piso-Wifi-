@@ -9,8 +9,13 @@ service cloud.firestore {
     }
 
     function isAdmin() {
+      // Match the same Admin role check used by dashboard.js.
+      // Do not hard-code one email address: existing Admin accounts are
+      // provisioned in users/{uid} with role == "admin".
       return isSignedIn()
-        && request.auth.token.email == "pisonet@admin.com";
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        && userDoc().data.role == "admin"
+        && userDoc().data.get("active", true) == true;
     }
 
     function userDoc() {
