@@ -993,7 +993,7 @@ function subscribeSelectedSupport(id){
   });
 }
 let adminSupportTypingTimer=null;
-function bindAdminChatEvents(chat){if(!chat)return;const input=$("#adminSupportInput"),send=$("#adminSupportSend");if(send)send.onclick=()=>sendAdminSupportMessage(chat.id);if(input){const pinLatest=()=>{const box=$("#adminSupportMessages");if(box)requestAnimationFrame(()=>{box.scrollTop=box.scrollHeight;});};input.addEventListener("focus",pinLatest);input.addEventListener("click",pinLatest);input.oninput=()=>{clearTimeout(adminSupportTypingTimer);setAdminSupportTyping(chat.id,true);adminSupportTypingTimer=setTimeout(()=>setAdminSupportTyping(chat.id,false),3000);};input.onblur=()=>{clearTimeout(adminSupportTypingTimer);setAdminSupportTyping(chat.id,false);};input.onkeydown=e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();sendAdminSupportMessage(chat.id);}};}$("#supportOpenBtn")?.addEventListener("click",()=>setSupportStatus(chat.id,"Open"));$("#supportSolveBtn")?.addEventListener("click",()=>setSupportStatus(chat.id,"Solved"));$("#supportCloseBtn")?.addEventListener("click",()=>setSupportStatus(chat.id,"Closed"));}
+function bindAdminChatEvents(chat){if(!chat)return;const input=$("#adminSupportInput"),send=$("#adminSupportSend");if(send)send.onclick=()=>sendAdminSupportMessage(chat.id);if(input){const pinLatest=()=>{const box=$("#adminSupportMessages");if(box)requestAnimationFrame(()=>{box.scrollTop=box.scrollHeight;});};input.addEventListener("focus",pinLatest);input.addEventListener("click",pinLatest);let typingActive=false;input.oninput=()=>{clearTimeout(adminSupportTypingTimer);if(!typingActive){typingActive=true;setAdminSupportTyping(chat.id,true);}adminSupportTypingTimer=setTimeout(()=>{typingActive=false;setAdminSupportTyping(chat.id,false);},3000);};input.onblur=()=>{clearTimeout(adminSupportTypingTimer);typingActive=false;setAdminSupportTyping(chat.id,false);};input.onkeydown=e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();sendAdminSupportMessage(chat.id);}};}$("#supportOpenBtn")?.addEventListener("click",()=>setSupportStatus(chat.id,"Open"));$("#supportSolveBtn")?.addEventListener("click",()=>setSupportStatus(chat.id,"Solved"));$("#supportCloseBtn")?.addEventListener("click",()=>setSupportStatus(chat.id,"Closed"));}
 async function setAdminSupportTyping(id,on){
   const typ=$("#adminSupportTyping");
   if(typ){
@@ -1007,11 +1007,17 @@ async function setAdminSupportTyping(id,on){
 }
 async function sendAdminSupportMessage(id){const input=$("#adminSupportInput");const text=String(input?.value||"").trim();if(!text)return;try{const now=new Date().toISOString();await addDoc(collection(db,"supportChats",id,"messages"),{senderType:"admin",text,createdAt:now});await updateDoc(doc(db,"supportChats",id),{lastMessage:text,lastMessageSender:"admin",lastMessageAt:now,updatedAt:now,unreadForAdmin:false,adminActioned:true,adminActionedAt:now,unreadForCustomer:true,"typingBy.admin":false,"typingBy.customer":false,status:"Open"});input.value="";requestAnimationFrame(()=>{const box=$("#adminSupportMessages");if(box)box.scrollTop=box.scrollHeight;input.focus({preventScroll:true});});}catch(e){notify(e?.message||"Unable to send support reply.","error");}}
 async function setSupportStatus(id,status){try{
-  const patch={status,updatedAt:new Date().toISOString(),unreadForAdmin:false,adminActioned:true,adminActionedAt:new Date().toISOString()};
-  if(status==="Solved"){
-    patch.messages=arrayUnion({senderType:"system",text:"Thank you for contacting PISO WIFI Support. We’re glad we could assist you. This ticket has been closed. If you need further assistance, please contact us again.",createdAt:new Date().toISOString(),kind:"ticket-closed"});
+  const now=new Date().toISOString();
+  const terminal=status==="Solved"||status==="Closed";
+  const farewell="Thank you for contacting us. You are welcome to contact us again if you have any concerns.";
+  const patch={status,updatedAt:now,unreadForAdmin:false,adminActioned:true,adminActionedAt:now};
+  if(terminal){
+    patch.messages=arrayUnion({senderType:"system",text:farewell,createdAt:now,kind:"ticket-closed"});
+    patch.lastMessage=farewell;
+    patch.lastMessageAt=now;
     patch.unreadForCustomer=true;
     patch["typingBy.admin"]=false;
+    patch["typingBy.customer"]=false;
   }
   await updateDoc(doc(db,"supportChats",id),patch);
   await logActivity("Support",`${status} customer support conversation`,id);
