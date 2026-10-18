@@ -497,8 +497,12 @@ function exportUnitsCsv(rows){ downloadCsv(`piso-wifi-units-${selectedMonth}.csv
 
 function monthlyWiFiSubscriptionPaid(month){
   return wifiSubscriptions.reduce((sum,entry)=>{
-    const paymentDate=subscriptionDate(entry.paymentDate);
-    const paymentMonth=paymentDate?`${paymentDate.getFullYear()}-${String(paymentDate.getMonth()+1).padStart(2,"0")}`:"";
+    // Date-only values are calendar dates, not UTC instants.
+    const raw=entry.paymentDate;
+    const paymentDate=subscriptionDate(raw);
+    const paymentMonth=typeof raw==="string" && /^\d{4}-\d{2}/.test(raw)
+      ?raw.slice(0,7)
+      :paymentDate?`${paymentDate.getFullYear()}-${String(paymentDate.getMonth()+1).padStart(2,"0")}`:"";
     return sum+(paymentMonth===month?Math.max(0,Number(entry.paymentAmount)||0):0);
   },0);
 }
@@ -506,7 +510,7 @@ function monthlyOwnerEarnAfterWiFi(t,month){return Math.max(0,t.owner-t.elec-mon
 
 function renderReports(){
   const rows=normalizeRows(), t=totals(rows);
-  view.innerHTML=baseHead("Monthly Reports","View and export monthly summaries.",`<div class="tools"><button class="secondary-btn" id="downloadReport">Download</button><button class="primary-btn" id="printReport">Print</button></div>`)+`<div class="report-cards">${reportCard("Total Units",units.length)}${reportCard("Total Gross Sales",money(t.gross))}${reportCard("Total Internet Cost",money(t.internet))}${reportCard("Total Owner Earn",money(monthlyOwnerEarnAfterWiFi(t,selectedMonth)),"green")}${reportCard("Total Paid WiFi Subscription",money(monthlyWiFiSubscriptionPaid(selectedMonth)))}${reportCard("Total Electricity",money(t.elec))}${reportCard("Total Amount Due",money(t.due))}${reportCard("Customer Accumulated Earnings",money(t.paid),"green")}${reportCard("Outstanding",money(t.balance),"red")}</div><div class="panel"><div class="panel-head"><div><h3>${monthLabel(selectedMonth)} Detail</h3><p>All calculations use the current business settings.</p></div><span class="report-rule">Internet ${money(settings.internetCost)} separate · Owner ${settings.ownerPercent}% · Client ${settings.clientPercent}% · Electricity +${money(settings.electricity)}</span></div><div class="table-wrap"><table><thead><tr><th>Unit</th><th>Client</th><th>Gross Sales</th><th>Internet</th><th>Net Sales</th><th>Owner Share</th><th>Customer Earnings</th><th>Electricity</th><th>Client Net</th><th>Amount Due</th><th>Paid</th><th>Balance</th><th>Status</th></tr></thead><tbody>${rows.length?rows.map(x=>`<tr><td>${esc(x.u.unitCode)}</td><td>${esc(x.u.name)}</td><td>${money(x.c.gross)}</td><td>${money(x.c.internet)}</td><td>${money(x.c.net)}</td><td>${money(x.c.owner)}</td><td>${money(x.c.clientTotal)}</td><td>${money(x.c.elec)}</td><td>${money(x.c.clientTotal)}</td><td>${money(x.c.clientTotal)}</td><td>${money(x.c.paid)}</td><td class="amount">${money(x.c.balance)}</td><td>${statusBadge(x.c.status)}</td></tr>`).join(""):emptyRow(13,"No sales recorded for this month.")}</tbody></table></div></div>`;
+  view.innerHTML=baseHead("Monthly Reports","View and export monthly summaries.",`<div class="tools"><button class="secondary-btn" id="downloadReport">Download</button><button class="primary-btn" id="printReport">Print</button></div>`)+`${wifiSubscriptionsLoadError?`<div class="notice" role="alert" style="margin:12px 0;color:#b91c1c">WiFi Subscription records could not be loaded: ${esc(wifiSubscriptionsLoadError)}. The subscription total and owner earnings may be incomplete.</div>`:""}<div class="report-cards">${reportCard("Total Units",units.length)}${reportCard("Total Gross Sales",money(t.gross))}${reportCard("Total Internet Cost",money(t.internet))}${reportCard("Total Owner Earn",money(monthlyOwnerEarnAfterWiFi(t,selectedMonth)),"green")}${reportCard("Total Paid WiFi Subscription",money(monthlyWiFiSubscriptionPaid(selectedMonth)))}${reportCard("Total Electricity",money(t.elec))}${reportCard("Total Amount Due",money(t.due))}${reportCard("Customer Accumulated Earnings",money(t.paid),"green")}${reportCard("Outstanding",money(t.balance),"red")}</div><div class="panel"><div class="panel-head"><div><h3>${monthLabel(selectedMonth)} Detail</h3><p>All calculations use the current business settings.</p></div><span class="report-rule">Internet ${money(settings.internetCost)} separate · Owner ${settings.ownerPercent}% · Client ${settings.clientPercent}% · Electricity +${money(settings.electricity)}</span></div><div class="table-wrap"><table><thead><tr><th>Unit</th><th>Client</th><th>Gross Sales</th><th>Internet</th><th>Net Sales</th><th>Owner Share</th><th>Customer Earnings</th><th>Electricity</th><th>Client Net</th><th>Amount Due</th><th>Paid</th><th>Balance</th><th>Status</th></tr></thead><tbody>${rows.length?rows.map(x=>`<tr><td>${esc(x.u.unitCode)}</td><td>${esc(x.u.name)}</td><td>${money(x.c.gross)}</td><td>${money(x.c.internet)}</td><td>${money(x.c.net)}</td><td>${money(x.c.owner)}</td><td>${money(x.c.clientTotal)}</td><td>${money(x.c.elec)}</td><td>${money(x.c.clientTotal)}</td><td>${money(x.c.clientTotal)}</td><td>${money(x.c.paid)}</td><td class="amount">${money(x.c.balance)}</td><td>${statusBadge(x.c.status)}</td></tr>`).join(""):emptyRow(13,"No sales recorded for this month.")}</tbody></table></div></div>`;
   $("#downloadReport").onclick=()=>downloadReportHtml(t,rows); $("#printReport").onclick=()=>printReport(t,rows);
 }
 function reportCard(label,value,cls=""){return `<article class="report-card ${cls}"><span>${label}</span><strong>${value}</strong></article>`;}
@@ -564,6 +568,7 @@ function renderActivity(){
 function activityRows(filter){const list=activities.filter(a=>!filter||a.activityType===filter);return list.length?list.map(a=>`<tr><td>${dateTimeLabel(a.createdAt)}</td><td><span class="activity-dot"></span>${esc(a.activityType||"Activity")}</td><td>${esc(a.description||"—")}</td><td>${esc(a.userEmail||currentUser?.email||"Admin")}</td></tr>`).join(""):emptyRow(4,"No activity recorded yet. Actions you perform will appear here automatically.");}
 
 let wifiSubscriptions=[];
+let wifiSubscriptionsLoadError="";
 function subscriptionDate(v){if(!v)return null;const d=v?.toDate?v.toDate():new Date(v);return Number.isNaN(d.getTime())?null:d;}
 function subscriptionTotalPaid(){return wifiSubscriptions.reduce((sum,x)=>sum+Math.max(0,Number(x.paymentAmount||0)),0);}
 function expiryLabel(x){const end=subscriptionDate(x.periodEnd);if(!end)return "No end date";const days=Math.ceil((new Date(end.getFullYear(),end.getMonth(),end.getDate())-new Date(new Date().getFullYear(),new Date().getMonth(),new Date().getDate()))/86400000);if(days<0)return `Expired ${Math.abs(days)} day(s) ago`;if(days===0)return "Expires today";if(days<=7)return `Ends in ${days} day(s)`;return `Ends ${end.toLocaleDateString()}`;}
@@ -571,6 +576,7 @@ function subscriptionEndingSoon(x){const d=subscriptionDate(x.periodEnd);return 
 async function loadWiFiSubscriptions(){
   const snap=await getDocs(collection(db,"wifiSubscriptions"));
   wifiSubscriptions=snap.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>(subscriptionDate(b.paymentDate)?.getTime()||0)-(subscriptionDate(a.paymentDate)?.getTime()||0));
+  wifiSubscriptionsLoadError="";
   updateWiFiSubscriptionSummary();
   // Create one Admin notification per subscription end date when it enters the
   // 7-day reminder window. Updating the period later allows a fresh reminder.
@@ -1247,13 +1253,19 @@ function startCoreRealtime(){
   bind("units",rows=>{units=rows;});
   bind("monthlyRecords",rows=>{records=rows;});
   bind("payments",rows=>{payments=rows;});
+  // Keep monthly subscription totals current when payments are added/edited.
+  bind("wifiSubscriptions",rows=>{
+    wifiSubscriptionsLoadError="";
+    wifiSubscriptions=rows.sort((a,b)=>(subscriptionDate(b.paymentDate)?.getTime()||0)-(subscriptionDate(a.paymentDate)?.getTime()||0));
+    updateWiFiSubscriptionSummary();
+  });
   coreRealtimeUnsubs.push(onSnapshot(doc(db,"settings","business"),snap=>{if(snap.exists())settings={...settings,...snap.data()};scheduleDashboardRealtime();},err=>console.warn("PISO WIFI realtime settings unavailable",err)));
   coreRealtimeUnsubs.push(onSnapshot(collection(db,"activities"),snap=>{activities=snap.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>timeValue(b.createdAt)-timeValue(a.createdAt));scheduleDashboardRealtime();},err=>console.warn("PISO WIFI realtime activities unavailable",err)));
 }
 
 function showAuthError(message){console.error("[PISO WIFI]",message);const loader=$("#authLoading");if(loader){loader.innerHTML=`<div class="auth-error"><strong>Unable to open the dashboard</strong><span>${esc(message)}</span><button type="button" id="returnAdminLogin">Return to Login</button></div>`;loader.classList.remove("hidden");$("#returnAdminLogin")?.addEventListener("click",()=>location.replace("/admin/index.html"));}}
 let bootstrappedUserUid="";
-async function bootstrap(user){if(!user){location.replace("/admin/index.html");return;}if(bootstrappedUserUid===user.uid && !$("#app")?.classList.contains("hidden"))return;bootstrappedUserUid=user.uid;currentUser=user;try{await authorize(user);await loadData();try{await loadWiFiSubscriptions();}catch(e){console.warn("WiFi subscriptions unavailable",e);}await logActivity("System",`Admin login — ${user.email||"Admin"}`);setupMonthSelector();startSupportRealtime();startCoreRealtime();$("#authLoading").classList.add("hidden");$("#app").classList.remove("hidden");$("#userEmail").textContent=user.email||"Owner";route=parseRoute();render();}catch(e){bootstrappedUserUid="";showAuthError(e?.message||"Firebase authorization or database access failed.");}}
+async function bootstrap(user){if(!user){location.replace("/admin/index.html");return;}if(bootstrappedUserUid===user.uid && !$("#app")?.classList.contains("hidden"))return;bootstrappedUserUid=user.uid;currentUser=user;try{await authorize(user);await loadData();try{await loadWiFiSubscriptions();}catch(e){wifiSubscriptionsLoadError=e?.message||"WiFi subscriptions unavailable";console.warn("WiFi subscriptions unavailable",e);}await logActivity("System",`Admin login — ${user.email||"Admin"}`);setupMonthSelector();startSupportRealtime();startCoreRealtime();$("#authLoading").classList.add("hidden");$("#app").classList.remove("hidden");$("#userEmail").textContent=user.email||"Owner";route=parseRoute();render();}catch(e){bootstrappedUserUid="";showAuthError(e?.message||"Firebase authorization or database access failed.");}}
 
 function parseRoute(){const raw=location.hash.replace("#","");return raw.split("?")[0]||"dashboard";}
 document.addEventListener("click",e=>{const a=e.target.closest("[data-route]");if(a){e.preventDefault();e.stopPropagation();navigateTo(a.dataset.route);return;} const p=e.target.closest("[data-print-inline]");if(p){const id=$("#statementUnit")?.value;if(id)printStatement(id,$("#statementMonth").value);} const pdf=e.target.closest("[data-pdf-inline]");if(pdf){const id=$("#statementUnit")?.value;if(id)downloadStatementPdf(id,$("#statementMonth").value);} const html=e.target.closest("[data-html-inline]");if(html){const id=$("#statementUnit")?.value;if(id)downloadStatementHtml(id,$("#statementMonth").value);}});

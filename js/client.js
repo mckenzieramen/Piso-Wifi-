@@ -104,18 +104,30 @@ function recordFor(unitId,month){
 function calc(r){
   const base=calculateFinancialRecord(r,settings,payments);
   const gross=base.gross;
-  // Count a cycle only when Admin has finalized a remittance. All
-  // unapproved sales for the same unit/month share ONE open cycle.
-  // Customer payments do not close a cashier remittance cycle.
+  // Match Cashier's saved charges, grouped by actual remittance batch.
+  // Multiple sales in one unapproved batch count as one cycle, regardless
+  // of the number of customer payments or receipt entries.
   const sales=cashierSales.filter(t=>t.unitId===r.unitId && String(t.saleDate||t.recordedAt||"").slice(0,7)===r.month);
-  const completedIds=new Set(sales.filter(t=>t.remittanceApproved===true||t.remittanceFinalized===true)
-    .map(t=>String(t.remittanceId||t.id)));
-  const hasOpenSales=sales.some(t=>t.remittanceApproved!==true&&t.remittanceFinalized!==true);
-  // Legacy manually entered monthly sales (without cashier transactions)
-  // still receive one cycle; never infer cycles from payment count.
-  const cycles=gross>0.009?Math.max(1,completedIds.size+(hasOpenSales?1:0)):0;
-  const internet=cycles*Math.max(0,Number(settings.internetCost??1000));
-  const electricity=cycles*Math.max(0,Number(settings.electricity??100));
+  const groups=new Map();
+  for(const sale of sales){
+    const approved=sale.remittanceApproved===true||sale.remittanceFinalized===true;
+    const batch=approved?String(sale.remittanceId||sale.remittanceApprovedAt?.seconds||sale.remittanceApprovedAt||sale.id):"open";
+    const key=approved?`approved:${batch}`:"open";
+    if(!groups.has(key))groups.set(key,[]);
+    groups.get(key).push(sale);
+  }
+  // For each remittance cycle, take the single fixed charge recorded by
+  // Cashier. Older sales may have repeated it: never add duplicates.
+  let internet=0,electricity=0;
+  for(const group of groups.values()){
+    internet+=Math.max(...group.map(t=>Math.max(0,Number(t.internetFee)||0)),0);
+    electricity+=Math.max(...group.map(t=>Math.max(0,Number(t.electricityShare)||0)),0);
+  }
+  // Monthly records created directly by Admin have no cashier sales.
+  if(!sales.length && gross>0.009){
+    internet=Math.max(0,Number(settings.internetCost??1000));
+    electricity=Math.max(0,Number(settings.electricity??100));
+  }
   const rule=String(settings.electricityRule||"ADD_TO_CLIENT");
   const adjustment=rule==="SUBTRACT_FROM_CLIENT"?-electricity:rule==="SEPARATE_CHARGE"?0:electricity;
   const due=Math.max(0,base.client+adjustment-base.miscellaneous);
