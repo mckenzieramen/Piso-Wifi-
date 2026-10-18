@@ -312,7 +312,7 @@ function renderSupportLobby(){
     if(!found)return;
     supportChatDocId=id; supportChat=found;
     subscribeSupportChat(); supportChatOpen=true; renderSupportChat();
-    try{await updateDoc(supportChatRef(),{unreadForCustomer:false,updatedAt:supportNow()});}catch(e){}
+    if(!["Solved","Closed"].includes(supportStatusValue(found))){try{await updateDoc(supportChatRef(),{unreadForCustomer:false,updatedAt:supportNow()});}catch(e){}}
   });
   const start=$("#startSupportChat");
   if(start) start.onclick=()=>openSupportConversation();
@@ -331,8 +331,8 @@ function renderSupportChat(){
     composer.style.display=closed?"none":"";
     let notice=document.getElementById("supportClosedTicketNotice");
     if(closed){
-      if(!notice){notice=document.createElement("div");notice.id="supportClosedTicketNotice";notice.className="support-closed-ticket-notice";notice.textContent="Closed Ticket · This conversation is read-only.";composer.insertAdjacentElement("afterend",notice);}
-      notice.style.display="";
+      if(!notice){notice=document.createElement("div");notice.id="supportClosedTicketNotice";notice.className="support-closed-ticket-notice";notice.textContent=`Ticket ${status}`;composer.insertAdjacentElement("afterend",notice);}
+      notice.textContent=`Ticket ${status}`;notice.style.display="";
     }else if(notice){notice.remove();}
   }
   if(input){input.disabled=closed;input.placeholder=closed?"Ticket was closed.":"Type your concern…";}
@@ -364,7 +364,7 @@ async function createSupportChat(forceNew=false){
   supportChatDocId=`${currentUser.uid}_${Date.now()}`;
   const ref=supportChatRef();
   const unit=primaryUnit();
-  const greeting={senderType:"admin",senderName:"Piso Net Admin",text:"Hi! Welcome to Piso Net Customer Service. Our support team will assist you, as soon as possible. Kindly state your concern here.",createdAt:supportNow(),automatedWelcome:true};
+  const greeting={senderType:"admin",senderName:"Piso Net Admin",text:"Hi! Welcome to Piso Net Customer Service. Our support team will assist you as soon as possible. Kindly state your concern here.",createdAt:supportNow(),automatedWelcome:true};
   const payload={authUserId:currentUser.uid,unitId:unit.id||"",clientCode:unit.clientCode||"",customerName:clientName(),customerEmail:clientEmail(),subject:"Piso Net Support",status:"Open",assignedRole:"cashier",assignedCashierId:"",assignedCashierName:"",transferredToAdmin:false,messages:[greeting],typingBy:{customer:false,admin:false,cashier:false},unreadForCashier:true,unreadForAdmin:false,unreadForCustomer:false,createdAt:serverTimestamp(),updatedAt:supportNow()};
   await setDoc(ref,payload);
   supportChat={id:ref.id,...payload,createdAt:new Date(),updatedAt:supportNow()};
@@ -407,12 +407,17 @@ function subscribeSupportChat(){
         const input=$("#supportChatInput"),send=$("#supportSend");
         if(input){input.disabled=closed;input.placeholder=closed?"Ticket was closed.":"Type your concern…";}
         if(send)send.disabled=closed;
+        // Keep the conversation available for back-reading after resolution.
+        // Remove the composer immediately without dismissing the ticket.
         if(closed){
-          // Dismiss the active chat after a staff member resolves the ticket.
-          supportChatOpen=false;
-          const modal=$("#clientSupportModal");
-          if(modal){modal.classList.add("hidden");modal.setAttribute("aria-hidden","true");}
-          closeSupportChat();
+          const composer=document.querySelector(".piso-chat-composer, .piso-support-compose, .support-chat-compose, #supportChatComposer");
+          if(composer){
+            composer.style.display="none";
+            let notice=document.getElementById("supportClosedTicketNotice");
+            if(!notice){notice=document.createElement("div");notice.id="supportClosedTicketNotice";notice.className="support-closed-ticket-notice";composer.insertAdjacentElement("afterend",notice);}
+            notice.textContent=`Ticket ${supportStatusValue(supportChat)}`;
+            notice.style.display="";
+          }
         }
       }
     }
@@ -447,7 +452,7 @@ async function sendSupportMessage(){
     const existingMessages=[...(Array.isArray(supportChat?.messages)?supportChat.messages:[]),...supportThreadMessages];
     const firstCustomerMessage=!existingMessages.some(m=>String(m?.senderType||"").toLowerCase()==="customer");
     const customerMessage={senderType:"customer",text,createdAt:supportNow()};
-    const acknowledgement={senderType:"system",text:"Thank you for letting us know about this. Let me notify our support team, and we will get in touch with you as soon as possible.",createdAt:supportNow(),kind:"auto-acknowledgement"};
+    const acknowledgement={senderType:"system",text:"Thank you for letting us know about your concern. I'll notify our cashier right away so they can review your message and assist you as soon as possible.",createdAt:supportNow(),kind:"auto-acknowledgement"};
     await addDoc(collection(db,"supportChats",supportChat.id,"messages"),customerMessage);
     if(firstCustomerMessage)await addDoc(collection(db,"supportChats",supportChat.id,"messages"),acknowledgement);
     await updateDoc(supportChatRef(),{
