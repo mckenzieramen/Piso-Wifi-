@@ -104,25 +104,14 @@ function recordFor(unitId,month){
 function calc(r){
   const base=calculateFinancialRecord(r,settings,payments);
   const gross=base.gross;
-  // Match Cashier's saved charges, grouped by actual remittance batch.
-  // Multiple sales in one unapproved batch count as one cycle, regardless
-  // of the number of customer payments or receipt entries.
+  // Cashier records the fixed charges only on the first sale of each
+  // remittance cycle. Later sales in that cycle carry zero fixed charges.
+  // Sum those actual saved amounts, rather than grouping all sales whose
+  // approval metadata is not yet visible into one synthetic "open" cycle.
+  // This preserves separate completed cycles within the same month.
   const sales=cashierSales.filter(t=>t.unitId===r.unitId && String(t.saleDate||t.recordedAt||"").slice(0,7)===r.month);
-  const groups=new Map();
-  for(const sale of sales){
-    const approved=sale.remittanceApproved===true||sale.remittanceFinalized===true;
-    const batch=approved?String(sale.remittanceId||sale.remittanceApprovedAt?.seconds||sale.remittanceApprovedAt||sale.id):"open";
-    const key=approved?`approved:${batch}`:"open";
-    if(!groups.has(key))groups.set(key,[]);
-    groups.get(key).push(sale);
-  }
-  // For each remittance cycle, take the single fixed charge recorded by
-  // Cashier. Older sales may have repeated it: never add duplicates.
-  let internet=0,electricity=0;
-  for(const group of groups.values()){
-    internet+=Math.max(...group.map(t=>Math.max(0,Number(t.internetFee)||0)),0);
-    electricity+=Math.max(...group.map(t=>Math.max(0,Number(t.electricityShare)||0)),0);
-  }
+  let internet=sales.reduce((sum,t)=>sum+Math.max(0,Number(t.internetFee)||0),0);
+  let electricity=sales.reduce((sum,t)=>sum+Math.max(0,Number(t.electricityShare)||0),0);
   // Monthly records created directly by Admin have no cashier sales.
   if(!sales.length && gross>0.009){
     internet=Math.max(0,Number(settings.internetCost??1000));
