@@ -355,7 +355,11 @@ async function saveSale(e){
     const id=`TXN-${Date.now()}-${Math.random().toString(36).slice(2,7).toUpperCase()}`;
     const clientShare=gross*.30;
     const openBatchTxns=txns.filter(t=>!t.remittanceApproved&&!t.remittanceFinalized&&!t.remittanceId&&!remittances.some(r=>(r.transactionIds||[]).includes(t.id)&&["APPROVED","REMITTED"].includes(String(r.status||"").toUpperCase())));
-    const electricity=openBatchTxns.some(t=>String(t.unitId||t.customerId)===String(customer.id))?0:100;
+    // A customer is charged the fixed Internet fee and receives the owner electricity
+    // share once per unapproved remittance batch, not once per sales entry.
+    const customerHasOpenSale=openBatchTxns.some(t=>String(t.unitId||t.customerId)===String(customer.id)||String(t.customerId||"")===String(expectedId));
+    const internetFee=customerHasOpenSale?0:1000;
+    const electricity=customerHasOpenSale?0:100;
     const customerTotal=clientShare+electricity;
     const now=new Date();
     // Persist the sale first, but never label dashboard sync as complete before the API confirms it.
@@ -363,7 +367,7 @@ async function saveSale(e){
       transactionId:id,cashierId:user.uid,cashierName:profile.name||profile.email,
       customerId:expectedId,unitId:customer.id,unitCode:customer.unitCode||"",customerName,
       customerEmail:customer.email||customer.emailAddress||customer.contactEmail||customer.gmail||"",
-      grossSales:gross,internetFee:1000,ownerPercent:70,clientPercent:30,
+      grossSales:gross,internetFee,ownerPercent:70,clientPercent:30,
       ownerShare:gross*.70,clientShare,electricityShare:electricity,totalCustomerEarnings:customerTotal,
       saleDate,recordedAt:now.toISOString(),status:"AWAITING CUSTOMER EARNINGS PAYMENT",
       cashierLocked:true,dashboardSalesSyncStatus:"PENDING",createdAt:serverTimestamp()
