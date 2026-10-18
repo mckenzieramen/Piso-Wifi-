@@ -476,7 +476,7 @@ async function setSupportTyping(isTyping){
   if(!ref||!supportChat)return;
   try{await updateDoc(ref,{"typingBy.customer":!!isTyping,updatedAt:supportNow()});}catch(e){}
 }
-function bindSupportTyping(){const input=$("#supportChatInput");if(!input)return;input.oninput=()=>{clearTimeout(supportTypingTimer);setSupportTyping(true);supportTypingTimer=setTimeout(()=>setSupportTyping(false),1200);};input.onblur=()=>{clearTimeout(supportTypingTimer);setSupportTyping(false);};input.onkeydown=e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();sendSupportMessage();}};}
+function bindSupportTyping(){const input=$("#supportChatInput");if(!input)return;input.oninput=()=>{clearTimeout(supportTypingTimer);setSupportTyping(true);supportTypingTimer=setTimeout(()=>setSupportTyping(false),3000);};input.onblur=()=>{clearTimeout(supportTypingTimer);setSupportTyping(false);};input.onkeydown=e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();sendSupportMessage();}};}
 async function openSupportModal(){
   const modal=$("#clientSupportModal");if(!modal)return;modal.classList.remove("hidden");modal.setAttribute("aria-hidden","false");supportChatOpen=false;renderSupportLobby();
   try{
