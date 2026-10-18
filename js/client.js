@@ -454,8 +454,8 @@ async function sendSupportMessage(){
     const customerMessage={senderType:"customer",text,createdAt:supportNow()};
     const acknowledgement={senderType:"system",text:"Thank you for letting us know about your concern. I'll notify our cashier right away so they can review your message and assist you as soon as possible.",createdAt:supportNow(),kind:"auto-acknowledgement"};
     await addDoc(collection(db,"supportChats",supportChat.id,"messages"),customerMessage);
-    if(firstCustomerMessage)await addDoc(collection(db,"supportChats",supportChat.id,"messages"),acknowledgement);
     await updateDoc(supportChatRef(),{
+      ...(firstCustomerMessage?{messages:[...(Array.isArray(supportChat?.messages)?supportChat.messages:[]),acknowledgement]}:{}),
       lastMessage:text,
       lastMessageSender:"customer",
       lastMessageAt:supportNow(),
