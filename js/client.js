@@ -481,9 +481,9 @@ async function setSupportTyping(isTyping){
   }
   const ref=supportChatRef();
   if(!ref||!supportChat)return;
-  try{await updateDoc(ref,{"typingBy.customer":!!isTyping,updatedAt:supportNow()});}catch(e){}
+  try{await updateDoc(ref,{"typingBy.customer":!!isTyping});}catch(e){}
 }
-function bindSupportTyping(){const input=$("#supportChatInput");if(!input)return;let typingActive=false;input.oninput=()=>{clearTimeout(supportTypingTimer);if(!typingActive){typingActive=true;setSupportTyping(true);}supportTypingTimer=setTimeout(()=>{typingActive=false;setSupportTyping(false);},3000);};input.onblur=()=>{clearTimeout(supportTypingTimer);typingActive=false;setSupportTyping(false);};input.onkeydown=e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();sendSupportMessage();}};}
+function bindSupportTyping(){const input=$("#supportChatInput");if(!input)return;let typingActive=false;input.oninput=()=>{clearTimeout(supportTypingTimer);if(!typingActive){typingActive=true;setSupportTyping(true);}supportTypingTimer=setTimeout(()=>{typingActive=false;setSupportTyping(false);},3000);};input.onkeydown=e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();sendSupportMessage();}};}
 async function openSupportModal(){
   const modal=$("#clientSupportModal");if(!modal)return;modal.classList.remove("hidden");modal.setAttribute("aria-hidden","false");supportChatOpen=false;renderSupportLobby();
   try{
