@@ -6,7 +6,7 @@ import { calculateFinancialRecord } from "./finance.js";
 import { onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-auth.js";
 import {
   collection, doc, getDoc, getDocs, setDoc, addDoc, updateDoc, deleteDoc, writeBatch, runTransaction, onSnapshot, arrayUnion,
-  serverTimestamp, Timestamp
+  serverTimestamp, Timestamp, query, orderBy
 } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-firestore.js";
 
 console.info("[PISO WIFI] BUILD 2026-10-11 — cashier management deactivate action");
