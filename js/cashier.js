@@ -1,5 +1,5 @@
-import { initializeApp } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-app.js";
-import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut, updatePassword, EmailAuthProvider, reauthenticateWithCredential } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-auth.js";
+import { initializeApp, deleteApp } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-app.js";
+import { getAuth, setPersistence, inMemoryPersistence, onAuthStateChanged, signInWithEmailAndPassword, signOut, updatePassword, EmailAuthProvider, reauthenticateWithCredential } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-auth.js";
 import { getFirestore, collection, doc, getDoc, getDocs, addDoc, updateDoc, query, where, orderBy, onSnapshot, serverTimestamp, arrayUnion } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-firestore.js";
 import { getStorage, ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-storage.js";
 import { firebaseConfig } from "./firebase-config.js";
@@ -260,21 +260,49 @@ if(tab==="receipt"){
   const amountToggle=$("#receiptAmountsToggle");
   if(amountToggle)amountToggle.onclick=async()=>{
     if(receiptAmountsUnlocked){receiptAmountsUnlocked=false;render();return;}
-    if(!user?.email){alert("Your cashier account must have an email address to verify the password.");return;}
-    const password=window.prompt("Enter your cashier account password to view all receipt amounts:");
-    if(password===null)return;
-    if(!password){alert("Please enter your cashier password.");return;}
-    amountToggle.disabled=true;
-    amountToggle.textContent="Verifying…";
-    try{
-      await reauthenticateWithCredential(user,EmailAuthProvider.credential(user.email,password));
-      receiptAmountsUnlocked=true;
-      if(tab==="receipt")render();
-    }catch(error){
-      console.warn("Receipt amount verification failed:",error?.code||error);
-      alert("Password verification failed. Receipt amounts remain hidden.");
-      if(tab==="receipt")render();
-    }
+    const overlay=document.createElement("div");
+    overlay.id="receiptAdminVerifyOverlay";
+    overlay.style.cssText="position:fixed;inset:0;z-index:99999;background:rgba(5,19,31,.70);backdrop-filter:blur(7px);display:flex;align-items:center;justify-content:center;padding:18px";
+    overlay.innerHTML=`<form id="receiptAdminVerifyForm" style="width:min(100%,410px);background:#fff;border-radius:22px;padding:30px;box-shadow:0 26px 90px #0005;border:1px solid #dbeafe;color:#142b43;font-family:inherit">
+      <div style="width:48px;height:48px;border-radius:15px;background:#e8f2ff;color:#1565c0;display:grid;place-items:center;font-size:23px;margin-bottom:15px">🔒</div>
+      <h2 style="margin:0 0 7px;font-size:22px">Verify Admin Access</h2>
+      <p style="margin:0 0 19px;color:#64748b;line-height:1.5;font-size:13px">Enter the administrator password to view all receipt amounts. Your cashier session stays signed in.</p>
+      <label for="receiptAdminPassword" style="display:block;font-weight:700;font-size:13px;margin-bottom:7px">Admin password</label>
+      <div style="display:flex;gap:7px"><input id="receiptAdminPassword" type="password" autocomplete="off" required placeholder="Enter admin password" style="flex:1;min-width:0;border:1px solid #cbd5e1;border-radius:10px;padding:12px;font-size:15px;color:#142b43;background:white"/><button id="receiptAdminShowPassword" type="button" style="border:1px solid #cbd5e1;border-radius:10px;background:#f8fafc;padding:0 12px;color:#334155">Show</button></div>
+      <p id="receiptAdminVerifyError" role="alert" style="color:#b91c1c;min-height:18px;font-size:12px;margin:9px 0"></p>
+      <div style="display:flex;gap:10px;justify-content:flex-end"><button id="receiptAdminCancel" type="button" style="border:1px solid #cbd5e1;border-radius:10px;background:white;color:#334155;padding:11px 17px">Cancel</button><button id="receiptAdminSubmit" type="submit" style="border:0;border-radius:10px;background:#1675ed;color:white;font-weight:700;padding:11px 17px">Verify & View</button></div>
+    </form>`;
+    document.body.appendChild(overlay);
+    const close=()=>overlay.remove();
+    overlay.addEventListener("click",e=>{if(e.target===overlay)close()});
+    overlay.querySelector("#receiptAdminCancel").onclick=close;
+    overlay.querySelector("#receiptAdminShowPassword").onclick=()=>{const field=overlay.querySelector("#receiptAdminPassword");field.type=field.type==="password"?"text":"password";overlay.querySelector("#receiptAdminShowPassword").textContent=field.type==="password"?"Show":"Hide"};
+    overlay.querySelector("#receiptAdminVerifyForm").onsubmit=async e=>{
+      e.preventDefault();
+      const password=overlay.querySelector("#receiptAdminPassword").value;
+      const submit=overlay.querySelector("#receiptAdminSubmit");
+      const errorBox=overlay.querySelector("#receiptAdminVerifyError");
+      submit.disabled=true;submit.textContent="Verifying…";errorBox.textContent="";
+      let verifierApp;
+      try{
+        verifierApp=initializeApp(firebaseConfig,`receiptAdminVerifier-${Date.now()}`);
+        const verifierAuth=getAuth(verifierApp);
+        await setPersistence(verifierAuth,inMemoryPersistence);
+        const credential=await signInWithEmailAndPassword(verifierAuth,"admin@pisonet.com",password);
+        const adminProfile=await getDoc(doc(getFirestore(verifierApp),"users",credential.user.uid));
+        if(!adminProfile.exists()||String(adminProfile.data().role||"").toLowerCase()!=="admin")throw new Error("This account is not authorized as an administrator.");
+        receiptAmountsUnlocked=true;
+        close();
+        if(tab==="receipt")render();
+      }catch(error){
+        console.warn("Receipt admin verification failed:",error?.code||error?.message);
+        errorBox.textContent="Verification failed. Check the admin password and account permissions.";
+      }finally{
+        if(verifierApp)await deleteApp(verifierApp).catch(()=>{});
+        if(overlay.isConnected){submit.disabled=false;submit.textContent="Verify & View";overlay.querySelector("#receiptAdminPassword").value="";}
+      }
+    };
+    overlay.querySelector("#receiptAdminPassword").focus();
   };
   
   
