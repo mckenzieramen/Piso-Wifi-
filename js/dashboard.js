@@ -961,8 +961,16 @@ function subscribeSelectedSupport(id){
 
     if(route==="support"&&selectedSupportChatId===id){
       const box=$("#adminSupportMessages");
-      // Do not rebuild the message DOM on ticket/typing snapshots.
-      // The dedicated messages subcollection listener updates only new bubbles.
+      // Customer messages are stored in the parent chat document's messages array,
+      // while Admin/Cashier replies are stored in the messages subcollection.
+      // Re-render the merged thread on parent snapshots so Admin sees customer
+      // messages live instead of only seeing the customer's view update.
+      if(box){
+        const wasAtBottom=box.scrollHeight-box.scrollTop-box.clientHeight<40;
+        const previousTop=box.scrollTop;
+        box.innerHTML=supportMessagesHtml(c);
+        requestAnimationFrame(()=>{box.scrollTop=wasAtBottom?box.scrollHeight:previousTop;});
+      }
       const typ=$("#adminSupportTyping");
       if(typ){
         typ.textContent=c.typingBy?.customer?"Customer is typing…":"";
