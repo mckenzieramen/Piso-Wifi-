@@ -63,6 +63,7 @@ let currentUser=null;
 let clientUnits=[];
 let records=[];
 let payments=[];
+let cashierSales=[];
 let notifications=[];
 let settings={internetCost:1000,ownerPercent:70,clientPercent:30,electricity:100,electricityRule:"ADD_TO_CLIENT"};
 // Always open on the current month; older months remain available in the selector.
@@ -74,6 +75,7 @@ let route="dashboard";
 let clientRealtimeUnsubs=[];
 let clientRecordUnsubs=[];
 let clientPaymentUnsubs=[];
+let clientCashierSalesUnsubs=[];
 let clientNotificationUnsubs=[];
 let clientSettingsUnsub=null;
 // Avoid tearing down and recreating every Firestore listener when the units
@@ -102,14 +104,16 @@ function recordFor(unitId,month){
 function calc(r){
   const base=calculateFinancialRecord(r,settings,payments);
   const gross=base.gross;
-  // Customer-only monthly view: a fee/share applies once per completed
-  // payment cycle, plus one current unpaid cycle (if there are new sales).
-  // Never show a fixed charge in an empty new month.
-  const matchingPayments=payments.filter(p=>p.unitId===r.unitId&&p.month===r.month&&Number(p.amount)>0);
-  const completedCycles=matchingPayments.length;
-  const paidForSales=Math.max(0,base.paid-completedCycles*Math.max(0,Number(settings.electricity??100)));
-  const unremittedSales=gross>0.009 && (gross*Number(settings.clientPercent??30)/100)>paidForSales+0.009;
-  const cycles=gross>0.009?Math.max(1,completedCycles+(unremittedSales?1:0)):0;
+  // Count a cycle only when Admin has finalized a remittance. All
+  // unapproved sales for the same unit/month share ONE open cycle.
+  // Customer payments do not close a cashier remittance cycle.
+  const sales=cashierSales.filter(t=>t.unitId===r.unitId && String(t.saleDate||t.recordedAt||"").slice(0,7)===r.month);
+  const completedIds=new Set(sales.filter(t=>t.remittanceApproved===true||t.remittanceFinalized===true)
+    .map(t=>String(t.remittanceId||t.id)));
+  const hasOpenSales=sales.some(t=>t.remittanceApproved!==true&&t.remittanceFinalized!==true);
+  // Legacy manually entered monthly sales (without cashier transactions)
+  // still receive one cycle; never infer cycles from payment count.
+  const cycles=gross>0.009?Math.max(1,completedIds.size+(hasOpenSales?1:0)):0;
   const internet=cycles*Math.max(0,Number(settings.internetCost??1000));
   const electricity=cycles*Math.max(0,Number(settings.electricity??100));
   const rule=String(settings.electricityRule||"ADD_TO_CLIENT");
@@ -172,15 +176,19 @@ async function loadClientData(){
     getChunked("payments","unitId",ids),
     getDoc(doc(db,"settings","business"))
   ]);
-  records=r;payments=p;if(s.exists())settings={...settings,...s.data()};
+  records=r;payments=p;
+  try{cashierSales=await getChunked("cashierTransactions","unitId",ids);}catch(error){
+    console.warn("Customer remittance cycle data unavailable",error);cashierSales=[];
+  }
+  if(s.exists())settings={...settings,...s.data()};
   try{
     notifications=await getChunked("notifications","relatedId",ids);
     notifications.sort((a,b)=>timeValue(b.createdAt)-timeValue(a.createdAt));
   }catch(e){notifications=[];}
 }
 function clearClientRealtimeSubscriptions(){
-  [...clientRealtimeUnsubs,...clientRecordUnsubs,...clientPaymentUnsubs,...clientNotificationUnsubs].forEach(fn=>{try{fn?.();}catch(e){}});
-  clientRealtimeUnsubs=[];clientRecordUnsubs=[];clientPaymentUnsubs=[];clientNotificationUnsubs=[];
+  [...clientRealtimeUnsubs,...clientRecordUnsubs,...clientPaymentUnsubs,...clientCashierSalesUnsubs,...clientNotificationUnsubs].forEach(fn=>{try{fn?.();}catch(e){}});
+  clientRealtimeUnsubs=[];clientRecordUnsubs=[];clientPaymentUnsubs=[];clientCashierSalesUnsubs=[];clientNotificationUnsubs=[];
   try{clientSettingsUnsub?.();}catch(e){}
   clientSettingsUnsub=null;
   clientRealtimeUnitSignature="";
@@ -232,9 +240,11 @@ function startClientRealtime(){
       clientRealtimeUnitSignature=signature;
       clientRecordUnsubs.forEach(fn=>{try{fn?.();}catch(e){}});clientRecordUnsubs=[];
       clientPaymentUnsubs.forEach(fn=>{try{fn?.();}catch(e){}});clientPaymentUnsubs=[];
+      clientCashierSalesUnsubs.forEach(fn=>{try{fn?.();}catch(e){}});clientCashierSalesUnsubs=[];
       clientNotificationUnsubs.forEach(fn=>{try{fn?.();}catch(e){}});clientNotificationUnsubs=[];
       subscribeClientCollectionChunks("monthlyRecords","unitId",ids,v=>{records=v;},clientRecordUnsubs);
       subscribeClientCollectionChunks("payments","unitId",ids,v=>{payments=v;},clientPaymentUnsubs);
+      subscribeClientCollectionChunks("cashierTransactions","unitId",ids,v=>{cashierSales=v;},clientCashierSalesUnsubs);
       subscribeClientCollectionChunks("notifications","relatedId",ids,v=>{notifications=v.sort((a,b)=>timeValue(b.createdAt)-timeValue(a.createdAt));},clientNotificationUnsubs);
     }
     clientRealtimeRender();

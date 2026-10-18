@@ -266,7 +266,10 @@ service cloud.firestore {
 
     // CASHIER SALES
     match /cashierTransactions/{id} {
+      // Clients can read only sales belonging to their own registered unit.
+      // Remittance approval fields are written by Admin, never by clients.
       allow read: if isAdmin()
+        || isOwnUnitDocument(resource.data.unitId)
         || (
           isCashier()
           && resource.data.cashierId == request.auth.uid
