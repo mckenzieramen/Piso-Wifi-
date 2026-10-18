@@ -881,7 +881,17 @@ async function saveSettings(){
 function supportStatusClass(status){return String(status||"Open").toLowerCase();}
 function updateSupportBadge(){const el=$("#adminSupportBadge");if(!el)return;const n=supportChats.filter(c=>c.transferredToAdmin===true&&c.adminActioned!==true&&!["Solved","Closed"].includes(String(c.status||"Open"))).length;el.textContent="";el.classList.toggle("hidden",n===0);el.classList.add("nav-red-dot");el.classList.remove("nav-badge");updateActionBadges();}
 let adminSupportThreadMessages=[];
+let adminSupportMessagesTicketId="";
 function supportMessagesHtml(chat){const legacy=Array.isArray(chat?.messages)?chat.messages:[];const merged=new Map();[...legacy,...adminSupportThreadMessages].forEach((m,i)=>merged.set(String(m.id||`${m.senderType||"system"}|${m.createdAt||""}|${m.text||""}|${i}`),m));const msgs=[...merged.values()].sort((a,b)=>String(a.createdAt||"").localeCompare(String(b.createdAt||"")));return msgs.map(m=>{const t=m.senderType==="customer"?"customer":m.senderType==="admin"?"admin":m.senderType==="cashier"?"cashier":"system";const who=t==="customer"?(chat.customerName||"Customer"):t==="admin"?"Piso Net Admin":t==="cashier"?(m.senderName||chat.assignedCashierName||"Cashier"):"Piso Net Customer Service";const stableId=String(m.id||`${m.senderType||"system"}|${m.createdAt||""}|${m.text||""}`);return `<div class="piso-admin-chat-msg ${t}" data-support-message-id="${esc(stableId)}"><div class="piso-admin-chat-bubble">${esc(m.text||"")}</div><small>${esc(who)} · ${esc(dateTimeLabel(m.createdAt))}</small></div>`}).join("")||`<div class="piso-admin-chat-empty">No messages yet.</div>`;}
+function refreshAdminSupportMessages(chat){
+  if(route!=="support"||selectedSupportChatId!==chat.id)return;
+  const box=$("#adminSupportMessages");
+  if(!box)return;
+  const atBottom=box.scrollHeight-box.scrollTop-box.clientHeight<80;
+  const previousTop=box.scrollTop;
+  box.innerHTML=supportMessagesHtml(chat);
+  requestAnimationFrame(()=>{if(box.isConnected)box.scrollTop=atBottom?box.scrollHeight:previousTop;});
+}
 function startSupportRealtime(){
   if(supportUnsub)supportUnsub();
   supportUnsub=onSnapshot(collection(db,"supportChats"),snap=>{
@@ -926,6 +936,7 @@ function startSupportRealtime(){
 }
 let supportStatusFilter="Open";
 function renderSupport(){
+  if(selectedSupportChatId!==adminSupportMessagesTicketId){adminSupportThreadMessages=[];adminSupportMessagesTicketId=selectedSupportChatId;}
   const view=$("#view"); if(!view)return;
   const all=[...supportChats].sort((a,b)=>timeValue(b.updatedAt||b.createdAt)-timeValue(a.updatedAt||a.createdAt));
   const counts={Open:0,Solved:0,Closed:0};
@@ -940,6 +951,7 @@ function renderSupport(){
   $("#supportSearch").oninput=e=>{const q=e.target.value.toLowerCase();$("#supportChatList").innerHTML=renderSupportList(filtered.filter(c=>`${c.customerName||""} ${c.customerEmail||""} ${c.clientCode||""}`.toLowerCase().includes(q)));bindSupportList();};
   bindSupportList(); bindAdminChatEvents(selected);
   if(selected)subscribeSelectedSupport(selected.id);
+  else {if(selectedSupportUnsub){selectedSupportUnsub();selectedSupportUnsub=null;}if(selectedSupportMessagesUnsub){selectedSupportMessagesUnsub();selectedSupportMessagesUnsub=null;}adminSupportThreadMessages=[];}
 }
 function renderSupportList(list){return list.length?list.map(c=>`<button type="button" class="admin-support-item ${c.id===selectedSupportChatId?"active":""}" data-support-id="${esc(c.id)}"><span class="support-item-avatar">${esc(String(c.customerName||"CU").trim().split(/\s+/).slice(0,2).map(x=>x[0]).join("").toUpperCase())}</span><span class="support-item-copy"><b>${esc(c.customerName||"Customer")}</b><small>${esc(c.customerEmail||c.clientCode||"Customer Account")}</small><em>${esc((Array.isArray(c.messages)&&c.messages.length?c.messages[c.messages.length-1].text:"No messages yet").slice(0,55))}</em></span><span class="support-item-side"><i class="${supportStatusClass(c.status)}">${esc(c.status||"Open")}</i>${c.transferredToAdmin===true&&c.adminActioned!==true?'<strong>NEW</strong>':''}</span></button>`).join(""):`<div class="admin-support-no-chats">No customer conversations yet.</div>`;}
 function bindSupportList(){document.querySelectorAll("[data-support-id]").forEach(b=>b.onclick=()=>{selectedSupportChatId=b.dataset.supportId;renderSupport();const c=supportChats.find(x=>x.id===selectedSupportChatId);if(c?.unreadForAdmin===true){updateDoc(doc(db,"supportChats",selectedSupportChatId),{unreadForAdmin:false,updatedAt:new Date().toISOString()}).catch(()=>{});}});}
@@ -950,7 +962,13 @@ function subscribeSelectedSupport(id){
   if(selectedSupportUnsub)selectedSupportUnsub();
   if(selectedSupportMessagesUnsub)selectedSupportMessagesUnsub();
   adminSupportThreadMessages=[];
-  selectedSupportMessagesUnsub=onSnapshot(query(collection(db,"supportChats",id,"messages"),orderBy("createdAt","asc")),snap=>{if(selectedSupportChatId!==id)return;adminSupportThreadMessages=snap.docs.map(d=>({id:d.id,...d.data()}));const c=supportChats.find(x=>x.id===id);const box=$("#adminSupportMessages");if(c&&box){const oldTop=box.scrollTop,oldHeight=box.scrollHeight,clientHeight=box.clientHeight;const atBottom=true;const temp=document.createElement("div");temp.innerHTML=supportMessagesHtml(c);const wantedNodes=[...temp.querySelectorAll("[data-support-message-id]")];const wanted=new Set(wantedNodes.map(el=>el.dataset.supportMessageId));box.querySelectorAll("[data-support-message-id]").forEach(el=>{if(!wanted.has(el.dataset.supportMessageId))el.remove();});const have=new Set([...box.querySelectorAll("[data-support-message-id]")].map(el=>el.dataset.supportMessageId));wantedNodes.forEach(el=>{if(!have.has(el.dataset.supportMessageId))box.appendChild(el.cloneNode(true));});const empty=box.querySelector(".piso-admin-chat-empty");if(wantedNodes.length&&empty)empty.remove();requestAnimationFrame(()=>{box.scrollTop=atBottom?box.scrollHeight:oldTop;});}},err=>console.error("Admin support message stream failed",err));
+  adminSupportMessagesTicketId=id;
+  selectedSupportMessagesUnsub=onSnapshot(query(collection(db,"supportChats",id,"messages"),orderBy("createdAt","asc")),snap=>{
+    if(selectedSupportChatId!==id)return;
+    adminSupportThreadMessages=snap.docs.map(d=>({id:d.id,...d.data()}));
+    const chat=supportChats.find(c=>c.id===id);
+    if(chat)refreshAdminSupportMessages(chat);
+  },err=>{console.error("Admin support message stream failed",err);notify(err?.message||"Unable to load live support messages.","error");});
   const ref=doc(db,"supportChats",id);
   selectedSupportUnsub=onSnapshot(ref,snap=>{
     if(!snap.exists())return;
@@ -960,17 +978,9 @@ function subscribeSelectedSupport(id){
     updateSupportBadge();
 
     if(route==="support"&&selectedSupportChatId===id){
-      const box=$("#adminSupportMessages");
-      // Customer messages are stored in the parent chat document's messages array,
-      // while Admin/Cashier replies are stored in the messages subcollection.
-      // Re-render the merged thread on parent snapshots so Admin sees customer
-      // messages live instead of only seeing the customer's view update.
-      if(box){
-        const wasAtBottom=box.scrollHeight-box.scrollTop-box.clientHeight<40;
-        const previousTop=box.scrollTop;
-        box.innerHTML=supportMessagesHtml(c);
-        requestAnimationFrame(()=>{box.scrollTop=wasAtBottom?box.scrollHeight:previousTop;});
-      }
+      // Both the legacy parent messages and the live message subcollection
+      // belong to this same ticket. Always render their merged history.
+      refreshAdminSupportMessages(c);
       const typ=$("#adminSupportTyping");
       if(typ){
         typ.textContent=c.typingBy?.customer?"Customer is typing…":"";
