@@ -65,7 +65,9 @@ let records=[];
 let payments=[];
 let notifications=[];
 let settings={internetCost:1000,ownerPercent:70,clientPercent:30,electricity:100,electricityRule:"ADD_TO_CLIENT"};
-let selectedMonth=localStorage.getItem("pisoClientMonth") || todayMonth();
+// Always open on the current month; older months remain available in the selector.
+let selectedMonth=todayMonth();
+let lastObservedMonth=todayMonth();
 let selectedYear=String(new Date().getFullYear());
 let selectedUnitId="all";
 let route="dashboard";
@@ -98,7 +100,24 @@ function recordFor(unitId,month){
   return records.find(r=>r.unitId===unitId&&r.month===month) || {unitId,month,grossSales:0};
 }
 function calc(r){
-  return calculateFinancialRecord(r,settings,payments);
+  const base=calculateFinancialRecord(r,settings,payments);
+  const gross=base.gross;
+  // Customer-only monthly view: a fee/share applies once per completed
+  // payment cycle, plus one current unpaid cycle (if there are new sales).
+  // Never show a fixed charge in an empty new month.
+  const matchingPayments=payments.filter(p=>p.unitId===r.unitId&&p.month===r.month&&Number(p.amount)>0);
+  const completedCycles=matchingPayments.length;
+  const paidForSales=Math.max(0,base.paid-completedCycles*Math.max(0,Number(settings.electricity??100)));
+  const unremittedSales=gross>0.009 && (gross*Number(settings.clientPercent??30)/100)>paidForSales+0.009;
+  const cycles=gross>0.009?Math.max(1,completedCycles+(unremittedSales?1:0)):0;
+  const internet=cycles*Math.max(0,Number(settings.internetCost??1000));
+  const electricity=cycles*Math.max(0,Number(settings.electricity??100));
+  const rule=String(settings.electricityRule||"ADD_TO_CLIENT");
+  const adjustment=rule==="SUBTRACT_FROM_CLIENT"?-electricity:rule==="SEPARATE_CHARGE"?0:electricity;
+  const due=Math.max(0,base.client+adjustment-base.miscellaneous);
+  const balance=Math.max(0,due-base.paid);
+  return {...base,internet,net:Math.max(0,gross-internet),elec:electricity,clientTotal:due,balance,
+    status:due===0?(base.paid>0?"Paid":"Unpaid"):base.paid>=due?"Paid":base.paid>0?"Partial":"Unpaid"};
 }
 function rowsForMonth(month=selectedMonth){
   return filteredUnits().map(u=>({u,r:recordFor(u.id,month),c:calc(recordFor(u.id,month))}));
@@ -168,6 +187,11 @@ function clearClientRealtimeSubscriptions(){
 }
 function clientRealtimeRender(){
   if(!currentUser)return;
+  const monthNow=todayMonth();
+  if(lastObservedMonth!==monthNow){
+    if(selectedMonth===lastObservedMonth)selectedMonth=monthNow;
+    lastObservedMonth=monthNow;
+  }
   renderMonthSelectors();
   renderUnitSelector();
   updateBell();
@@ -946,3 +970,6 @@ window.addEventListener("hashchange",()=>{route=parseRoute();render();syncProfil
   }
 })();
 onAuthStateChanged(auth,user=>{if(bootstrapFinished && user?.uid===currentUser?.uid) return; bootstrap(user);});
+
+// Refresh the current-month view at the month boundary, even with no Firebase updates.
+setInterval(()=>{if(currentUser&&todayMonth()!==lastObservedMonth)clientRealtimeRender();},60000);
