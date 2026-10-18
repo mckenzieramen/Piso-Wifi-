@@ -898,8 +898,8 @@ function startSupportRealtime(){
       ? all
       : all.filter(c=>String(c.status||"Open")===supportStatusFilter);
 
-    if(!selectedSupportChatId && filtered[0]){
-      selectedSupportChatId=filtered[0].id;
+    if(selectedSupportChatId && !filtered.some(c=>c.id===selectedSupportChatId)){
+      selectedSupportChatId="";
       renderSupport();
       return;
     }
