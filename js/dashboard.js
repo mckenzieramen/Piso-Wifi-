@@ -650,21 +650,23 @@ const cashierRemittanceDate = value => {
   } catch { return "—"; }
 };
 function renderCashierRemittanceRows(){
-  const body = $("#cashierRemittanceBody");
-  if (!body) return;
-  const pending = cashierRemittances.filter(r => ["PENDING ADMIN AUTHORIZATION","PENDING"].includes(String(r.status||"").toUpperCase()));
+  const pendingBody = $("#cashierRemittanceBody");
+  const historyBody = $("#cashierRemittanceHistoryBody");
+  const pending = cashierRemittances.filter(r => ["PENDING ADMIN AUTHORIZATION","PENDING","PENDING ADMIN APPROVAL"].includes(String(r.status||"PENDING ADMIN AUTHORIZATION").toUpperCase()));
+  const history = cashierRemittances.filter(r => !["PENDING ADMIN AUTHORIZATION","PENDING","PENDING ADMIN APPROVAL"].includes(String(r.status||"PENDING ADMIN AUTHORIZATION").toUpperCase()));
   const count = $("#cashierRemittanceCount");
-  if (count) count.textContent = `${pending.length} pending approval(s)`;
-  if (!pending.length) {
-    body.innerHTML = `<tr><td colspan="7">No remittance requests awaiting approval.</td></tr>`;
-    return;
-  }
-  body.innerHTML = pending.map(r => {
+  const historyCount = $("#cashierRemittanceHistoryCount");
+  if (count) count.textContent = `${pending.length} pending`;
+  if (historyCount) historyCount.textContent = `${history.length} reviewed`;
+  const rowMarkup = (r, isPending) => {
     const expected = Number(r.expectedCollection || 0);
     const actual = Number(r.actualRemittance || 0);
     const variance = Number(r.variance ?? (actual - expected));
     const shortOver = variance < 0 ? `Short ${cashierRemittanceMoney(Math.abs(variance))}` : variance > 0 ? `Over ${cashierRemittanceMoney(variance)}` : "Balanced";
     const color = variance < 0 ? "#dc2626" : variance > 0 ? "#2563eb" : "#64748b";
+    const status = String(r.status || "PENDING ADMIN AUTHORIZATION").toUpperCase().replaceAll("_"," ");
+    const statusColor = status === "APPROVED" || status === "REMITTED" ? "#15803d" : status === "REJECTED" ? "#b42336" : "#a16207";
+    const reviewedAt = r.approvedAt || r.rejectedAt || r.updatedAt;
     return `<tr>
       <td>${esc(cashierRemittanceDate(r.createdAt))}</td>
       <td>${esc(r.cashierName || r.cashierId || "—")}</td>
@@ -672,11 +674,13 @@ function renderCashierRemittanceRows(){
       <td>${cashierRemittanceMoney(expected)}</td>
       <td>${cashierRemittanceMoney(actual)}</td>
       <td><strong style="color:${color}">${shortOver}</strong></td>
-      <td><div style="display:flex;gap:6px;flex-wrap:wrap"><button type="button" class="primary-btn" data-approve-remit="${esc(r.id)}" ${cashierRemittanceBusy?"disabled":""}>Approve</button><button type="button" class="danger-btn" data-reject-remit="${esc(r.id)}" ${cashierRemittanceBusy?"disabled":""}>Reject</button></div></td>
+      ${isPending ? `<td><div class="piso-remit-actions"><button type="button" class="primary-btn" data-approve-remit="${esc(r.id)}" ${cashierRemittanceBusy?"disabled":""}>Approve</button><button type="button" class="danger-btn" data-reject-remit="${esc(r.id)}" ${cashierRemittanceBusy?"disabled":""}>Reject</button></div></td>` : `<td><span class="piso-remit-status" style="--status-color:${statusColor}">${esc(status)}</span><small class="piso-remit-reviewed">${reviewedAt ? `Reviewed ${esc(cashierRemittanceDate(reviewedAt))}` : "Saved in history"}</small>${r.rejectionNote ? `<small class="piso-remit-reviewed">Reason: ${esc(r.rejectionNote)}</small>` : ""}</td>`}
     </tr>`;
-  }).join("");
-  body.querySelectorAll("[data-approve-remit]").forEach(b => b.addEventListener("click", () => approveCashierRemittance(b.dataset.approveRemit)));
-  body.querySelectorAll("[data-reject-remit]").forEach(b => b.addEventListener("click", () => rejectCashierRemittance(b.dataset.rejectRemit)));
+  };
+  if (pendingBody) pendingBody.innerHTML = pending.length ? pending.map(r=>rowMarkup(r,true)).join("") : `<tr><td colspan="7" class="piso-remit-empty">All caught up — no remittances awaiting approval.</td></tr>`;
+  if (historyBody) historyBody.innerHTML = history.length ? history.map(r=>rowMarkup(r,false)).join("") : `<tr><td colspan="7" class="piso-remit-empty">Approved and rejected remittances will remain here as history.</td></tr>`;
+  pendingBody?.querySelectorAll("[data-approve-remit]").forEach(b => b.addEventListener("click", () => openRemittanceDecision(b.dataset.approveRemit,"approve")));
+  pendingBody?.querySelectorAll("[data-reject-remit]").forEach(b => b.addEventListener("click", () => openRemittanceDecision(b.dataset.rejectRemit,"reject")));
 }
 function watchCashierRemittances(){
   if (cashierRemittanceUnsub) { cashierRemittanceUnsub(); cashierRemittanceUnsub = null; }
@@ -696,13 +700,38 @@ function watchCashierRemittances(){
     if (target) target.innerHTML = `<tr><td colspan="7">Could not load remittance requests: ${esc(error.message || "Check Firestore Rules and Admin access.")}</td></tr>`;
   });
 }
+function openRemittanceDecision(id, action){
+  if (cashierRemittanceBusy) return;
+  const r = cashierRemittances.find(x => x.id === id);
+  if (!r) return notify("Remittance request not found. Refresh and try again.","error");
+  const expected = Number(r.expectedCollection || 0);
+  const actual = Number(r.actualRemittance || 0);
+  const variance = Number(r.variance ?? (actual - expected));
+  const isApprove = action === "approve";
+  const root = $("#modalRoot");
+  if (!root) return notify("The confirmation window could not open. Refresh the Admin page and try again.","error");
+  root.innerHTML = `<div class="piso-remit-modal-backdrop" role="presentation"><section class="piso-remit-modal" role="dialog" aria-modal="true" aria-labelledby="pisoRemitModalTitle">
+    <div class="piso-remit-modal-top"><div class="piso-remit-modal-icon ${isApprove?"approve":"reject"}">${isApprove?"✓":"!"}</div><button type="button" class="piso-remit-close" id="closeRemitDecision" aria-label="Close">×</button></div>
+    <p class="piso-remit-eyebrow">PISO WIFI · CASHIER MANAGEMENT</p><h2 id="pisoRemitModalTitle">${isApprove?"Approve remittance?":"Reject remittance?"}</h2>
+    <p class="piso-remit-modal-copy">${isApprove?"Please review the submitted details. Once approved, this record will stay in Remittance History.":"This request will be marked as rejected and kept in Remittance History for audit."}</p>
+    <div class="piso-remit-summary"><div><span>Cashier</span><strong>${esc(r.cashierName || r.cashierId || "—")}</strong></div><div><span>Remitted to</span><strong>${esc(r.remittedTo || r.recipientName || "—")}</strong></div><div><span>Expected remit</span><strong>${cashierRemittanceMoney(expected)}</strong></div><div><span>Actual remit</span><strong>${cashierRemittanceMoney(actual)}</strong></div><div class="wide"><span>Difference</span><strong style="color:${variance<0?"#dc2626":variance>0?"#2563eb":"#15803d"}">${variance<0?"Short ":variance>0?"Over ":"Balanced "}${cashierRemittanceMoney(Math.abs(variance))}</strong></div></div>
+    ${isApprove?"":`<label class="piso-remit-note-label" for="remitRejectNote">Reason (optional)</label><textarea id="remitRejectNote" class="piso-remit-note" rows="3" placeholder="Add a reason for the cashier…"></textarea>`}
+    <div class="piso-remit-modal-actions"><button type="button" class="secondary-btn" id="cancelRemitDecision">Cancel</button><button type="button" class="${isApprove?"primary-btn":"danger-btn"}" id="confirmRemitDecision">${isApprove?"Confirm Approval":"Confirm Rejection"}</button></div>
+  </section></div>`;
+  const close=()=>{root.innerHTML="";};
+  $("#closeRemitDecision")?.addEventListener("click",close);
+  $("#cancelRemitDecision")?.addEventListener("click",close);
+  root.querySelector(".piso-remit-modal-backdrop")?.addEventListener("click",e=>{if(e.target===e.currentTarget)close();});
+  $("#confirmRemitDecision")?.addEventListener("click",async()=>{const note=$("#remitRejectNote")?.value?.trim()||"";close();if(isApprove)await approveCashierRemittance(id);else await rejectCashierRemittance(id,note);});
+}
 async function approveCashierRemittance(id){
   if (cashierRemittanceBusy) return;
   const r = cashierRemittances.find(x => x.id === id);
   if (!r) return notify("Remittance request not found. Refresh and try again.","error");
+  const status = String(r.status||"PENDING ADMIN AUTHORIZATION").toUpperCase();
+  if (!["PENDING ADMIN AUTHORIZATION","PENDING","PENDING ADMIN APPROVAL"].includes(status)) return notify("This remittance has already been reviewed.","error");
   const ids = Array.isArray(r.transactionIds) ? r.transactionIds : [];
   if (ids.length > 450) return notify("This remittance includes too many sale records to approve in one batch.","error");
-  if (!window.confirm(`Approve this remittance for ${cashierRemittanceMoney(r.actualRemittance)} to ${r.remittedTo || r.recipientName || "the named recipient"}?`)) return;
   cashierRemittanceBusy = true; renderCashierRemittanceRows();
   try {
     const batch = writeBatch(db);
@@ -710,23 +739,21 @@ async function approveCashierRemittance(id){
     ids.forEach(txId => batch.update(doc(db,"cashierTransactions",txId),{remittanceId:id,remittanceApproved:true,remittanceApprovedAt:serverTimestamp()}));
     await batch.commit();
     await logActivity("Cashier Remittance",`Approved remittance ${r.remittanceId || id} — ${cashierRemittanceMoney(r.actualRemittance)}`,id);
-    notify("Remittance approved. Included sales are now marked as remitted.","success");
+    notify("Remittance approved and saved in Remittance History.","success");
   } catch(error) {
     console.error("Remittance approval failed",error);
     notify(error?.message || "Could not approve remittance. Check Firestore Rules.","error");
   } finally { cashierRemittanceBusy = false; renderCashierRemittanceRows(); }
 }
-async function rejectCashierRemittance(id){
+async function rejectCashierRemittance(id, reason=""){
   if (cashierRemittanceBusy) return;
   const r = cashierRemittances.find(x => x.id === id);
   if (!r) return notify("Remittance request not found. Refresh and try again.","error");
-  const note = window.prompt("Optional reason for rejecting this remittance:","");
-  if (note === null) return;
   cashierRemittanceBusy = true; renderCashierRemittanceRows();
   try {
-    await updateDoc(doc(db,"remittances",id),{status:"REJECTED",rejectedBy:currentUser.uid,rejectedAt:serverTimestamp(),rejectionNote:note.trim()});
+    await updateDoc(doc(db,"remittances",id),{status:"REJECTED",rejectedBy:currentUser.uid,rejectedAt:serverTimestamp(),rejectionNote:reason});
     await logActivity("Cashier Remittance",`Rejected remittance ${r.remittanceId || id}`,id);
-    notify("Remittance rejected.","success");
+    notify("Remittance rejected and saved in Remittance History.","success");
   } catch(error) {
     console.error("Remittance rejection failed",error);
     notify(error?.message || "Could not reject remittance. Check Firestore Rules.","error");
@@ -735,7 +762,28 @@ async function rejectCashierRemittance(id){
 function renderCashierManagement(){
   if (cashierRemittanceUnsub) { cashierRemittanceUnsub(); cashierRemittanceUnsub = null; }
   view.innerHTML=baseHead("Cashier Management","Create cashier accounts and review remittance requests submitted by Cashiers.",'<button class="primary-btn" id="addAdminCashier">+ Create Cashier Account</button>')+
-    `<div class="panel"><div class="panel-head"><div><h3>Remittance Approval</h3><p>Cashier remittance submissions appear here for Admin review. Approval status syncs live with the Cashier history.</p></div><span id="cashierRemittanceCount" class="badge">Loading…</span><button type="button" class="secondary-btn" id="refreshCashierRemittances">Refresh</button></div><div class="table-wrap"><table><thead><tr><th>Date & Time Remitted</th><th>Cashier</th><th>Remitted To</th><th>Expected Remit</th><th>Actual Remit</th><th>Short / Over</th><th>Admin Action</th></tr></thead><tbody id="cashierRemittanceBody"><tr><td colspan="7">Loading remittance requests…</td></tr></tbody></table></div></div>
+    `<style>
+      .piso-remit-panel{overflow:hidden;border:1px solid #e1e8f2;border-radius:18px;background:linear-gradient(145deg,#fff 0%,#f9fbff 100%);box-shadow:0 12px 34px rgba(15,35,70,.07)}
+      .piso-remit-panel .panel-head{padding:20px 22px;display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+      .piso-remit-panel .panel-head>div{flex:1;min-width:220px}.piso-remit-panel .panel-head h3{margin:0 0 5px}.piso-remit-panel .panel-head p{margin:0;color:#64748b}
+      .piso-remit-scroll{max-height:330px;overflow:auto;border-top:1px solid #e8edf5;overscroll-behavior:contain;scrollbar-gutter:stable}
+      .piso-remit-scroll table{width:100%;min-width:850px;border-collapse:separate;border-spacing:0}
+      .piso-remit-scroll thead th{position:sticky;top:0;z-index:2;background:#f4f7fc;box-shadow:0 1px 0 #e1e8f2}
+      .piso-remit-scroll th,.piso-remit-scroll td{padding:13px 14px;white-space:nowrap;border-bottom:1px solid #edf1f7;text-align:left}
+      .piso-remit-scroll tbody tr:hover{background:#f8fbff}.piso-remit-empty{padding:25px!important;text-align:center!important;color:#64748b;white-space:normal!important}
+      .piso-remit-actions{display:flex;gap:7px;flex-wrap:wrap}.piso-remit-status{display:inline-flex;padding:5px 9px;border-radius:999px;font-size:11px;font-weight:850;color:var(--status-color);background:color-mix(in srgb,var(--status-color) 10%,white);border:1px solid color-mix(in srgb,var(--status-color) 22%,white)}
+      .piso-remit-reviewed{display:block;margin-top:5px;color:#64748b;font-size:11px;white-space:normal;min-width:130px}
+      .piso-remit-history-head{padding:18px 22px;display:flex;align-items:center;justify-content:space-between;gap:12px}.piso-remit-history-head h3{margin:0 0 4px}.piso-remit-history-head p{margin:0;color:#64748b}
+      .piso-remit-modal-backdrop{position:fixed;inset:0;z-index:9999;display:grid;place-items:center;padding:18px;background:rgba(7,18,39,.62);backdrop-filter:blur(7px);animation:pisoRemitFade .16s ease-out}
+      .piso-remit-modal{width:min(520px,100%);max-height:min(90vh,800px);overflow:auto;padding:25px;border:1px solid rgba(255,255,255,.8);border-radius:24px;background:#fff;box-shadow:0 30px 90px rgba(0,0,0,.28);animation:pisoRemitRise .2s ease-out}
+      .piso-remit-modal-top{display:flex;align-items:center;justify-content:space-between}.piso-remit-modal-icon{width:46px;height:46px;display:grid;place-items:center;border-radius:15px;font-size:23px;font-weight:900}.piso-remit-modal-icon.approve{color:#087443;background:linear-gradient(135deg,#d8fbe8,#b8f2d3)}.piso-remit-modal-icon.reject{color:#b42336;background:linear-gradient(135deg,#ffe4e8,#ffd0d8)}
+      .piso-remit-close{width:34px;height:34px;border:0;border-radius:11px;background:#f1f4f9;color:#475569;font-size:24px;cursor:pointer}.piso-remit-eyebrow{margin:18px 0 7px;color:#64748b;font-size:10px;letter-spacing:.13em;font-weight:900}.piso-remit-modal h2{margin:0;font-size:25px;letter-spacing:-.035em;color:#13233c}.piso-remit-modal-copy{margin:9px 0 18px;line-height:1.55;color:#64748b;font-size:13px}
+      .piso-remit-summary{display:grid;grid-template-columns:1fr 1fr;gap:0;border:1px solid #e5eaf2;border-radius:16px;overflow:hidden;background:#f8faff}.piso-remit-summary>div{display:grid;gap:5px;padding:13px 14px;border-bottom:1px solid #e5eaf2}.piso-remit-summary>div:nth-child(odd){border-right:1px solid #e5eaf2}.piso-remit-summary>div.wide{grid-column:1/-1;border-right:0;border-bottom:0;background:#fff}.piso-remit-summary span{font-size:11px;color:#64748b}.piso-remit-summary strong{font-size:14px;color:#14243b;overflow-wrap:anywhere}.piso-remit-note-label{display:block;margin:17px 0 7px;font-size:12px;font-weight:800;color:#334155}.piso-remit-note{width:100%;resize:vertical;padding:12px;border:1px solid #d8e0eb;border-radius:12px;font:inherit;box-sizing:border-box}.piso-remit-modal-actions{display:flex;justify-content:flex-end;gap:9px;margin-top:22px}.piso-remit-modal-actions button{min-height:42px;padding:10px 15px;border-radius:11px;font-weight:800;cursor:pointer}
+      @keyframes pisoRemitFade{from{opacity:0}to{opacity:1}}@keyframes pisoRemitRise{from{opacity:0;transform:translateY(9px) scale(.985)}to{opacity:1;transform:translateY(0) scale(1)}}
+      @media(max-width:640px){.piso-remit-modal{padding:19px;border-radius:20px}.piso-remit-modal h2{font-size:22px}.piso-remit-summary{grid-template-columns:1fr}.piso-remit-summary>div:nth-child(odd){border-right:0}.piso-remit-summary>div{border-bottom:1px solid #e5eaf2}.piso-remit-summary>div.wide{grid-column:auto}.piso-remit-modal-actions{flex-direction:column-reverse}.piso-remit-modal-actions button{width:100%}}
+    </style>
+    <div class="panel piso-remit-panel"><div class="panel-head"><div><h3>Remittance Approval</h3><p>Review new submissions here. Approved and rejected records move to the history below and are not deleted.</p></div><span id="cashierRemittanceCount" class="badge">Loading…</span><button type="button" class="secondary-btn" id="refreshCashierRemittances">Refresh</button></div><div class="piso-remit-scroll"><table><thead><tr><th>Date &amp; Time Remitted</th><th>Cashier</th><th>Remitted To</th><th>Expected Remit</th><th>Actual Remit</th><th>Short / Over</th><th>Admin Action</th></tr></thead><tbody id="cashierRemittanceBody"><tr><td colspan="7">Loading remittance requests…</td></tr></tbody></table></div></div>
+    <div class="panel piso-remit-panel" style="margin-top:18px"><div class="piso-remit-history-head"><div><h3>Remittance History</h3><p>Previously reviewed remittances stay saved here for reference.</p></div><span id="cashierRemittanceHistoryCount" class="badge">Loading…</span></div><div class="piso-remit-scroll"><table><thead><tr><th>Date &amp; Time Remitted</th><th>Cashier</th><th>Remitted To</th><th>Expected Remit</th><th>Actual Remit</th><th>Short / Over</th><th>Final Status</th></tr></thead><tbody id="cashierRemittanceHistoryBody"><tr><td colspan="7">Loading history…</td></tr></tbody></table></div></div>
     <div class="panel" style="margin-top:18px"><div class="panel-head"><div><h3>Cashier Accounts</h3><p>Only Admin can create cashier accounts. Deleting an account does not delete its sales/history.</p></div><button type="button" class="secondary-btn" id="refreshCashierAccounts">Refresh</button></div><div class="table-wrap"><table><thead><tr><th>Cashier Name</th><th>Email</th><th>Status</th><th>Created</th><th>Action</th></tr></thead><tbody id="cashierAccountsBody"><tr><td colspan="5">Loading cashier accounts…</td></tr></tbody></table></div></div>`;
   $("#addAdminCashier")?.addEventListener("click",openAdminCashierModal);
   $("#refreshCashierAccounts")?.addEventListener("click",loadCashierAccounts);
