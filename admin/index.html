@@ -23,16 +23,16 @@
     <h1 id="loginTitle">PISO WIFI</h1>
     <p>Secure Admin Management System</p>
 
-    <form id="loginForm" novalidate>
+    <form autocomplete="off" id="loginForm" novalidate>
       <div class="login-form-group">
         <label for="email">Email Address</label>
-        <input id="email" type="email" autocomplete="username" required placeholder="Enter your admin email">
+        <input id="email" type="email" required placeholder="Enter your admin email" autocomplete="off" readonly data-login-entry>
       </div>
 
       <div class="login-form-group">
         <label for="password">Password</label>
         <div class="password-wrap">
-          <input id="password" type="password" autocomplete="current-password" required placeholder="Enter your password">
+          <input id="password" type="password" required placeholder="Enter your password" autocomplete="off" readonly data-login-entry>
           <button type="button" id="togglePassword" aria-label="Show password">Show</button>
         </div>
       </div>
@@ -53,5 +53,13 @@
   </main>
 
   <script type="module" src="../js/auth.js?v=70"></script>
+<script>
+  // Keep login fields out of browser autofill until the person interacts with them.
+  // The portal's own Remember Me script may still set the remembered email.
+  document.querySelectorAll('[data-login-entry]').forEach(field => {
+    field.addEventListener('focus', () => field.removeAttribute('readonly'), {once:true});
+    field.addEventListener('pointerdown', () => field.removeAttribute('readonly'), {once:true});
+  });
+</script>
 </body>
 </html>

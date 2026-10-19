@@ -8,9 +8,9 @@
 <body class="cashier-login-page">
 <main id="loginCard" class="cashier-login-card">
   <div class="cashier-logo">⌁</div><h1>PISO WIFI</h1><p>Secure Cashier Portal</p>
-  <form id="loginForm">
-    <label>Email Address<input id="email" type="email" autocomplete="off" required placeholder="cashier@email.com"></label>
-    <label>Password<input id="password" type="password" autocomplete="new-password" required placeholder="Enter password"></label>
+  <form autocomplete="off" id="loginForm">
+    <label>Email Address<input id="email" type="email" required placeholder="cashier@email.com" autocomplete="off" readonly data-login-entry></label>
+    <label>Password<input id="password" type="password" required placeholder="Enter password" autocomplete="off" readonly data-login-entry></label>
     <label style="display:flex;align-items:center;gap:8px"><input id="cashierRememberMe" type="checkbox" style="width:auto"> Remember my email on this device</label>
     <button class="primary" type="submit">Sign in to Cashier</button>
     <div id="loginMsg" class="message"></div>
@@ -19,4 +19,12 @@
 </main>
 <script src="/js/piso-branded-dialogs.js?v=20261015-branded-dialogs"></script>
   <script type="module" src="/js/cashier.js?v=20261017-sales-sync-confirmed-1"></script>
+<script>
+  // Keep login fields out of browser autofill until the person interacts with them.
+  // The portal's own Remember Me script may still set the remembered email.
+  document.querySelectorAll('[data-login-entry]').forEach(field => {
+    field.addEventListener('focus', () => field.removeAttribute('readonly'), {once:true});
+    field.addEventListener('pointerdown', () => field.removeAttribute('readonly'), {once:true});
+  });
+</script>
 </body></html>
