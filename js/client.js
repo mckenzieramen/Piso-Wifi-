@@ -101,22 +101,36 @@ function filteredUnits(){
 function recordFor(unitId,month){
   return records.find(r=>r.unitId===unitId&&r.month===month) || {unitId,month,grossSales:0};
 }
+// A remittance cycle is identified by the Admin-approved batch on the sale.
+// Transactions without an approved batch belong to the current open cycle,
+// regardless of how many times the customer has been paid in that cycle.
+// This is deliberately independent of payment count and old per-sale fee fields.
+function cashierCycleCharges(unitId,month){
+  const sales=cashierSales.filter(t=>t.unitId===unitId &&
+    String(t.saleDate||t.recordedAt||t.createdAt?.toDate?.()?.toISOString?.()||"").slice(0,7)===month &&
+    Number(t.grossSales||0)>0);
+  if(!sales.length)return {hasSales:false,cycles:0,internet:0,electricity:0};
+  const cycleKeys=new Set();
+  for(const sale of sales){
+    const cashier=String(sale.cashierId||"unknown");
+    const approved=sale.remittanceApproved===true || sale.remittanceFinalized===true;
+    // Only approved batches close a cycle. A pending remittance remains open.
+    const batch=approved?String(sale.remittanceId||""):"";
+    const approvalTime=sale.remittanceApprovedAt?.toDate?.()?.toISOString?.()||String(sale.remittanceApprovedAt||"");
+    const key=approved?(batch?`approved:${cashier}:${batch}`:`approved:${cashier}:${approvalTime||sale.id}`):`open:${cashier}`;
+    cycleKeys.add(key);
+  }
+  return {hasSales:true,cycles:cycleKeys.size,
+    internet:cycleKeys.size*Math.max(0,Number(settings.internetCost??1000)),
+    electricity:cycleKeys.size*Math.max(0,Number(settings.electricity??100))};
+}
 function calc(r){
   const base=calculateFinancialRecord(r,settings,payments);
   const gross=base.gross;
-  // Cashier records the fixed charges only on the first sale of each
-  // remittance cycle. Later sales in that cycle carry zero fixed charges.
-  // Sum those actual saved amounts, rather than grouping all sales whose
-  // approval metadata is not yet visible into one synthetic "open" cycle.
-  // This preserves separate completed cycles within the same month.
-  const sales=cashierSales.filter(t=>t.unitId===r.unitId && String(t.saleDate||t.recordedAt||"").slice(0,7)===r.month);
-  let internet=sales.reduce((sum,t)=>sum+Math.max(0,Number(t.internetFee)||0),0);
-  let electricity=sales.reduce((sum,t)=>sum+Math.max(0,Number(t.electricityShare)||0),0);
-  // Monthly records created directly by Admin have no cashier sales.
-  if(!sales.length && gross>0.009){
-    internet=Math.max(0,Number(settings.internetCost??1000));
-    electricity=Math.max(0,Number(settings.electricity??100));
-  }
+  const charges=cashierCycleCharges(r.unitId,r.month);
+  // Admin-entered monthly records have no cashier transactions.
+  const internet=charges.hasSales?charges.internet:(gross>0.009?Math.max(0,Number(settings.internetCost??1000)):0);
+  const electricity=charges.hasSales?charges.electricity:(gross>0.009?Math.max(0,Number(settings.electricity??100)):0);
   const rule=String(settings.electricityRule||"ADD_TO_CLIENT");
   const adjustment=rule==="SUBTRACT_FROM_CLIENT"?-electricity:rule==="SEPARATE_CHARGE"?0:electricity;
   const due=Math.max(0,base.client+adjustment-base.miscellaneous);
