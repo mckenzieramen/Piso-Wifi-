@@ -10,7 +10,14 @@ service cloud.firestore {
 
     function isAdmin() {
       return isSignedIn()
-        && request.auth.token.email == "pisonet@admin.com";
+        && (
+          request.auth.token.email == "pisonet@admin.com"
+          || (
+            exists(/databases/$(database)/documents/users/$(request.auth.uid))
+            && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == "admin"
+            && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get("active", true) == true
+          )
+        );
     }
 
     function userDoc() {
@@ -234,22 +241,43 @@ service cloud.firestore {
 
       allow delete: if isAdmin();
 
-      // Individual message documents keep long conversations from hitting the
-      // 1 MiB limit of a single supportChats document.
+      // INDIVIDUAL SUPPORT MESSAGES
+      // Store each message in supportChats/{chatId}/messages/{messageId}
+      // so long conversations do not exceed Firestore's 1 MiB document limit.
       match /messages/{messageId} {
-        function parentChat() {
+        function supportChat() {
           return get(/databases/$(database)/documents/supportChats/$(chatId)).data;
         }
+
         allow read: if isAdmin()
-          || (isSignedIn() && parentChat().authUserId == request.auth.uid)
-          || (isCashier() && parentChat().assignedRole == "cashier"
-            && (parentChat().assignedCashierId == "" || parentChat().assignedCashierId == request.auth.uid));
+          || (isSignedIn() && supportChat().authUserId == request.auth.uid)
+          || (isCashier()
+            && supportChat().assignedRole == "cashier"
+            && (
+              supportChat().assignedCashierId == ""
+              || supportChat().assignedCashierId == request.auth.uid
+            ));
+
         allow create: if isAdmin()
-          || (isSignedIn() && parentChat().authUserId == request.auth.uid
-            && request.resource.data.senderType == "customer")
-          || (isCashier() && parentChat().assignedRole == "cashier"
-            && (parentChat().assignedCashierId == "" || parentChat().assignedCashierId == request.auth.uid)
-            && request.resource.data.senderType in ["cashier", "system"]);
+          || (
+            isSignedIn()
+            && supportChat().authUserId == request.auth.uid
+            && request.resource.data.senderType == "customer"
+            && request.resource.data.text is string
+          )
+          || (
+            isCashier()
+            && supportChat().assignedRole == "cashier"
+            && (
+              supportChat().assignedCashierId == ""
+              || supportChat().assignedCashierId == request.auth.uid
+            )
+            && request.resource.data.senderType in ["cashier", "system"]
+            && request.resource.data.text is string
+          );
+
+        // Messages are append-only for customers and cashiers.
+        // Admin can moderate/delete if needed.
         allow update, delete: if isAdmin();
       }
     }
@@ -266,10 +294,12 @@ service cloud.firestore {
 
     // CASHIER SALES
     match /cashierTransactions/{id} {
-      // Clients can read only sales belonging to their own registered unit.
-      // Remittance approval fields are written by Admin, never by clients.
+      // Customers may read transactions for their own authenticated unit only.
+      // Customer writes remain forbidden by the create/update/delete rules below.
       allow read: if isAdmin()
-        || isOwnUnitDocument(resource.data.unitId)
+        || (isSignedIn()
+          && resource.data.unitId is string
+          && isOwnUnitDocument(resource.data.unitId))
         || (
           isCashier()
           && resource.data.cashierId == request.auth.uid
@@ -298,7 +328,12 @@ service cloud.firestore {
               "customerEarningsAcknowledgedBy",
               "customerEarningsAcknowledgedAt",
               "receiptId",
-              "receiptSummary"
+              "receiptSummary",
+              "dashboardPaymentSyncStatus",
+              "receiptEmailStatus",
+              "receiptEmailSentAt",
+              "receiptEmailError",
+              "receiptEmailAttemptedAt"
             ])
           && request.resource.data.status == "CUSTOMER EARNINGS PAID"
           && request.resource.data.customerEarningsPaid == true
@@ -316,8 +351,13 @@ service cloud.firestore {
           && resource.data.cashierId == request.auth.uid
         );
 
-      allow create: if isCashier()
-        && request.resource.data.cashierId == request.auth.uid;
+      // Admins may create a receipt from the admin workflow.
+      // Cashiers may create receipts only for their own authenticated UID.
+      allow create: if isAdmin()
+        || (
+          isCashier()
+          && request.resource.data.cashierId == request.auth.uid
+        );
 
       allow update, delete: if isAdmin();
     }
