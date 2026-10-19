@@ -10,7 +10,7 @@ import { calculateFinancialRecord, cashierMonthlyCharges } from "./finance.js";
 import { firebaseConfig } from "./firebase-config.js";
 
 const $ = s => document.querySelector(s);
-const money = n => `₱${Number(n || 0).toLocaleString("en-PH",{minimumFractionDigits:2,maximumFractionDigits:2})}`;
+const money = n => Number.isNaN(Number(n))?"—":`₱${Number(n || 0).toLocaleString("en-PH",{minimumFractionDigits:2,maximumFractionDigits:2})}`;
 const esc = v => String(v ?? "").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#039;"}[m]));
 const monthLabel = k => {
   const [y,m]=String(k).split("-");
@@ -64,6 +64,8 @@ let clientUnits=[];
 let records=[];
 let payments=[];
 let cashierSales=[];
+let cashierSalesLoadError=false;
+let clientCashierSalesSignature="";
 let notifications=[];
 let settings={internetCost:1000,ownerPercent:70,clientPercent:30,electricity:100,electricityRule:"ADD_TO_CLIENT"};
 // Always open on the current month; older months remain available in the selector.
@@ -108,6 +110,12 @@ function calc(r){
   const base=calculateFinancialRecord(r,settings,payments);
   const gross=base.gross;
   const charges=cashierCycleCharges(r.unitId,r.month);
+  const linked=records.find(x=>x.unitId===r.unitId&&x.month===r.month)?.cashierTransactionIds||[];
+  const missing=linked.some(id=>!cashierSales.some(t=>t.id===String(id)));
+  if((cashierSalesLoadError||missing)&&linked.length){
+    // Never silently present the fixed monthly fee as if it were confirmed.
+    return {...base,internet:NaN,elec:NaN,net:NaN,clientTotal:NaN,balance:NaN,status:"Syncing"};
+  }
   // Admin-entered monthly records have no cashier transactions.
   const internet=charges.hasSales?charges.internet:(gross>0.009?Math.max(0,Number(settings.internetCost??1000)):0);
   const electricity=charges.hasSales?charges.electricity:(gross>0.009?Math.max(0,Number(settings.electricity??100)):0);
@@ -172,8 +180,19 @@ async function loadClientData(){
     getDoc(doc(db,"settings","business"))
   ]);
   records=r;payments=p;
-  try{cashierSales=await getChunked("cashierTransactions","unitId",ids);}catch(error){
-    console.warn("Customer remittance cycle data unavailable",error);cashierSales=[];
+  // Monthly records contain the exact cashier transaction document IDs.
+  // Read those documents individually: the customer is authorized to read
+  // their own unit's transactions, without a broad collection query.
+  const linkedIds=[...new Set(records.filter(x=>ids.includes(x.unitId))
+    .flatMap(x=>Array.isArray(x.cashierTransactionIds)?x.cashierTransactionIds:[]).map(String))];
+  cashierSalesLoadError=false;
+  try{
+    const snapshots=await Promise.all(linkedIds.map(id=>getDoc(doc(db,"cashierTransactions",id))));
+    cashierSales=snapshots.filter(x=>x.exists()).map(x=>({id:x.id,...x.data()}));
+  }catch(error){
+    cashierSalesLoadError=true;
+    console.error("Customer cashier transaction read failed",error);
+    cashierSales=[];
   }
   if(s.exists())settings={...settings,...s.data()};
   try{
@@ -187,6 +206,7 @@ function clearClientRealtimeSubscriptions(){
   try{clientSettingsUnsub?.();}catch(e){}
   clientSettingsUnsub=null;
   clientRealtimeUnitSignature="";
+  clientCashierSalesSignature="";
 }
 function clientRealtimeRender(){
   if(!currentUser)return;
@@ -221,6 +241,34 @@ function subscribeClientCollectionChunks(collectionName,field,ids,assign,unsubSt
     unsubStore.push(unsub);
   });
 }
+function watchLinkedCashierTransactions(){
+  const allowedUnits=new Set(clientUnits.map(u=>String(u.id)));
+  const ids=[...new Set(records.filter(r=>allowedUnits.has(String(r.unitId)))
+    .flatMap(r=>Array.isArray(r.cashierTransactionIds)?r.cashierTransactionIds:[]).map(String))].sort();
+  const signature=ids.join("|");
+  if(signature===clientCashierSalesSignature)return;
+  clientCashierSalesUnsubs.forEach(fn=>{try{fn?.();}catch(e){}});
+  clientCashierSalesUnsubs=[];
+  clientCashierSalesSignature=signature;
+  cashierSales=[];
+  cashierSalesLoadError=false;
+  const found=new Map();
+  ids.forEach(id=>{
+    const unsub=onSnapshot(doc(db,"cashierTransactions",id),snap=>{
+      if(snap.exists())found.set(id,{id:snap.id,...snap.data()});
+      else found.delete(id);
+      cashierSales=[...found.values()];
+      clientRealtimeRender();
+    },error=>{
+      cashierSalesLoadError=true;
+      console.error("Customer transaction access failed",id,error);
+      window.pisoDebug?.capture(error?.message||error,{type:"firebase.realtime",source:"client.js → linked cashier transaction"});
+      clientRealtimeRender();
+    });
+    clientCashierSalesUnsubs.push(unsub);
+  });
+  clientRealtimeRender();
+}
 function startClientRealtime(){
   clearClientRealtimeSubscriptions();
   if(!currentUser?.uid)return;
@@ -237,9 +285,9 @@ function startClientRealtime(){
       clientPaymentUnsubs.forEach(fn=>{try{fn?.();}catch(e){}});clientPaymentUnsubs=[];
       clientCashierSalesUnsubs.forEach(fn=>{try{fn?.();}catch(e){}});clientCashierSalesUnsubs=[];
       clientNotificationUnsubs.forEach(fn=>{try{fn?.();}catch(e){}});clientNotificationUnsubs=[];
-      subscribeClientCollectionChunks("monthlyRecords","unitId",ids,v=>{records=v;},clientRecordUnsubs);
+      subscribeClientCollectionChunks("monthlyRecords","unitId",ids,v=>{records=v;watchLinkedCashierTransactions();},clientRecordUnsubs);
       subscribeClientCollectionChunks("payments","unitId",ids,v=>{payments=v;},clientPaymentUnsubs);
-      subscribeClientCollectionChunks("cashierTransactions","unitId",ids,v=>{cashierSales=v;},clientCashierSalesUnsubs);
+      // Linked transaction documents are watched by watchLinkedCashierTransactions().
       subscribeClientCollectionChunks("notifications","relatedId",ids,v=>{notifications=v.sort((a,b)=>timeValue(b.createdAt)-timeValue(a.createdAt));},clientNotificationUnsubs);
     }
     clientRealtimeRender();
