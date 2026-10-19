@@ -6,7 +6,7 @@ import {
   collection, doc, getDoc, getDocs, query, where, updateDoc, setDoc, addDoc, onSnapshot, arrayUnion, orderBy,
   serverTimestamp, writeBatch
 } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-firestore.js";
-import { calculateFinancialRecord } from "./finance.js";
+import { calculateFinancialRecord, cashierMonthlyCharges } from "./finance.js";
 import { firebaseConfig } from "./firebase-config.js";
 
 const $ = s => document.querySelector(s);
@@ -101,28 +101,8 @@ function filteredUnits(){
 function recordFor(unitId,month){
   return records.find(r=>r.unitId===unitId&&r.month===month) || {unitId,month,grossSales:0};
 }
-// A remittance cycle is identified by the Admin-approved batch on the sale.
-// Transactions without an approved batch belong to the current open cycle,
-// regardless of how many times the customer has been paid in that cycle.
-// This is deliberately independent of payment count and old per-sale fee fields.
 function cashierCycleCharges(unitId,month){
-  const sales=cashierSales.filter(t=>t.unitId===unitId &&
-    String(t.saleDate||t.recordedAt||t.createdAt?.toDate?.()?.toISOString?.()||"").slice(0,7)===month &&
-    Number(t.grossSales||0)>0);
-  if(!sales.length)return {hasSales:false,cycles:0,internet:0,electricity:0};
-  const cycleKeys=new Set();
-  for(const sale of sales){
-    const cashier=String(sale.cashierId||"unknown");
-    const approved=sale.remittanceApproved===true || sale.remittanceFinalized===true;
-    // Only approved batches close a cycle. A pending remittance remains open.
-    const batch=approved?String(sale.remittanceId||""):"";
-    const approvalTime=sale.remittanceApprovedAt?.toDate?.()?.toISOString?.()||String(sale.remittanceApprovedAt||"");
-    const key=approved?(batch?`approved:${cashier}:${batch}`:`approved:${cashier}:${approvalTime||sale.id}`):`open:${cashier}`;
-    cycleKeys.add(key);
-  }
-  return {hasSales:true,cycles:cycleKeys.size,
-    internet:cycleKeys.size*Math.max(0,Number(settings.internetCost??1000)),
-    electricity:cycleKeys.size*Math.max(0,Number(settings.electricity??100))};
+  return cashierMonthlyCharges(cashierSales,unitId,month,settings);
 }
 function calc(r){
   const base=calculateFinancialRecord(r,settings,payments);

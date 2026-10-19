@@ -2,7 +2,7 @@ import { auth, db } from "./firebase.js";
 import { firebaseConfig } from "./firebase-config.js";
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-app.js";
 import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, updateEmail, signOut as provisionerSignOut } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-auth.js";
-import { calculateFinancialRecord } from "./finance.js";
+import { calculateFinancialRecord, cashierMonthlyCharges } from "./finance.js";
 import { onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-auth.js";
 import {
   collection, doc, getDoc, getDocs, setDoc, addDoc, updateDoc, deleteDoc, writeBatch, runTransaction, onSnapshot, arrayUnion,
@@ -86,7 +86,7 @@ const esc = (v) => String(v ?? "").replace(/[&<>"']/g, m => ({"&":"&amp;","<":"&
 const uid = () => `${Date.now()}-${Math.random().toString(36).slice(2,8)}`;
 
 let currentUser = null;
-let units = [], records = [], payments = [], notifications = [], activities = [], supportChats = [];
+let units = [], records = [], payments = [], cashierSales = [], notifications = [], activities = [], supportChats = [];
 let supportUnsub=null, selectedSupportChatId="";
 let coreRealtimeUnsubs=[];
 let dashboardRealtimeTimer=null;
@@ -244,7 +244,15 @@ function normalizeRows(month=selectedMonth){
   });
 }
 function calc(r){
-  return calculateFinancialRecord(r, settings, payments);
+  const base=calculateFinancialRecord(r,settings,payments);
+  const charges=cashierMonthlyCharges(cashierSales,r.unitId,r.month,settings);
+  if(!charges.hasSales)return {...base,internet:base.gross>0?base.internet:0,elec:base.gross>0?base.elec:0};
+  const internet=charges.internet, elec=charges.electricity;
+  const adjustment=settings.electricityRule==="SUBTRACT_FROM_CLIENT"?-elec:settings.electricityRule==="SEPARATE_CHARGE"?0:elec;
+  const clientTotal=Math.max(0,base.client+adjustment-base.miscellaneous);
+  const balance=Math.max(0,clientTotal-base.paid);
+  return {...base,internet,net:Math.max(0,base.gross-internet),elec,clientTotal,balance,
+    status:clientTotal===0?(base.paid>0?"Paid":"Unpaid"):base.paid>=clientTotal?"Paid":base.paid>0?"Partial":"Unpaid"};
 }
 function totals(rows){ return rows.reduce((a,x)=>{a.gross+=x.c.gross;a.internet+=x.c.internet;a.net+=x.c.net;a.owner+=x.c.owner;a.client+=x.c.client;a.elec+=x.c.elec;a.misc+=x.c.miscellaneous||0;a.due+=x.c.clientTotal;a.paid+=x.c.paid;a.balance+=x.c.balance;return a},{gross:0,internet:0,net:0,owner:0,client:0,elec:0,due:0,paid:0,balance:0}); }
 
@@ -269,6 +277,7 @@ async function loadData(){
   }
   records=r.docs.map(d=>({id:d.id,...d.data()}));
   payments=p.docs.map(d=>({id:d.id,...d.data()}));
+  cashierSales=(await getDocs(collection(db,"cashierTransactions"))).docs.map(d=>({id:d.id,...d.data()}));
   if(s.exists()) settings={...settings,...s.data()};
 
   try {
@@ -1253,6 +1262,7 @@ function startCoreRealtime(){
   bind("units",rows=>{units=rows;});
   bind("monthlyRecords",rows=>{records=rows;});
   bind("payments",rows=>{payments=rows;});
+  bind("cashierTransactions",rows=>{cashierSales=rows;});
   // Keep monthly subscription totals current when payments are added/edited.
   bind("wifiSubscriptions",rows=>{
     wifiSubscriptionsLoadError="";

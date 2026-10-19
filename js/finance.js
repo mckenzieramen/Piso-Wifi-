@@ -42,3 +42,29 @@ export function calculateFinancialRecord(record = {}, settings = {}, payments = 
 
   return { gross, internet, net, owner, client, elec: electricity, miscellaneous, clientTotal: due, paid, balance, status };
 }
+
+
+/** Calculate fixed charges from actual cashier sales, once per customer per
+ * approved remittance batch and once for the still-open batch. */
+export function cashierMonthlyCharges(sales,unitId,month,settings={}) {
+  const relevant=sales.filter(t=>String(t.unitId||"")===String(unitId)&&
+    String(t.saleDate||t.recordedAt||t.createdAt?.toDate?.()?.toISOString?.()||"").slice(0,7)===month&&
+    Number(t.grossSales||0)>0);
+  if(!relevant.length)return {hasSales:false,cycles:0,internet:0,electricity:0};
+  const keys=new Set();
+  for(const t of relevant){
+    const cashier=String(t.cashierId||"unknown");
+    const approved=t.remittanceApproved===true||t.remittanceFinalized===true;
+    const batch=String(t.remittanceId||"");
+    const stamp=String(t.remittanceApprovedAt?.toDate?.()?.toISOString?.()||t.remittanceApprovedAt||"");
+    keys.add(approved?`approved:${cashier}:${batch||stamp||t.id}`:`open:${cashier}`);
+  }
+  // The cashier persists the charge only on the first sale of a new batch.
+  // This also covers historical approved batches whose approval markers were
+  // not backfilled but whose saved charge records are intact.
+  const charged=relevant.filter(t=>Number(t.internetFee||0)>0||Number(t.electricityShare||0)>0).length;
+  const cycles=Math.max(keys.size,charged);
+  return {hasSales:true,cycles,
+    internet:cycles*Math.max(0,Number(settings.internetCost??1000)),
+    electricity:cycles*Math.max(0,Number(settings.electricity??100))};
+}
