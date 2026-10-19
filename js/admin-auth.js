@@ -10,6 +10,14 @@ import { doc, getDoc } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-
 const form = document.querySelector("#loginForm");
 const msg = document.querySelector("#loginMessage");
 let routing = false;
+const rememberAdmin = document.querySelector("#rememberAdmin");
+const adminEmail = document.querySelector("#email");
+const ADMIN_REMEMBER_KEY = "pisoWifi.admin.rememberedEmail";
+try {
+  const saved = localStorage.getItem(ADMIN_REMEMBER_KEY);
+  if (saved && adminEmail) { adminEmail.value = saved; if (rememberAdmin) rememberAdmin.checked = true; }
+} catch {}
+
 
 function show(text, type="") {
   if (!msg) return;
@@ -64,6 +72,10 @@ form?.addEventListener("submit", async e => {
       show("Access denied. This login is for Admin accounts only.", "error");
       return;
     }
+    try {
+      if (rememberAdmin?.checked) localStorage.setItem(ADMIN_REMEMBER_KEY, email);
+      else localStorage.removeItem(ADMIN_REMEMBER_KEY);
+    } catch {}
     window.location.replace("/admin/dashboard.html");
   } catch (err) {
     console.error(err);

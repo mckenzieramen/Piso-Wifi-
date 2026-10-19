@@ -40,6 +40,10 @@ async function audit(action,recordId,metadata={}){try{await addDoc(collection(db
 function login(){
   const form=$("#loginForm"), emailField=$("#email"), passwordField=$("#password");
   const submitButton=form?.querySelector('button[type="submit"]');
+  const rememberField=$("#cashierRememberMe");
+  const CASHIER_REMEMBER_KEY="pisoWifi.cashier.rememberedEmail";
+  try { const saved=localStorage.getItem(CASHIER_REMEMBER_KEY); if(saved && emailField){emailField.value=saved;if(rememberField)rememberField.checked=true;} } catch {}
+
   const originalButtonText=submitButton?.textContent||"Sign in to Cashier";
   const setPending=(pending)=>{
     if(submitButton){submitButton.disabled=!!pending;submitButton.textContent=pending?"Checking account…":originalButtonText;}
@@ -47,7 +51,7 @@ function login(){
     if(passwordField)passwordField.disabled=!!pending;
   };
   const clearAdminAutofill=()=>{
-    if(emailField.value.trim().toLowerCase()==="pisonet@admin.com"){
+    if(["pisonet@admin.com","admin@pisonet.com"].includes(emailField.value.trim().toLowerCase())){
       emailField.value="";passwordField.value="";
       msg("Please sign in with your Cashier account. Admin accounts cannot sign in here.");
     }
@@ -60,7 +64,7 @@ function login(){
     e.preventDefault();
     if(submitButton?.disabled)return;
     const email=emailField.value.trim().toLowerCase();
-    if(email==="pisonet@admin.com"){
+    if(["pisonet@admin.com","admin@pisonet.com"].includes(email)){
       passwordField.value="";
       msg("Admin login is not available on the Cashier portal. Use your Cashier email and password.");
       return;
@@ -70,6 +74,7 @@ function login(){
     msg("Signing in…",false);
     try{
       await signInWithEmailAndPassword(auth,email,passwordField.value);
+      try { if(rememberField?.checked)localStorage.setItem(CASHIER_REMEMBER_KEY,email);else localStorage.removeItem(CASHIER_REMEMBER_KEY); } catch {}
       msg("Login verified. Opening Cashier portal…",false);
       // The auth-state handler completes profile verification and renders the portal.
       setTimeout(()=>{

@@ -4,8 +4,6 @@ import {
   signInWithEmailAndPassword,
   onAuthStateChanged,
   signOut,
-  setPersistence,
-  browserSessionPersistence,
 } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-auth.js";
 import { doc, getDoc, getDocs, setDoc, addDoc, collection, query, where, serverTimestamp } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-firestore.js";
 
@@ -39,8 +37,7 @@ try {
   if (savedEmail && emailInput) {
     emailInput.value = savedEmail;
   }
-  const savedUnit = localStorage.getItem(CLIENT_REMEMBER_KEY);
-  if (remember && savedUnit) remember.checked = true;
+  if (remember && savedEmail) remember.checked = true;
 } catch {}
 
 
@@ -140,7 +137,8 @@ async function routeUser(user) {
     if (profile?.role === "client" && profile?.active !== false) {
       try {
         const customerEmail = String(user?.email || profile?.authEmail || profile?.email || "").trim().toLowerCase();
-        if (customerEmail) localStorage.setItem(CLIENT_LAST_EMAIL_KEY, customerEmail);
+        if (remember?.checked && customerEmail) localStorage.setItem(CLIENT_LAST_EMAIL_KEY, customerEmail);
+        else localStorage.removeItem(CLIENT_LAST_EMAIL_KEY);
         const rememberedUsername = String(profile?.username || "").trim();
         if (remember?.checked && rememberedUsername) localStorage.setItem(CLIENT_REMEMBER_KEY, rememberedUsername);
         else if (!remember?.checked) localStorage.removeItem(CLIENT_REMEMBER_KEY);
@@ -207,7 +205,7 @@ form.addEventListener("submit", async e => {
   message("Authenticating…");
 
   try {
-    await setPersistence(auth, browserSessionPersistence);
+    // Firebase default local persistence retains the signed-in customer across reloads.
 
     let cred;
     try {
